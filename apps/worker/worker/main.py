@@ -7,7 +7,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import psycopg
-from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
 from pydantic import SecretStr
@@ -82,8 +81,7 @@ def main() -> None:
     signal.signal(signal.SIGTERM, request_shutdown)
     signal.signal(signal.SIGINT, request_shutdown)
 
-    keyring = load_keyring(settings.app_keyring_file)
-    SecretCipher(keyring)
+    load_keyring(settings.app_keyring_file)
 
     server = ThreadingHTTPServer(
         ("0.0.0.0", settings.worker_health_port),

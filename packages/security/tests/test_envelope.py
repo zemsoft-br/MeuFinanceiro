@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 import pytest
 
 from meufinanceiro_security.envelope import Envelope, SecretCipher
@@ -41,13 +39,18 @@ def test_wrong_aad_fails_authentication() -> None:
 
 def test_ciphertext_tampering_fails_authentication() -> None:
     cipher = SecretCipher(create_keyring())
-    payload = json.loads(cipher.encrypt("credential-value", aad=AAD))
-    payload["ciphertext"] = payload["ciphertext"][:-1] + (
-        "A" if payload["ciphertext"][-1] != "A" else "B"
-    )
+    parsed = Envelope.parse(cipher.encrypt("credential-value", aad=AAD))
+    tampered_ciphertext = bytes([parsed.ciphertext[0] ^ 1]) + parsed.ciphertext[1:]
+    tampered = Envelope(
+        version=parsed.version,
+        algorithm=parsed.algorithm,
+        key_id=parsed.key_id,
+        nonce=parsed.nonce,
+        ciphertext=tampered_ciphertext,
+    ).serialize()
 
     with pytest.raises(EnvelopeIntegrityError, match="authentication failed"):
-        cipher.decrypt(json.dumps(payload), aad=AAD)
+        cipher.decrypt(tampered, aad=AAD)
 
 
 def test_rotation_rewraps_old_envelope_without_data_loss() -> None:

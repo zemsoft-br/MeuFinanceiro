@@ -18,6 +18,13 @@ TOOLS = (
     "pip-audit==2.10.1",
     "ruff==0.15.22",
 )
+PYTHON_PATHS = (
+    "packages/security",
+    "apps/api",
+    "apps/worker",
+    "infra/scripts",
+    "tests/quality",
+)
 
 
 def run(
@@ -49,6 +56,8 @@ def ensure_python_environment(recreate: bool) -> Path:
             "--disable-pip-version-check",
             *TOOLS,
             "-e",
+            "./packages/security[test]",
+            "-e",
             "./apps/api[test]",
             "-e",
             "./apps/worker",
@@ -67,33 +76,29 @@ def main() -> int:
     run([sys.executable, "infra/scripts/check-repository-safety.py"])
     python = ensure_python_environment(args.recreate)
 
+    run([str(python), "-m", "ruff", "check", *PYTHON_PATHS])
+    run([str(python), "-m", "ruff", "format", "--check", *PYTHON_PATHS])
     run(
         [
             str(python),
             "-m",
-            "ruff",
-            "check",
-            "apps/api",
-            "apps/worker",
-            "infra/scripts",
-            "tests/quality",
+            "mypy",
+            "--strict",
+            "packages/security/src",
+            "apps/api/app",
+            "apps/worker/worker",
         ]
     )
     run(
         [
             str(python),
             "-m",
-            "ruff",
-            "format",
-            "--check",
-            "apps/api",
-            "apps/worker",
-            "infra/scripts",
+            "pytest",
+            "packages/security/tests",
+            "apps/api/tests",
             "tests/quality",
         ]
     )
-    run([str(python), "-m", "mypy", "--strict", "apps/api/app", "apps/worker/worker"])
-    run([str(python), "-m", "pytest", "apps/api/tests", "tests/quality"])
     run([str(python), "infra/scripts/check-python-licenses.py"])
     run([str(python), "-m", "pip_audit", "--local"])
 

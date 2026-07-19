@@ -51,7 +51,10 @@ def redact(value: Any, *, key: str | None = None) -> Any:
     if isinstance(value, bytes):
         return REDACTED
     if isinstance(value, Mapping):
-        return {str(item_key): redact(item, key=str(item_key)) for item_key, item in value.items()}
+        return {
+            str(item_key): redact(item, key=str(item_key))
+            for item_key, item in value.items()
+        }
     if isinstance(value, tuple):
         return tuple(redact(item) for item in value)
     if isinstance(value, Sequence):
@@ -61,9 +64,8 @@ def redact(value: Any, *, key: str | None = None) -> Any:
 
 class RedactingFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        record.msg = redact(record.msg)
-        if record.args:
-            record.args = redact(record.args)
+        record.msg = redact_text(record.getMessage())
+        record.args = ()
         if record.exc_info:
             formatted = "".join(traceback.format_exception(*record.exc_info))
             record.exc_text = redact_text(formatted)

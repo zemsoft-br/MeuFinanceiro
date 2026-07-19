@@ -9,6 +9,7 @@
 /docs/GOVERNANCE.md @zemsoft-br
 
 # Contratos centrais e infraestrutura sensível.
+/packages/security/ @zemsoft-br
 /apps/api/app/core/security/ @zemsoft-br
 /apps/api/app/core/database/ @zemsoft-br
 /apps/api/app/modules/identities/ @zemsoft-br
