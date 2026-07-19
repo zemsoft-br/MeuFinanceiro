@@ -10,6 +10,7 @@ from meufinanceiro_security.redaction import install_log_redaction
 
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
+from app.core.database import create_database
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -19,8 +20,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         install_log_redaction()
         keyring = load_keyring(resolved_settings.app_keyring_file)
+        database = create_database(resolved_settings)
         app.state.secret_cipher = SecretCipher(keyring)
-        yield
+        app.state.database = database
+        try:
+            yield
+        finally:
+            database.dispose()
 
     application = FastAPI(
         title=resolved_settings.app_name,

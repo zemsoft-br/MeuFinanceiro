@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     app_log_level: str = "INFO"
     database_url: SecretStr
     app_keyring_file: Path = Path("/run/secrets/app_keyring")
+    database_pool_size: int = 5
+    database_max_overflow: int = 5
 
     model_config = SettingsConfigDict(
         case_sensitive=False,
