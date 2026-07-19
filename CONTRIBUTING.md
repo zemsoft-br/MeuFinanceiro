@@ -8,10 +8,11 @@ A governança completa está em [`docs/GOVERNANCE.md`](docs/GOVERNANCE.md).
 
 1. Leia `docs/PRODUCT_SPECIFICATION.md`.
 2. Leia `docs/ARCHITECTURE.md`.
-3. Escolha uma issue com escopo e critérios de aceite completos.
-4. Confirme que ela possui `status:ready` e não está atribuída a outra pessoa.
-5. Comente objetivamente que pretende trabalhar nela.
-6. Aguarde a atribuição do mantenedor antes de iniciar mudanças substanciais.
+3. Leia `LICENSE`, `DCO`, `COPYRIGHT.md` e `TRADEMARKS.md`.
+4. Escolha uma issue com escopo e critérios de aceite completos.
+5. Confirme que ela possui `status:ready` e não está atribuída a outra pessoa.
+6. Comente objetivamente que pretende trabalhar nela.
+7. Aguarde a atribuição do mantenedor antes de iniciar mudanças substanciais.
 
 Não inicie funcionalidades sem issue. Discussões exploratórias podem começar em issues marcadas no título como `[DISCUSSION]` ou `[SPIKE]`.
 
@@ -33,6 +34,7 @@ release/*  -> main
 hotfix/*   -> main e retorno obrigatório para develop
 docs/*     -> develop, salvo documentação exclusiva de release
 chore/*    -> develop
+legal/*    -> develop
 ```
 
 Regras:
@@ -54,11 +56,12 @@ Marque como pronta somente quando:
 - testes locais passarem;
 - documentação e migrações estiverem atualizadas;
 - não houver segredos ou dados financeiros reais;
-- a descrição explicar decisões e riscos.
+- a descrição explicar decisões e riscos;
+- todos os commits possuírem o sign-off exigido pelo DCO.
 
 Para economizar minutos de GitHub Actions, os workflows principais devem ser configurados para executar automaticamente quando a PR sair de draft e ficar pronta para revisão. Execução manual pode permanecer disponível para diagnóstico.
 
-PRs de `feature/*`, `fix/*`, `docs/*` e `chore/*` usam squash merge por padrão. Releases podem usar merge commit quando isso preservar melhor o histórico de promoção.
+PRs de `feature/*`, `fix/*`, `docs/*`, `chore/*` e `legal/*` usam squash merge por padrão. Releases podem usar merge commit quando isso preservar melhor o histórico de promoção.
 
 O autor não realiza o próprio merge, salvo exceção emergencial documentada.
 
@@ -76,6 +79,42 @@ chore: update development tooling
 ```
 
 Commits devem ser pequenos, coerentes e sem arquivos gerados desnecessários.
+
+### Developer Certificate of Origin
+
+O projeto utiliza o [Developer Certificate of Origin 1.1](DCO). Ao adicionar a linha `Signed-off-by`, você certifica que possui o direito de enviar a contribuição sob a licença aplicável e aceita o registro público descrito no DCO.
+
+Crie o commit com sign-off:
+
+```bash
+git commit -s -m "feat: add household membership model"
+```
+
+O Git adicionará uma linha equivalente a:
+
+```text
+Signed-off-by: Nome Completo <email@example.com>
+```
+
+O nome e o e-mail devem representar você e ser compatíveis com a identidade usada no commit. Não use identidades fictícias ou de terceiros.
+
+Para corrigir o último commit:
+
+```bash
+git commit --amend --signoff --no-edit
+git push --force-with-lease
+```
+
+Quando existirem vários commits sem sign-off, reescreva somente os commits da sua branch. Nunca force a atualização de uma branch compartilhada sem coordenação.
+
+O DCO:
+
+- não transfere automaticamente seu copyright para a Zemsoft;
+- não substitui autorização necessária do seu empregador;
+- não permite enviar código, documentação ou dados de terceiros sem licença compatível;
+- aplica-se a código, documentação, testes, exemplos e demais materiais enviados ao repositório.
+
+Pull Requests com commits sem sign-off não devem ser integradas. A automação de verificação será adicionada aos quality gates da issue #5; até lá, a revisão é manual.
 
 ## 5. Definição de issue pronta
 
@@ -141,17 +180,21 @@ Vulnerabilidades não devem ser publicadas em issues comuns. Consulte `SECURITY.
 - Operações destrutivas exigem decisão documentada.
 - Mudanças monetárias, de autorização ou auditoria exigem revisão reforçada.
 
-## 9. Dependências
+## 9. Dependências e licenças
 
 Uma nova dependência precisa justificar:
 
 - problema que resolve;
 - manutenção e maturidade;
-- licença compatível;
+- licença e compatibilidade com `AGPL-3.0-only`;
 - impacto de segurança;
 - tamanho e desempenho;
 - suporte a arquiteturas alvo;
 - alternativa sem dependência.
+
+Não copie código ou documentação de outra fonte sem registrar origem e licença. Dependências, assets, fontes, modelos, snippets e dados de exemplo precisam de termos compatíveis com o uso pretendido.
+
+Arquivos com licença diferente da política padrão somente podem entrar com indicação explícita e revisão do mantenedor.
 
 ## 10. Decisões arquiteturais
 
@@ -179,6 +222,7 @@ Revisores avaliam:
 - cobertura de testes;
 - clareza do domínio;
 - impacto em compatibilidade e migração;
+- compatibilidade de licença e procedência;
 - documentação.
 
 Aprovação não autoriza automaticamente merge de mudanças sensíveis. O mantenedor decide o momento de integração e release.

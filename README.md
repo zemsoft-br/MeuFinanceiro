@@ -58,11 +58,21 @@ feature/* -> develop -> release/* -> main
 
 Pull Requests devem começar como draft. Os quality gates principais serão executados quando a PR estiver pronta para revisão, reduzindo consumo desnecessário de GitHub Actions durante o desenvolvimento.
 
-Consulte [CONTRIBUTING.md](CONTRIBUTING.md) e a [governança](docs/GOVERNANCE.md) antes de assumir uma issue.
+Todas as contribuições exigem sign-off conforme o [Developer Certificate of Origin 1.1](DCO). Consulte [CONTRIBUTING.md](CONTRIBUTING.md) e a [governança](docs/GOVERNANCE.md) antes de assumir uma issue.
 
-## Licença
+## Licenças e marca
 
-A licença ainda está em decisão. A proposta atual é `AGPL-3.0-only`, documentada no [ADR-0004](docs/adr/0004-project-license-and-trademark.md). Nenhuma licença foi aplicada até a decisão ser formalmente aceita.
+- Código-fonte, scripts, configurações executáveis e testes: [GNU Affero General Public License v3.0 only](LICENSE), identificador SPDX `AGPL-3.0-only`.
+- Documentação original dentro de `docs/`: [Creative Commons Attribution 4.0 International](docs/LICENSE.md), identificador `CC-BY-4.0`.
+- Titularidade e autoria: [COPYRIGHT.md](COPYRIGHT.md).
+- Nome, logotipo e identidade visual: [TRADEMARKS.md](TRADEMARKS.md).
+- Modelo de contribuição: [DCO 1.1](DCO), sem CLA nesta fase.
+
+A AGPL permite uso comercial e modificações, mas impõe obrigações de disponibilização do código correspondente nos cenários cobertos pela licença, inclusive para versões modificadas acessadas pela rede.
+
+O uso do código não concede automaticamente direito de apresentar forks, serviços ou distribuições como oficiais do MeuFinanceiro ou da Zemsoft.
+
+A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trademark.md).
 
 ## Próximos marcos
 

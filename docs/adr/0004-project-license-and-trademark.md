@@ -1,6 +1,6 @@
-# ADR-0004 — Licença do código e política de marca
+# ADR-0004 — Licença, contribuições e política de marca
 
-- Status: Proposed
+- Status: Accepted
 - Data: 2026-07-19
 - Decisores: mantenedores
 
@@ -10,15 +10,20 @@ O projeto deve ser open-source, aceitar contribuições e permitir uso autohospe
 
 O nome e a identidade visual também precisam distinguir o projeto oficial de forks não mantidos pela Zemsoft.
 
-## Proposta
+## Decisão
 
 Adotar:
 
-- código-fonte: `AGPL-3.0-only`;
-- documentação: `CC-BY-4.0`;
-- marca, nome e logotipo: política de marca própria, não concedidos automaticamente pela licença do código.
+- código-fonte, scripts, configurações executáveis e testes: `AGPL-3.0-only`;
+- documentação original dentro de `docs/`: `CC-BY-4.0`, salvo indicação específica diferente;
+- contribuições: Developer Certificate of Origin 1.1 (`DCO-1.1`), confirmado por `Signed-off-by` em cada commit;
+- copyright: Zemsoft e contribuidores, com cada colaborador preservando os direitos sobre a própria contribuição salvo acordo escrito diferente;
+- marca, nome, logotipo e identidade visual: política própria em `TRADEMARKS.md`, sem concessão automática pelas licenças do código ou da documentação;
+- ausência de CLA nesta fase.
 
 A licença AGPL permite uso, modificação, distribuição e exploração comercial, mas exige disponibilização do código correspondente em cenários cobertos, incluindo interação com versões modificadas pela rede.
+
+O DCO confirma a procedência e o direito de contribuição sem transferir automaticamente o copyright ao mantenedor.
 
 ## Alternativas consideradas
 
@@ -36,31 +41,53 @@ Copyleft forte na distribuição, mas não cobre de forma equivalente o uso de u
 
 ### AGPL-3.0-or-later
 
-Permite migração automática para versões futuras da licença. Não é a proposta inicial porque os mantenedores devem revisar qualquer mudança futura antes de adotá-la.
+Permite migração automática para versões futuras da licença. Não foi adotada porque os mantenedores devem revisar uma futura versão antes de alterar os termos aplicáveis ao projeto.
+
+### Contributor License Agreement
+
+Não adotado nesta fase por adicionar burocracia e conceder direitos adicionais ao mantenedor sem necessidade operacional atual. A adoção futura exigirá novo ADR e não poderá retroagir silenciosamente sobre contribuições anteriores.
+
+### Documentação sob AGPL
+
+Não adotada porque a CC BY 4.0 oferece um contrato mais apropriado para reutilização e adaptação de material documental, preservando atribuição.
 
 ## Consequências positivas
 
 - protege a natureza aberta de modificações oferecidas pela rede;
 - permite uso e serviços comerciais compatíveis com a licença;
 - reduz apropriação fechada do trabalho comunitário;
-- política de marca pode evitar confusão entre oficial e fork.
+- preserva a autoria dos colaboradores;
+- mantém baixo atrito de contribuição por meio do DCO;
+- política de marca reduz confusão entre projeto oficial, forks e serviços independentes;
+- documentação pode ser reutilizada com atribuição clara.
 
 ## Consequências negativas e riscos
 
 - algumas empresas evitam dependências AGPL;
-- compatibilidade de dependências precisa ser verificada;
-- contribuição empresarial pode exigir análise jurídica;
-- a política de marca precisa ser escrita separadamente;
-- a decisão técnica não substitui parecer jurídico.
+- compatibilidade de novas dependências precisa ser verificada antes da adoção;
+- contribuições sem `Signed-off-by` precisarão ser corrigidas antes do merge;
+- contribuição empresarial pode exigir autorização do empregador e análise jurídica própria;
+- a política de marca precisa ser aplicada de maneira consistente e proporcional;
+- esta decisão técnica não substitui parecer jurídico.
 
-## Questões para aceite
+## Aplicação
 
-- O mantenedor confirma que deseja copyleft de rede?
-- Haverá contributor license agreement ou Developer Certificate of Origin?
-- Quem será o titular inicial do copyright?
-- Qual uso do nome e logotipo será permitido em forks?
-- A documentação deve realmente usar CC-BY-4.0 ou acompanhar a AGPL?
+Arquivos normativos:
+
+- `LICENSE`: texto integral da GNU Affero General Public License versão 3;
+- `DCO`: Developer Certificate of Origin 1.1;
+- `COPYRIGHT.md`: titularidade e escopo das licenças;
+- `docs/LICENSE.md`: aplicação da CC BY 4.0 à documentação;
+- `TRADEMARKS.md`: usos permitidos e restrições de marca;
+- `CONTRIBUTING.md`: processo de sign-off;
+- `.github/PULL_REQUEST_TEMPLATE.md`: confirmação operacional do DCO.
+
+O projeto usará o identificador SPDX `AGPL-3.0-only` para o código. Arquivos com termos diferentes devem declarar a exceção explicitamente e somente podem ser adicionados após verificação de compatibilidade.
 
 ## Validação
 
-A licença só deve ser adicionada ao repositório após aceite explícito deste ADR e verificação de compatibilidade com a stack e os templates adotados.
+- o mantenedor confirmou explicitamente a combinação `AGPL-3.0-only + DCO + CC-BY-4.0 + política de marca`;
+- o texto integral da AGPL foi incluído sem alteração de seus termos;
+- o DCO 1.1 foi incluído integralmente;
+- a política não afirma registro de marca inexistente;
+- dependências futuras permanecem sujeitas à verificação de licença prevista no processo de contribuição.
