@@ -1,0 +1,55 @@
+name: Proposta ou spike técnico
+description: Refinar uma funcionalidade, integração ou decisão antes da implementação
+title: "[PROPOSAL] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problema ou oportunidade
+      description: Qual necessidade precisa ser entendida ou validada?
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hipótese ou proposta inicial
+      description: Explique a abordagem considerada sem tratá-la como decisão já tomada.
+    validations:
+      required: true
+  - type: textarea
+    id: questions
+    attributes:
+      label: Perguntas que precisam ser respondidas
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidências necessárias
+      description: Documentação, prova de conceito, benchmark, ameaça, experimento ou comparação esperada.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternativas conhecidas
+      description: Inclua a opção de não implementar quando aplicável.
+    validations:
+      required: true
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: Entregável do refinamento
+      description: Exemplo: ADR, prova de conceito descartável, contrato de API ou conjunto de child issues.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Restrições
+      description: Segurança, privacidade, licença, custo, compatibilidade, operação ou prazo.
+    validations:
+      required: true
