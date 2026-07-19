@@ -57,8 +57,20 @@ jobs:
       - name: Validate Compose contract
         run: docker compose config --quiet
 
-      - name: Build containers
-        run: docker compose build --pull
+      - name: Pull PostgreSQL image
+        run: docker compose pull postgres
+
+      - name: Build API image
+        run: docker compose build --pull api
+
+      - name: Build Worker image
+        run: docker compose build --pull worker
+
+      - name: Build Web image
+        run: docker compose build --pull web
+
+      - name: Build Caddy image
+        run: docker compose build --pull caddy
 
       - name: Start healthy stack
         run: docker compose up --detach --wait --wait-timeout 180
