@@ -2,7 +2,9 @@ name: meufinanceiro
 
 services:
   caddy:
-    image: caddy:2.11.3-alpine
+    build:
+      context: ./infra/caddy
+    image: meufinanceiro-caddy:local
     user: "65534:65534"
     environment:
       XDG_CONFIG_HOME: /tmp/caddy-config
