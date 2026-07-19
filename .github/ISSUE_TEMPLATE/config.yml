@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Discussões e dúvidas
+    url: https://github.com/zemsoft-br/MeuFinanceiro/discussions
+    about: Use discussões para perguntas abertas que ainda não constituem uma tarefa refinada.
+  - name: Relatar vulnerabilidade
+    url: https://github.com/zemsoft-br/MeuFinanceiro/security/advisories/new
+    about: Não publique vulnerabilidades em issues públicas.
