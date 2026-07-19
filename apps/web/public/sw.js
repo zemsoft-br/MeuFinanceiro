@@ -1,3 +1,5 @@
+/* global self, caches, URL, fetch, Response */
+
 const SHELL_CACHE = 'meufinanceiro-shell-v1'
 const SHELL_ASSETS = [
   '/',
