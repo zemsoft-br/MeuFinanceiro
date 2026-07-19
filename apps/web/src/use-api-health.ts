@@ -23,14 +23,16 @@ export function useApiHealth(): ApiHealthResult {
   const [requestVersion, setRequestVersion] = useState(0)
   const activeRequest = useRef<AbortController | null>(null)
 
-  const refresh = useCallback(() => setRequestVersion((version) => version + 1), [])
+  const refresh = useCallback(() => {
+    setState('checking')
+    setRequestVersion((version) => version + 1)
+  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
     let disposed = false
     activeRequest.current?.abort()
     activeRequest.current = controller
-    setState('checking')
 
     const timeout = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
