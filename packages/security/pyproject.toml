@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meufinanceiro-security"
+version = "0.1.0"
+description = "Shared security primitives for MeuFinanceiro"
+requires-python = ">=3.13,<3.14"
+license = "AGPL-3.0-only"
+dependencies = [
+  "argon2-cffi==25.1.0",
+  "cryptography==49.0.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+where = ["src"]
