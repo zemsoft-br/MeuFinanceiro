@@ -124,7 +124,7 @@ A camada deve ser preparada por portas/adaptadores para futura persistência loc
 - breakpoints definidos no projeto;
 - mesmos fluxos e rotas em desktop e mobile;
 - teclado, foco, semântica e contraste validados no Web;
-- suporte a `textScaleFactor` e movimento reduzido quando disponível;
+- suporte a escalonamento de texto e movimento reduzido quando disponível;
 - tabelas densas no desktop e cards/listas no mobile.
 
 ## 5. PWA e cache
