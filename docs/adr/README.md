@@ -11,6 +11,12 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0006 — Persistência e fila de tarefas no PostgreSQL](0006-postgresql-persistence-and-task-queue.md)
 - [ADR-0008 — Flutter como cliente canônico multiplataforma](0008-flutter-multiplatform-client.md)
 
+## Decisões propostas
+
+- [ADR-0009 — Stitch como referência visual e arquitetura de informação canônica](0009-stitch-reference-and-canonical-information-architecture.md)
+- [ADR-0010 — Livro financeiro canônico e invariantes entre módulos](0010-canonical-ledger-and-cross-module-financial-invariants.md)
+- [ADR-0011 — Fixtures demonstrativas determinísticas e relógio de referência](0011-deterministic-demo-fixtures-and-reference-clock.md)
+
 ## Decisões superseded
 
 - [ADR-0001 — Aplicação local com interface PWA](0001-local-first-pwa.md), superseded pelo ADR-0008 na escolha do cliente.
