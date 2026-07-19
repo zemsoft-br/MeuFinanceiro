@@ -8,9 +8,14 @@ version = "0.1.0"
 description = "Worker foundation for MeuFinanceiro"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+  "meufinanceiro-persistence==0.1.0",
   "meufinanceiro-security==0.1.0",
-  "psycopg[binary]==3.3.4",
   "pydantic-settings==2.14.2",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.1.1",
 ]
 
 [tool.setuptools.packages.find]

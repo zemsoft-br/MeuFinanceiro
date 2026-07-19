@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Inicializar a fundação do MeuFinanceiro por Docker Compose sem credenciais fixas, sem publicar o PostgreSQL no host e com keyring exclusivo por instalação.
+Inicializar a fundação do MeuFinanceiro por Docker Compose sem credenciais fixas, sem publicar o PostgreSQL no host, com keyring exclusivo por instalação, migrações reproduzíveis e role de runtime sem privilégios administrativos.
 
 ## Requisitos
 
@@ -21,11 +21,12 @@ Inicializar a fundação do MeuFinanceiro por Docker Compose sem credenciais fix
 O script:
 
 1. valida Docker, Compose e Python;
-2. cria `.env` com senha aleatória quando necessário;
+2. cria `.env` com senhas administrativas e de runtime independentes;
 3. cria e valida `.secrets/keyring.json` sem imprimir o material;
-4. constrói e inicia os serviços;
-5. aguarda os health checks;
-6. executa o smoke test Web + API + PostgreSQL.
+4. constrói os serviços;
+5. aguarda PostgreSQL, bootstrap da role e migração Alembic;
+6. inicia API, Worker, Web e Caddy;
+7. executa smoke de health, idempotência e processamento da fila.
 
 ## Inicialização em Windows PowerShell
 
@@ -33,7 +34,7 @@ O script:
 ./infra/scripts/dev-up.ps1
 ```
 
-O PowerShell gera a senha e o keyring com o gerador criptográfico do .NET e tenta restringir a ACL do diretório `.secrets`.
+O PowerShell gera as duas senhas e o keyring com o gerador criptográfico do .NET e tenta restringir as ACLs de `.env` e `.secrets`.
 
 ## Endpoints
 
@@ -44,7 +45,7 @@ O PowerShell gera a senha e o keyring com o gerador criptográfico do .NET e ten
 | Readiness da API | `http://127.0.0.1:8080/api/v1/health/ready` |
 | OpenAPI | `http://127.0.0.1:8080/api/v1/docs` |
 
-Altere `APP_HTTP_PORT` em `.env` para usar outra porta.
+Altere `APP_HTTP_PORT` em `.env` para usar outra porta. O health do Worker permanece somente na rede `backend`.
 
 ## Serviços
 
@@ -52,20 +53,25 @@ Altere `APP_HTTP_PORT` em `.env` para usar outra porta.
 |---|---|---|
 | `caddy` | entrada HTTP local e proxy reverso | edge |
 | `web` | shell React + TypeScript provisório | edge |
-| `api` | FastAPI, OpenAPI e primitive criptográfico | edge + backend |
-| `worker` | processo assíncrono e validação do keyring | backend |
-| `postgres` | persistência local | backend interna |
+| `api` | FastAPI, OpenAPI, criptografia e persistência | edge + backend |
+| `worker` | consumidor da fila persistente | backend |
+| `db-bootstrap` | reconciliação one-shot da role de runtime | backend |
+| `migrate` | aplicação one-shot das migrações Alembic | backend |
+| `postgres` | fonte local de verdade e fila | backend interna |
 
-O PostgreSQL não publica porta no host. Use `docker compose exec postgres psql` quando precisar de acesso administrativo local.
+`db-bootstrap` e `migrate` encerram com código zero após concluir. O PostgreSQL não publica porta no host. Use `docker compose exec postgres psql` quando precisar de acesso administrativo local.
 
 ## Comandos operacionais
 
 ```bash
-# Estado
-docker compose ps
+# Estado, incluindo serviços one-shot
+docker compose ps --all
 
 # Logs sanitizados
 docker compose logs --tail=200
+
+# Aplicar migrações pendentes
+docker compose run --rm migrate
 
 # Validar o keyring sem mostrar material
 python3 infra/scripts/manage-secrets.py validate
@@ -86,18 +92,20 @@ docker compose down --volumes
 ./tests/smoke/compose-smoke.sh
 ```
 
-Consulte [Gerenciamento do keyring](KEY_MANAGEMENT.md) antes de rotacionar ou restaurar.
+Consulte [Persistência, migrações e fila](PERSISTENCE_AND_TASK_QUEUE.md) para leases, retry e diagnóstico. Consulte [Gerenciamento do keyring](KEY_MANAGEMENT.md) antes de rotacionar ou restaurar.
 
 ## Encerramento gracioso
 
-`api`, `worker` e `web` usam processo init no Compose. Os serviços têm `stop_grace_period` explícito e tratam `SIGTERM` antes de receber encerramento forçado.
+`api`, `worker` e `web` usam processo init no Compose. Os serviços têm `stop_grace_period` explícito. O Worker deixa de reservar novas tarefas ao receber `SIGTERM`, conclui o handler em andamento dentro do período de graça e fecha o health server e o pool. Se houver interrupção forçada, o lease expirado permite recuperação posterior.
 
 ## Segurança da fundação
 
 - `.env` e `.secrets` não são versionados;
-- cada instalação gera senha e chave mestra exclusivas;
+- cada instalação gera duas senhas e uma chave mestra exclusivas;
+- API e Worker usam role sem `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION` ou `BYPASSRLS`;
+- a credencial administrativa fica limitada ao PostgreSQL, bootstrap e migração;
 - o keyring fica fora do PostgreSQL e é montado read-only somente em API e Worker;
-- configuração ausente ou keyring inválido impede o startup;
+- configuração ausente, keyring inválido, banco indisponível ou schema desatualizado impedem readiness;
 - PostgreSQL fica somente na rede interna;
 - apenas Caddy publica porta, ligada a `127.0.0.1`;
 - aplicações executam como usuários não-root;

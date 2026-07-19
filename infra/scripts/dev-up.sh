@@ -21,18 +21,33 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
+generate_password() {
+  python3 -c 'import secrets; print(secrets.token_hex(24))'
+}
+
 if [ ! -f "$ENV_FILE" ]; then
-  PASSWORD=$(python3 -c 'import secrets; print(secrets.token_hex(24))')
+  ADMIN_PASSWORD=$(generate_password)
+  APP_PASSWORD=$(generate_password)
   cat > "$ENV_FILE" <<ENV
 POSTGRES_DB=meufinanceiro
-POSTGRES_USER=meufinanceiro
-POSTGRES_PASSWORD=$PASSWORD
+POSTGRES_USER=meufinanceiro_admin
+POSTGRES_PASSWORD=$ADMIN_PASSWORD
+APP_DATABASE_USER=meufinanceiro_app
+APP_DATABASE_PASSWORD=$APP_PASSWORD
 APP_HTTP_PORT=8080
 APP_KEYRING_FILE_HOST=.secrets/keyring.json
 ENV
   echo "Configuração local criada em .env."
-elif ! grep -q '^APP_KEYRING_FILE_HOST=' "$ENV_FILE"; then
-  printf '\nAPP_KEYRING_FILE_HOST=.secrets/keyring.json\n' >> "$ENV_FILE"
+else
+  if ! grep -q '^APP_DATABASE_USER=' "$ENV_FILE"; then
+    printf '\nAPP_DATABASE_USER=meufinanceiro_app\n' >> "$ENV_FILE"
+  fi
+  if ! grep -q '^APP_DATABASE_PASSWORD=' "$ENV_FILE"; then
+    printf 'APP_DATABASE_PASSWORD=%s\n' "$(generate_password)" >> "$ENV_FILE"
+  fi
+  if ! grep -q '^APP_KEYRING_FILE_HOST=' "$ENV_FILE"; then
+    printf 'APP_KEYRING_FILE_HOST=.secrets/keyring.json\n' >> "$ENV_FILE"
+  fi
 fi
 chmod 600 "$ENV_FILE"
 
@@ -43,7 +58,8 @@ else
 fi
 
 cd "$ROOT_DIR"
-docker compose up --build --detach
-"$ROOT_DIR/tests/smoke/compose-smoke.sh"
+docker compose up --build --detach --wait
 
+APP_HTTP_PORT=$(awk -F= '$1 == "APP_HTTP_PORT" {print $2}' "$ENV_FILE" | tail -n 1)
+APP_HTTP_PORT="${APP_HTTP_PORT:-8080}" "$ROOT_DIR/tests/smoke/compose-smoke.sh"
 echo "MeuFinanceiro disponível em http://127.0.0.1:${APP_HTTP_PORT:-8080}"

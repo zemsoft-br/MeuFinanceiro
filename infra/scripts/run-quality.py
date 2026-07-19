@@ -20,6 +20,7 @@ TOOLS = (
 )
 PYTHON_PATHS = (
     "packages/security",
+    "packages/persistence",
     "apps/api",
     "apps/worker",
     "infra/scripts",
@@ -58,9 +59,11 @@ def ensure_python_environment(recreate: bool) -> Path:
             "-e",
             "./packages/security[test]",
             "-e",
+            "./packages/persistence[test]",
+            "-e",
             "./apps/api[test]",
             "-e",
-            "./apps/worker",
+            "./apps/worker[test]",
         ]
     )
     return python
@@ -85,6 +88,7 @@ def main() -> int:
             "mypy",
             "--strict",
             "packages/security/src",
+            "packages/persistence/src",
             "apps/api/app",
             "apps/worker/worker",
         ]
@@ -95,7 +99,9 @@ def main() -> int:
             "-m",
             "pytest",
             "packages/security/tests",
+            "packages/persistence/tests",
             "apps/api/tests",
+            "apps/worker/tests",
             "tests/quality",
         ]
     )

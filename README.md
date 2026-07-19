@@ -49,7 +49,7 @@ Windows PowerShell:
 ./infra/scripts/dev-up.ps1
 ```
 
-Os scripts geram senha e keyring exclusivos, constroem os containers e executam o smoke test. A aplicação fica disponível em `http://127.0.0.1:8080`.
+Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação fica disponível em `http://127.0.0.1:8080`.
 
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
@@ -61,7 +61,7 @@ A suíte obrigatória pode ser executada antes de marcar uma Pull Request como p
 python infra/scripts/run-quality.py
 ```
 
-Ela valida segurança do repositório, Python, frontend, dependências e licenças. O gate de containers é executado separadamente quando a infraestrutura é alterada. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+Ela valida segurança do repositório, Python, frontend, dependências e licenças. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
 
 ## Estrutura do monorepo
 
@@ -69,9 +69,10 @@ Ela valida segurança do repositório, Python, frontend, dependências e licenç
 apps/
   api/       FastAPI e OpenAPI
   web/       React + TypeScript; interface provisória
-  worker/    processo assíncrono mínimo
+  worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
+  persistence/ SQLAlchemy, Alembic, health e fila PostgreSQL
   contracts/ contratos compartilhados futuros
   shared-web/componentes compartilhados futuros
 infra/
@@ -89,6 +90,7 @@ A interface atual é deliberadamente neutra e pode ser substituída pelo design 
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
+- [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
 - [Quality gates e CI](docs/runbooks/QUALITY_GATES.md)
 - [Dependências diretas da fundação](docs/DEPENDENCIES.md)
@@ -129,7 +131,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. implementar migrações e fila persistida;
-2. incorporar o shell Web/PWA e o design system;
-3. implementar identidade e residência;
-4. iniciar o núcleo financeiro.
+1. incorporar o shell Web/PWA e o design system;
+2. implementar identidade e residência;
+3. iniciar o núcleo financeiro;
+4. avançar modo demonstração, instalação e spike Pluggy.

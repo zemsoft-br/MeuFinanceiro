@@ -1,21 +1,11 @@
-from functools import lru_cache
+from meufinanceiro_persistence.database import Database
 
-from sqlalchemy import Engine, create_engine, text
-
-from app.core.config import get_settings
+from app.core.config import Settings
 
 
-@lru_cache
-def get_engine() -> Engine:
-    settings = get_settings()
-    return create_engine(
+def create_database(settings: Settings) -> Database:
+    return Database(
         settings.database_url.get_secret_value(),
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=5,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
     )
-
-
-def check_database() -> None:
-    with get_engine().connect() as connection:
-        connection.execute(text("SELECT 1"))

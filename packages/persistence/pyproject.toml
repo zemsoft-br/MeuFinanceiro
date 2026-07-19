@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meufinanceiro-persistence"
+version = "0.1.0"
+description = "Shared PostgreSQL persistence and task queue for MeuFinanceiro"
+requires-python = ">=3.13,<3.14"
+license = "AGPL-3.0-only"
+dependencies = [
+  "alembic==1.18.5",
+  "meufinanceiro-security==0.1.0",
+  "psycopg[binary]==3.3.4",
+  "pydantic-settings==2.14.2",
+  "sqlalchemy==2.0.51",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+meufinanceiro_persistence = [
+  "py.typed",
+  "alembic.ini",
+  "migrations/*.py",
+  "migrations/*.mako",
+  "migrations/versions/*.py",
+]

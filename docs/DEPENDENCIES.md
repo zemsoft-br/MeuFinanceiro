@@ -8,9 +8,9 @@ Registrar as versões efetivamente escolhidas e suas licenças declaradas. Este 
 
 | Componente | Versão fixada | Uso | Licença principal declarada |
 |---|---:|---|---|
-| Python | 3.13.14 | API, worker e gates locais | PSF-2.0 |
+| Python | 3.13.14 | API, worker, migração e gates locais | PSF-2.0 |
 | Node.js | 24.18.0 LTS | build, testes e servidor de desenvolvimento Web | MIT |
-| PostgreSQL | 18.4 | persistência local | PostgreSQL License |
+| PostgreSQL | 18.4 | persistência local e fila de tarefas | PostgreSQL License |
 | Caddy | 2.11.3 | proxy HTTP local | Apache-2.0 |
 
 As imagens `python:*‑slim`, `node:*‑alpine`, `postgres:*‑alpine` e `caddy:*‑alpine` incluem pacotes do sistema sob licenças variadas. O inventário transitivo e os notices das imagens serão gerados e revisados antes da primeira release distribuível.
@@ -22,7 +22,8 @@ As imagens `python:*‑slim`, `node:*‑alpine`, `postgres:*‑alpine` e `caddy:
 | FastAPI | 0.139.2 | API HTTP e OpenAPI | MIT |
 | Pydantic Settings | 2.14.2 | configuração por ambiente | MIT |
 | psycopg | 3.3.4 | driver PostgreSQL | LGPL-3.0-only |
-| SQLAlchemy | 2.0.51 | acesso à persistência da API | MIT |
+| SQLAlchemy | 2.0.51 | persistência e transações compartilhadas | MIT |
+| Alembic | 1.18.5 | migrações de schema | MIT |
 | Uvicorn | 0.51.0 | servidor ASGI | BSD-3-Clause |
 | cryptography | 49.0.0 | AES-256-GCM autenticado | Apache-2.0 OR BSD-3-Clause |
 | argon2-cffi | 25.1.0 | hashing Argon2id de senhas | MIT |
@@ -35,6 +36,7 @@ As imagens `python:*‑slim`, `node:*‑alpine`, `postgres:*‑alpine` e `caddy:
 | Pacote | Versão | Uso | Licença |
 |---|---:|---|---|
 | meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
+| meufinanceiro-persistence | 0.1.0 | engine, transações, Alembic, health e fila PostgreSQL | AGPL-3.0-only |
 
 ## Ferramentas Python de qualidade
 
@@ -68,6 +70,8 @@ Essas ferramentas são instaladas em `.quality-venv` pelo script local e não fa
 ## Avaliação
 
 Não foi identificada incompatibilidade direta que impeça a combinação com `AGPL-3.0-only`. A LGPL do psycopg permite uso e distribuição nas condições da própria licença; seus avisos e código-fonte correspondente devem ser tratados no inventário de terceiros aplicável.
+
+Alembic e SQLAlchemy declaram MIT. A inclusão do Alembic evita um mecanismo de migração próprio e mantém o schema versionado com uma dependência amplamente auditada.
 
 `cryptography` utiliza licença dual permissiva Apache-2.0/BSD-3-Clause. `argon2-cffi` declara MIT. Ambas permanecem sujeitas ao inventário transitivo e aos notices da distribuição.
 

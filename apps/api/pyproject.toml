@@ -9,10 +9,9 @@ description = "API foundation for MeuFinanceiro"
 requires-python = ">=3.13,<3.14"
 dependencies = [
   "fastapi==0.139.2",
+  "meufinanceiro-persistence==0.1.0",
   "meufinanceiro-security==0.1.0",
   "pydantic-settings==2.14.2",
-  "psycopg[binary]==3.3.4",
-  "sqlalchemy==2.0.51",
   "uvicorn[standard]==0.51.0",
 ]
 
