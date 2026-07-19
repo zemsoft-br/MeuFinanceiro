@@ -1,8 +1,7 @@
 # API
 
-Aplicação FastAPI mínima com contrato OpenAPI e health checks separados:
+FastAPI responsável pelo contrato HTTP `/api/v1`.
 
-- `/api/v1/health/live`: processo HTTP ativo;
-- `/api/v1/health/ready`: API e PostgreSQL prontos;
-- `/api/v1/docs`: Swagger UI;
-- `/api/v1/openapi.json`: contrato OpenAPI.
+A API utiliza `meufinanceiro-persistence` com a role PostgreSQL de runtime e só inicia depois que o serviço `migrate` conclui. Liveness verifica o processo; readiness verifica separadamente banco e revisão Alembic.
+
+A interface visual permanece fora deste pacote.

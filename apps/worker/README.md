@@ -1,5 +1,5 @@
 # Worker
 
-Processo mínimo da fundação. Ele não executa tarefas funcionais.
+Consumidor da fila PostgreSQL `infra.task_queue`.
 
-O endpoint interno `/health` verifica o processo e a conectividade com o PostgreSQL. A fila persistida será implementada em issue própria.
+O Worker reserva tarefas por lease, usa uma allowlist de handlers, aplica retry com backoff limitado e recupera tarefas abandonadas. O handler `demo.echo` existe apenas para validar a fundação e registra efeito idempotente em `infra.demo_task_effects`.
