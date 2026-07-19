@@ -42,7 +42,9 @@ def _decode(value: object, field: str) -> bytes:
         raise EnvelopeError(f"envelope {field} is not valid base64url") from exc
 
 
-def _as_bytes(value: bytes | str, field: str, maximum: int, *, allow_empty: bool) -> bytes:
+def _as_bytes(
+    value: bytes | str, field: str, maximum: int, *, allow_empty: bool
+) -> bytes:
     encoded = value.encode("utf-8") if isinstance(value, str) else bytes(value)
     if not allow_empty and not encoded:
         raise EnvelopeError(f"{field} must not be empty")
@@ -67,11 +69,17 @@ class Envelope:
             "nonce": _encode(self.nonce),
             "version": self.version,
         }
-        return json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        return json.dumps(
+            payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True
+        )
 
     @classmethod
     def parse(cls, raw: str) -> Envelope:
-        if not isinstance(raw, str) or not raw or len(raw.encode("utf-8")) > MAX_ENVELOPE_BYTES:
+        if (
+            not isinstance(raw, str)
+            or not raw
+            or len(raw.encode("utf-8")) > MAX_ENVELOPE_BYTES
+        ):
             raise EnvelopeError("encrypted envelope size is invalid")
         try:
             payload = json.loads(raw)
@@ -139,7 +147,9 @@ class SecretCipher:
         associated_data = _as_bytes(aad, "aad", MAX_AAD_BYTES, allow_empty=False)
         key = self._keyring.key(envelope.key_id)
         if key is None:
-            raise KeyUnavailableError("encrypted envelope references an unavailable key")
+            raise KeyUnavailableError(
+                "encrypted envelope references an unavailable key"
+            )
         try:
             return AESGCM(key).decrypt(
                 envelope.nonce,
@@ -147,7 +157,9 @@ class SecretCipher:
                 associated_data,
             )
         except InvalidTag as exc:
-            raise EnvelopeIntegrityError("encrypted envelope authentication failed") from exc
+            raise EnvelopeIntegrityError(
+                "encrypted envelope authentication failed"
+            ) from exc
 
     def decrypt_text(self, raw_envelope: str, *, aad: bytes | str) -> str:
         try:

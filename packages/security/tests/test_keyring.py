@@ -73,4 +73,8 @@ def test_parser_rejects_unknown_schema_fields() -> None:
 
 def test_keyring_rejects_missing_active_key() -> None:
     with pytest.raises(KeyringError, match="does not exist"):
-        Keyring(version=1, active_key_id="k_abcdefghijkl", keys={"k_mnopqrstuvwx": b"x" * 32})
+        Keyring(
+            version=1,
+            active_key_id="k_abcdefghijkl",
+            keys={"k_mnopqrstuvwx": b"x" * 32},
+        )

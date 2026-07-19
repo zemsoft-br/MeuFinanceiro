@@ -110,7 +110,10 @@ def serialize_keyring(keyring: Keyring) -> str:
         },
         "version": keyring.version,
     }
-    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True) + "\n"
+    return (
+        json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+        + "\n"
+    )
 
 
 def parse_keyring(raw: str) -> Keyring:
@@ -118,7 +121,11 @@ def parse_keyring(raw: str) -> Keyring:
         payload = json.loads(raw)
     except (json.JSONDecodeError, UnicodeError) as exc:
         raise KeyringError("keyring is not valid JSON") from exc
-    if not isinstance(payload, dict) or set(payload) != {"version", "active_key_id", "keys"}:
+    if not isinstance(payload, dict) or set(payload) != {
+        "version",
+        "active_key_id",
+        "keys",
+    }:
         raise KeyringError("keyring schema is invalid")
     version = payload["version"]
     active_key_id = payload["active_key_id"]
@@ -165,7 +172,9 @@ def write_keyring(path: str | Path, keyring: Keyring) -> None:
     if os.name != "nt":
         parent.chmod(0o700)
     content = serialize_keyring(keyring).encode("utf-8")
-    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{resolved.name}.", dir=parent)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{resolved.name}.", dir=parent
+    )
     temporary = Path(temporary_name)
     try:
         if os.name != "nt":

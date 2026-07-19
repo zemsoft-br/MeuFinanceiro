@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import logging
 
-from meufinanceiro_security.redaction import REDACTED, RedactingFilter, redact, redact_text
+from meufinanceiro_security.redaction import (
+    REDACTED,
+    RedactingFilter,
+    redact,
+    redact_text,
+)
 
 
 def test_structural_redaction_hides_sensitive_values() -> None:
