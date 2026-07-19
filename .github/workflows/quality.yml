@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
@@ -32,7 +32,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -82,6 +82,33 @@ jobs:
             ruff==0.15.22 \
             -e './apps/api[test]' \
             -e ./apps/worker
+
+      - name: Apply canonical Python formatting on trusted branch
+        id: formatter
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          .quality-venv/bin/python -m ruff format apps/api apps/worker infra/scripts tests/quality
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/api apps/worker infra/scripts tests/quality
+          git commit --signoff -m "style: format Python sources"
+          git push origin "HEAD:$HEAD_BRANCH"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Require stable formatted sources
+        if: steps.formatter.outputs.changed == 'true'
+        run: |
+          echo "Canonical Ruff formatting was committed."
+          echo "The next run must validate with read-only permissions."
+          exit 1
 
       - name: Lint Python
         run: .quality-venv/bin/python -m ruff check apps/api apps/worker infra/scripts tests/quality
