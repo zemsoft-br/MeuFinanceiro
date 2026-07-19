@@ -45,7 +45,7 @@ Essas ferramentas são instaladas em `.quality-venv` pelo script local e não fa
 | React | 19.2.7 | interface | MIT |
 | React DOM | 19.2.7 | renderização Web | MIT |
 | Vite | 8.1.5 | desenvolvimento e build | MIT |
-| TypeScript | 7.0.2 | tipagem e compilação | Apache-2.0 |
+| TypeScript | 6.0.3 | tipagem e compilação; compatível com typescript-eslint 8 | Apache-2.0 |
 | `@vitejs/plugin-react` | 6.0.3 | integração React/Vite | MIT |
 | `@types/react` | 19.2.17 | tipos de desenvolvimento | MIT |
 | `@types/react-dom` | 19.2.3 | tipos de desenvolvimento | MIT |
