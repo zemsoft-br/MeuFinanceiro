@@ -67,34 +67,63 @@ jobs:
           git fetch --no-tags origin "$BASE_SHA"
           python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
 
-      - name: Bootstrap missing frontend lockfile
-        id: lockfile
+      - name: Require frontend lockfile
+        run: test -f apps/web/package-lock.json
+
+      - name: Validate repository safety
+        run: python infra/scripts/check-repository-safety.py
+
+      - name: Install Python quality environment
+        run: |
+          python -m venv .quality-venv
+          .quality-venv/bin/python -m pip install --disable-pip-version-check \
+            mypy==2.3.0 \
+            pip-audit==2.10.1 \
+            ruff==0.15.22 \
+            -e './apps/api[test]' \
+            -e ./apps/worker
+
+      - name: Lint Python
+        run: .quality-venv/bin/python -m ruff check apps/api apps/worker infra/scripts tests/quality
+
+      - name: Check Python formatting
+        run: .quality-venv/bin/python -m ruff format --check apps/api apps/worker infra/scripts tests/quality
+
+      - name: Type-check Python
+        run: .quality-venv/bin/python -m mypy --strict apps/api/app apps/worker/worker
+
+      - name: Test Python
+        run: .quality-venv/bin/python -m pytest apps/api/tests tests/quality
+
+      - name: Check Python licenses
+        run: .quality-venv/bin/python infra/scripts/check-python-licenses.py
+
+      - name: Audit Python dependencies
+        run: .quality-venv/bin/python -m pip_audit --local
+
+      - name: Install frontend dependencies
         working-directory: apps/web
-        shell: bash
-        run: |
-          if [[ -f package-lock.json ]]; then
-            echo "generated=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+        run: npm ci --no-audit --no-fund
 
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          echo "generated=true" >> "$GITHUB_OUTPUT"
+      - name: Lint frontend
+        working-directory: apps/web
+        run: npm run lint
 
-      - name: Upload generated frontend lockfile
-        if: steps.lockfile.outputs.generated == 'true'
-        uses: actions/upload-artifact@v7
-        with:
-          name: web-package-lock
-          path: apps/web/package-lock.json
-          if-no-files-found: error
-          retention-days: 1
+      - name: Type-check frontend
+        working-directory: apps/web
+        run: npm run typecheck
 
-      - name: Require committed frontend lockfile
-        if: steps.lockfile.outputs.generated == 'true'
-        run: |
-          echo "apps/web/package-lock.json was generated and uploaded as the web-package-lock artifact."
-          echo "Commit that file before the mandatory gates can pass."
-          exit 1
+      - name: Test frontend
+        working-directory: apps/web
+        run: npm test
 
-      - name: Run local-equivalent quality suite
-        run: python infra/scripts/run-quality.py --recreate
+      - name: Build frontend
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Audit frontend dependencies
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+
+      - name: Check frontend licenses
+        run: node infra/scripts/check-node-licenses.mjs apps/web
