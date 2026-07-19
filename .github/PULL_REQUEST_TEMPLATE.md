@@ -42,6 +42,19 @@ Comandos executados:
 
 Detalhes:
 
+## Licenças, autoria e procedência
+
+- [ ] Todos os commits possuem `Signed-off-by` compatível com o [DCO](../DCO).
+- [ ] Tenho o direito de enviar todo o material incluído nesta PR.
+- [ ] Não copiei código, documentação, assets, fontes, dados ou snippets sem licença compatível e atribuição necessária.
+- [ ] Novas dependências tiveram licença e compatibilidade com `AGPL-3.0-only` avaliadas.
+- [ ] Arquivos sob termos diferentes da política padrão estão identificados explicitamente.
+- [ ] A mudança não usa o nome ou a identidade visual de forma contrária a `TRADEMARKS.md`.
+
+Materiais ou dependências de terceiros adicionados:
+
+- Nenhum / descreva origem, licença e localização.
+
 ## Banco de dados
 
 - Migração:
