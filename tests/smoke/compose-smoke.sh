@@ -7,7 +7,10 @@ ATTEMPTS="${SMOKE_ATTEMPTS:-60}"
 attempt=1
 while [ "$attempt" -le "$ATTEMPTS" ]; do
   if curl --fail --silent --show-error "$BASE_URL/api/v1/health/ready" | grep -q '"schema":"ok"' \
-    && curl --fail --silent --show-error "$BASE_URL/" >/dev/null \
+    && curl --fail --silent --show-error "$BASE_URL/" | grep -q 'id="root"' \
+    && curl --fail --silent --show-error "$BASE_URL/componentes" | grep -q 'id="root"' \
+    && curl --fail --silent --show-error "$BASE_URL/manifest.webmanifest" | grep -q '"display": "standalone"' \
+    && curl --fail --silent --show-error "$BASE_URL/sw.js" | grep -q "pathname.startsWith('/api/')" \
     && docker compose exec -T worker python -c \
       "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)"; then
     break

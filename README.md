@@ -68,7 +68,7 @@ Ela valida segurança do repositório, Python, frontend, dependências e licenç
 ```text
 apps/
   api/       FastAPI e OpenAPI
-  web/       React + TypeScript; interface provisória
+  web/       shell React responsivo e PWA instalável
   worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
@@ -83,13 +83,14 @@ tests/
   smoke/     validação ponta a ponta do Compose
 ```
 
-A interface atual é deliberadamente neutra e pode ser substituída pelo design produzido no Google Stitch sem alterar o contrato `/api/v1`.
+O shell atual define navegação, estados comuns, tokens e componentes básicos. A identidade visual ainda é evolutiva e pode incorporar referências do Google Stitch sem alterar o contrato `/api/v1` ou a política de cache seguro.
 
 ## Documentação
 
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
+- [Shell Web/PWA](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
 - [Quality gates e CI](docs/runbooks/QUALITY_GATES.md)
@@ -131,7 +132,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. incorporar o shell Web/PWA e o design system;
-2. implementar identidade e residência;
-3. iniciar o núcleo financeiro;
-4. avançar modo demonstração, instalação e spike Pluggy.
+1. implementar identidade e residência;
+2. iniciar o núcleo financeiro;
+3. avançar modo demonstração e dados fictícios;
+4. concluir instalação, backup e spike Pluggy.

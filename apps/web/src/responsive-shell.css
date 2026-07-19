@@ -1,0 +1,11 @@
+.icon-button.sidebar__close,
+.icon-button.topbar__menu {
+  display: none;
+}
+
+@media (max-width: 820px) {
+  .icon-button.sidebar__close,
+  .icon-button.topbar__menu {
+    display: inline-grid;
+  }
+}
