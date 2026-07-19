@@ -100,6 +100,13 @@ O Flutter deve reproduzir os contratos já validados pelo shell existente sem co
 
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
+- [Arquitetura de informação canônica](docs/architecture/INFORMATION_ARCHITECTURE.md)
+- [Invariantes financeiras](docs/architecture/FINANCIAL_INVARIANTS.md)
+- [Contrato dos dados demonstrativos](docs/architecture/DEMO_DATA_CONTRACT.md)
+- [Sequência de implementação](docs/architecture/IMPLEMENTATION_SEQUENCE.md)
+- [Auditoria dos protótipos Stitch](docs/design/STITCH_AUDIT.md)
+- [Inventário das referências Stitch](docs/design/STITCH_SCREEN_INVENTORY.csv)
+- [Manifesto da exportação Stitch](docs/design/STITCH_SOURCE_ARCHIVE.md)
 - [Migração do cliente para Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
 - [Shell Web/PWA atual](docs/runbooks/WEB_PWA.md)

@@ -1,0 +1,69 @@
+Módulo;Artefato Stitch;Disposição;Rota proposta;Observações
+Autenticação;login_meufinanceiro;CANÔNICA;/login;Referência de login local e estados de sessão.
+Autenticação;meufinanceiro_app;DESCARTAR;/login;Duplicata HTML exata de login_meufinanceiro e sem captura.
+Onboarding;fluxo_de_onboarding_meufinanceiro;CANÔNICA;/onboarding;Uma rota com etapas e estado persistente.
+Onboarding;boas_vindas_meufinanceiro;REFERÊNCIA DE ESTADO;/onboarding;Referência da etapa Boas-vindas.
+Onboarding;criar_administrador_meufinanceiro;REFERÊNCIA DE ESTADO;/onboarding;Referência da etapa Administrador.
+Onboarding;configurar_resid_ncia_meufinanceiro;REFERÊNCIA DE ESTADO;/onboarding;Referência da etapa Residência.
+Onboarding;conclus_o_meufinanceiro;REFERÊNCIA DE ESTADO;/onboarding;Referência de revisão/conclusão.
+Dashboard;dashboard_meufinanceiro_consolidado;CANÔNICA;/app;Base visual com estados condicionais.
+Dashboard;dashboard_meufinanceiro;REFERÊNCIA DE ESTADO;/app;"Estado com dados; aproveitar widgets e densidade."
+Dashboard;dashboard_estado_inicial_meufinanceiro;REFERÊNCIA DE ESTADO;/app;Estado vazio/primeiro uso.
+Livro financeiro;movimenta_es_meufinanceiro;CANÔNICA;/app/movimentacoes;
+Contas;contas_meufinanceiro;CANÔNICA;/app/contas;
+Cartões e faturas;cart_es_e_faturas_meufinanceiro;CANÔNICA;/app/cartoes;
+Orçamentos;or_amentos_meufinanceiro;CANÔNICA HTML;/app/planejamento/orcamentos;"Captura PNG inválida; HTML é a referência."
+Recorrências;recorr_ncias_e_assinaturas_meufinanceiro;CANÔNICA HTML;/app/planejamento/recorrencias;"Captura PNG inválida; HTML é a referência."
+Metas e projetos;projetos_objetivos_e_metas_meufinanceiro_2;CANÔNICA;/app/planejamento/metas-projetos;Versão mais completa, com tabelas e fluxos auxiliares.
+Metas e projetos;projetos_objetivos_e_metas_meufinanceiro_1;DESCARTAR COMO TELA;/app/planejamento/metas-projetos;"Versão anterior; usar apenas ideias não presentes na versão 2."
+Fluxo de caixa;fluxo_de_caixa_e_cen_rios_meufinanceiro;CANÔNICA;/app/planejamento/fluxo-caixa;Visão geral.
+Fluxo de caixa;fluxo_de_caixa_proje_o_detalhada_meufinanceiro;CANÔNICA;/app/planejamento/fluxo-caixa/projecao;Projeção detalhada.
+Fluxo de caixa;fluxo_de_caixa_calend_rio_financeiro_meufinanceiro;CANÔNICA;/app/planejamento/fluxo-caixa/calendario;Calendário/agenda.
+Fluxo de caixa;fluxo_de_caixa_cen_rios_e_compara_o_meufinanceiro;CANÔNICA;/app/planejamento/fluxo-caixa/cenarios;Cenários e comparação.
+Relatórios;relat_rios_e_an_lise_vis_o_geral;CANÔNICA COM REBRANDING;/app/analise/relatorios;"Visão geral; remover marca Premium/FinanCorp."
+Relatórios;relat_rios_receitas_e_despesas;CANÔNICA COM REBRANDING;/app/analise/relatorios/receitas-despesas;Drill-down de receitas e despesas.
+Relatórios;relat_rios_or_amento_e_planejamento;CANÔNICA COM REBRANDING;/app/analise/relatorios/orcamento;Orçamento e planejamento.
+Relatórios;relat_rios_compromissos_financeiros;CANÔNICA COM REBRANDING;/app/analise/relatorios/compromissos;Compromissos financeiros.
+Relatórios;relat_rios_personalizado_e_exporta_o;CANÔNICA COM REBRANDING;/app/analise/relatorios/personalizado;"Construtor e exportação; remover marca FinanCorp."
+Alertas e notificações;alertas_e_notifica_es_central_meufinanceiro;CANÔNICA;/app/alertas;Central.
+Alertas e notificações;alertas_regras_e_automa_es_meufinanceiro;CANÔNICA;/app/alertas/regras;Regras.
+Alertas e notificações;notifica_es_prefer_ncias_e_canais_meufinanceiro;CANÔNICA;/app/alertas/preferencias;Preferências pessoais e canais.
+Alertas e notificações;notifica_es_hist_rico_e_entregas_meufinanceiro;CANÔNICA;/app/alertas/historico;Histórico de entrega.
+Importações e conciliação;importa_es_e_concilia_o_central;CANÔNICA;/app/importacoes;Central.
+Importações e conciliação;importa_o_de_arquivo_assistente;CANÔNICA;/app/importacoes/nova;Assistente.
+Importações e conciliação;revis_o_do_lote_importado;CANÔNICA;/app/importacoes/lotes/:batchId;Revisão do lote.
+Importações e conciliação;caixa_de_entrada_de_concilia_o;CANÔNICA;/app/conciliacao;Caixa de conciliação.
+Importações e conciliação;regras_de_importa_o_e_categoriza_o;CANÔNICA;/app/importacoes/regras;Regras de importação.
+Importações e conciliação;hist_rico_e_auditoria_de_importa_es;CANÔNICA;/app/importacoes/historico;Histórico e auditoria.
+Importações e conciliação;importa_es_e_concilia_o_central_mobile;REFERÊNCIA RESPONSIVA;/app/importacoes;Não criar rota separada.
+Integração Pluggy;integra_o_pluggy_vis_o_geral;CANÔNICA;/app/integracoes/pluggy;Visão geral.
+Integração Pluggy;configura_o_do_provedor_pluggy;CANÔNICA;/app/integracoes/pluggy/configuracao;Administração do provedor.
+Integração Pluggy;conectar_institui_o_assistente;CANÔNICA;/app/integracoes/pluggy/conectar;Assistente de conexão.
+Integração Pluggy;revisar_contas_encontradas;CANÔNICA;/app/integracoes/pluggy/conexoes/:connectionId/mapeamento;Mapeamento de contas.
+Integração Pluggy;detalhes_da_conex_o_e_sincroniza_o;CANÔNICA;/app/integracoes/pluggy/conexoes/:connectionId;Detalhes e sincronizações.
+Integração Pluggy;caixa_de_entrada_pluggy;CANÔNICA;/app/importacoes?source=pluggy;Visão filtrada da caixa canônica, não novo ledger.
+Integração Pluggy;sa_de_diagn_stico_e_auditoria;CANÔNICA;/app/integracoes/pluggy/saude;Saúde e auditoria.
+Empréstimos e financiamentos;empr_stimos_e_financiamentos_vis_o_geral;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/dividas;Visão geral.
+Empréstimos e financiamentos;cadastrar_contrato_assistente;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/dividas/nova;Cadastro.
+Empréstimos e financiamentos;detalhes_do_contrato;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/dividas/:contractId;Detalhes.
+Empréstimos e financiamentos;parcelas_pagamentos_e_concilia_o;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/dividas/:contractId/parcelas;Parcelas e pagamentos.
+Empréstimos e financiamentos;amortiza_o_quita_o_e_cen_rios;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/dividas/:contractId/cenarios;Amortização e cenários.
+Empréstimos e financiamentos;hist_rico_documentos_e_auditoria;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/dividas/:contractId/historico;Histórico e documentos.
+Patrimônio e investimentos;patrim_nio_e_investimentos_vis_o_geral;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio;Visão geral.
+Patrimônio e investimentos;bens_e_direitos;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/bens;Bens e direitos.
+Patrimônio e investimentos;carteira_de_investimentos;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/investimentos;Carteira.
+Patrimônio e investimentos;detalhes_do_ativo;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/ativos/:assetId;Detalhes.
+Patrimônio e investimentos;movimenta_es_e_eventos_patrimoniais;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/eventos;Eventos patrimoniais.
+Patrimônio e investimentos;evolu_o_rentabilidade_e_cen_rios;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/evolucao;Evolução e cenários.
+Patrimônio e investimentos;documentos_fontes_de_valor_e_auditoria;CANÔNICA COM SHELL UNIFICADO;/app/patrimonio/auditoria;"Documentos, fontes e auditoria; captura incompleta."
+Administração;backup_seguran_a_e_diagn_stico_vis_o_geral;CANÔNICA COM SHELL UNIFICADO;/app/admin;Visão geral administrativa.
+Administração;backups_destinos_e_reten_o;CANÔNICA COM SHELL UNIFICADO;/app/admin/backups;Backups e retenção.
+Administração;restaurar_backup_assistente;CANÔNICA COM SHELL UNIFICADO;/app/admin/backups/restaurar;Restauração.
+Administração;seguran_a_acessos_e_sess_es;CANÔNICA COM SHELL UNIFICADO;/app/admin/seguranca;Acessos e sessões.
+Administração;segredos_privacidade_e_integra_es;CANÔNICA COM SHELL UNIFICADO;/app/admin/privacidade-segredos;Segredos e privacidade.
+Administração;sa_de_do_sistema_e_diagn_stico;CANÔNICA COM SHELL UNIFICADO;/app/admin/diagnostico;Saúde e diagnóstico.
+Administração;auditoria_manuten_o_e_atualiza_es;CANÔNICA COM SHELL UNIFICADO;/app/admin/manutencao;Manutenção e auditoria.
+Administração;backup_seguran_a_e_diagn_stico_central_mobile;REFERÊNCIA RESPONSIVA;/app/admin;Não criar rota separada.
+Design System;serene_finance_1;BASE CANÔNICA;N/A;"Inter + JetBrains Mono; tokens adequados ao núcleo familiar."
+Design System;serene_finance_2;FONTE DE TOKENS SEMÂNTICOS;N/A;"Não manter como sistema separado; aproveitar padrões de dívida/amortização."
+Design System;serene_finance_core;FONTE DE TOKENS SEMÂNTICOS;N/A;"Não manter como sistema separado; aproveitar padrões de patrimônio."
