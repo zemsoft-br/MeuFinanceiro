@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
@@ -32,7 +32,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -85,19 +85,55 @@ jobs:
             -e './apps/api[test]' \
             -e ./apps/worker
 
-      - name: Apply canonical Python formatting
-        env:
-          HEAD_BRANCH: ${{ github.head_ref }}
-        run: |
-          .quality-venv/bin/python -m ruff format packages/security apps/api apps/worker infra/scripts tests/quality
-          if git diff --quiet; then
-            echo "No formatting changes were required."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packages/security apps/api apps/worker infra/scripts tests/quality
-          git commit --signoff -m "style: format security foundation"
-          git push origin "HEAD:$HEAD_BRANCH"
-          echo "Formatting commit created; permanent read-only workflow will be restored next."
-          exit 1
+      - name: Lint Python
+        run: >-
+          .quality-venv/bin/python -m ruff check
+          packages/security apps/api apps/worker infra/scripts tests/quality
+
+      - name: Check Python formatting
+        run: >-
+          .quality-venv/bin/python -m ruff format --check
+          packages/security apps/api apps/worker infra/scripts tests/quality
+
+      - name: Type-check Python
+        run: >-
+          .quality-venv/bin/python -m mypy --strict
+          packages/security/src apps/api/app apps/worker/worker
+
+      - name: Test Python
+        run: >-
+          .quality-venv/bin/python -m pytest
+          packages/security/tests apps/api/tests tests/quality
+
+      - name: Check Python licenses
+        run: .quality-venv/bin/python infra/scripts/check-python-licenses.py
+
+      - name: Audit Python dependencies
+        run: .quality-venv/bin/python -m pip_audit --local
+
+      - name: Install frontend dependencies
+        working-directory: apps/web
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint frontend
+        working-directory: apps/web
+        run: npm run lint
+
+      - name: Type-check frontend
+        working-directory: apps/web
+        run: npm run typecheck
+
+      - name: Test frontend
+        working-directory: apps/web
+        run: npm test
+
+      - name: Build frontend
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Audit frontend dependencies
+        working-directory: apps/web
+        run: npm audit --audit-level=high
+
+      - name: Check frontend licenses
+        run: node infra/scripts/check-node-licenses.mjs apps/web
