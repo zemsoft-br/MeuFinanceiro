@@ -29,6 +29,8 @@ APP_DATABASE_USER / APP_DATABASE_PASSWORD
 
 A primeira é administrativa e só deve ser usada pelo PostgreSQL, bootstrap e migração. A segunda é usada pela API e pelo Worker. Os scripts `dev-up` geram ambas com CSPRNG e preservam o `.env` privado.
 
+`APP_DATABASE_USER` deve ser diferente da role administrativa; o bootstrap aborta antes de qualquer mutação quando há colisão.
+
 Nunca use credenciais reais ou reutilizadas.
 
 ## Inicialização limpa
