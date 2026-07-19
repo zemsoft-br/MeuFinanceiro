@@ -9,6 +9,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0003 — GitFlow e colaboração orientada a issues](0003-gitflow-and-issue-driven-collaboration.md)
 - [ADR-0004 — Licença, contribuições e política de marca](0004-project-license-and-trademark.md)
 - [ADR-0005 — Configuração segura, criptografia e gerenciamento de chaves](0005-security-configuration-and-key-management.md)
+- [ADR-0006 — Persistência e fila de tarefas no PostgreSQL](0006-postgresql-persistence-and-task-queue.md)
 
 ## Estados
 
