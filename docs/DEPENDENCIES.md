@@ -51,8 +51,8 @@ Essas ferramentas são instaladas em `.quality-venv` pelo script local e não fa
 | `@types/react-dom` | 19.2.3 | tipos de desenvolvimento | MIT |
 | `@types/node` | 24.13.3 | tipos para testes Node | MIT |
 | ESLint | 10.7.0 | lint do frontend | MIT |
-| `@eslint/js` | 10.7.0 | regras JavaScript recomendadas | MIT |
-| typescript-eslint | 8.64.0 | integração TypeScript/ESLint | BSD-2-Clause |
+| `@eslint/js` | 10.0.1 | regras JavaScript recomendadas | MIT |
+| typescript-eslint | 8.64.0 | integração TypeScript/ESLint | MIT |
 | eslint-plugin-react-hooks | 7.1.1 | regras de Hooks | MIT |
 | eslint-plugin-react-refresh | 0.5.3 | segurança de Fast Refresh | MIT |
 | globals | 17.7.0 | ambientes globais ESLint | MIT |
