@@ -1,4 +1,4 @@
-import { useEffect, useState, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent, type MouseEvent, type ReactNode } from 'react'
 
 import { APP_ROUTES, type RouteId } from './routes'
 import { Badge, Button, StatePanel } from './ui'
@@ -78,7 +78,7 @@ function ApiNotice({ state, onRefresh }: { state: keyof typeof API_LABELS; onRef
   }
 
   return (
-    <div className={`api-notice api-notice--${state}`} role="status">
+    <div className={`api-notice api-notice--${state}`} role="region" aria-label="Disponibilidade da API">
       <div>
         <strong>{state === 'degraded' ? 'Serviço parcialmente disponível' : 'API indisponível'}</strong>
         <span>
@@ -399,6 +399,9 @@ function App() {
   const { route, handleLinkClick } = useAppRoute()
   const health = useApiHealth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
+  const menuCloseRef = useRef<HTMLButtonElement>(null)
+  const sidebarRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     document.title = `${route.label} · MeuFinanceiro`
@@ -406,12 +409,40 @@ function App() {
 
   useEffect(() => {
     if (!menuOpen) return
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
+
+    menuCloseRef.current?.focus()
+    const handleMenuKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false)
+        window.requestAnimationFrame(() => menuButtonRef.current?.focus())
+        return
+      }
+
+      if (event.key !== 'Tab') return
+      const focusable = Array.from(
+        sidebarRef.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled])') ?? [],
+      )
+      const first = focusable[0]
+      const last = focusable.at(-1)
+      if (!first || !last) return
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
+
+    window.addEventListener('keydown', handleMenuKeyDown)
+    return () => window.removeEventListener('keydown', handleMenuKeyDown)
   }, [menuOpen])
+
+  const closeMenu = () => {
+    setMenuOpen(false)
+    window.requestAnimationFrame(() => menuButtonRef.current?.focus())
+  }
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>) => {
     handleLinkClick(event)
@@ -422,10 +453,10 @@ function App() {
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Ir para o conteúdo principal</a>
 
-      <aside id="primary-sidebar" className={`sidebar${menuOpen ? ' sidebar--open' : ''}`} aria-label="Menu lateral">
+      <aside ref={sidebarRef} id="primary-sidebar" className={`sidebar${menuOpen ? ' sidebar--open' : ''}`} aria-label="Menu lateral">
         <div className="sidebar__header">
           <Brand />
-          <button className="icon-button sidebar__close" type="button" onClick={() => setMenuOpen(false)} aria-label="Fechar menu">
+          <button ref={menuCloseRef} className="icon-button sidebar__close" type="button" onClick={closeMenu} aria-label="Fechar menu">
             <Icon name="close" />
           </button>
         </div>
@@ -436,11 +467,11 @@ function App() {
         </div>
       </aside>
 
-      {menuOpen ? <button className="backdrop" type="button" aria-label="Fechar menu" onClick={() => setMenuOpen(false)} /> : null}
+      {menuOpen ? <button className="backdrop" type="button" aria-label="Fechar menu" onClick={closeMenu} /> : null}
 
       <div className="app-main">
         <header className="topbar">
-          <button className="icon-button topbar__menu" type="button" onClick={() => setMenuOpen(true)} aria-label="Abrir menu" aria-expanded={menuOpen} aria-controls="primary-sidebar">
+          <button ref={menuButtonRef} className="icon-button topbar__menu" type="button" onClick={() => setMenuOpen(true)} aria-label="Abrir menu" aria-expanded={menuOpen} aria-controls="primary-sidebar">
             <Icon name="menu" />
           </button>
           <div className="topbar__mobile-brand"><Brand /></div>
