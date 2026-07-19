@@ -6,6 +6,8 @@ O produto será construído em camadas. A colaboração externa começa somente 
 
 Issues devem ser pequenas, testáveis e preferencialmente independentes. Epics organizam o trabalho, mas não devem ser implementadas diretamente em uma única Pull Request.
 
+O ADR-0008 define Flutter como cliente canônico. A migração da issue #24 é gate da fundação: nenhuma funcionalidade financeira nova deve ser implementada no shell React transitório.
+
 ## Fase 0 — Fundação do projeto
 
 Objetivo: tornar o repositório seguro e previsível para colaboração.
@@ -25,18 +27,39 @@ Entregas:
 - guia de contribuição;
 - modelo de ADR;
 - política de segurança;
-- dados de demonstração sem informações reais.
+- dados de demonstração sem informações reais;
+- cliente Flutter Web/PWA com shell responsivo;
+- substituição controlada do shell React integrado pela PR #21;
+- quality gates, build e runtime Flutter reproduzíveis.
 
 Critério de saída:
 
 - novo colaborador consegue executar o projeto localmente;
 - PR de exemplo passa pelos quality gates;
 - nenhum segredo é necessário para o modo de demonstração;
-- regras de contribuição estão documentadas.
+- regras de contribuição estão documentadas;
+- Flutter é o único cliente operacional ativo;
+- rotas, acessibilidade, health check e PWA da fundação possuem paridade validada;
+- React, Vite e o runtime Node do frontend antigo foram removidos ou mantidos somente quando outra necessidade explícita os justificar.
+
+### Sequência da migração Flutter
+
+1. decisão e plano documental;
+2. scaffold Flutter e quality gates;
+3. paridade do shell;
+4. runtime Web/PWA no Compose;
+5. smoke, acessibilidade e cache;
+6. remoção do frontend React.
+
+A coexistência entre React e Flutter é permitida apenas durante essa sequência e deve possuir rollback claro.
 
 ## Fase 1 — Identidade, residência e núcleo financeiro
 
 Objetivo: estabelecer os contratos de autorização e o livro financeiro.
+
+Pré-requisito:
+
+- migração Flutter da Fase 0 concluída.
 
 Entregas:
 
@@ -210,7 +233,8 @@ Entregas:
 - guia de criação de adaptadores;
 - política de vulnerabilidades;
 - testes de restauração;
-- primeira versão estável.
+- primeira versão estável;
+- avaliação dos alvos Flutter Android, iOS e desktop a partir da mesma base Web/PWA.
 
 ## Política de abertura de issues
 
@@ -244,4 +268,5 @@ Não deve ser trabalhado em paralelo quando:
 - altera o modelo monetário ou de datas;
 - redefine o livro financeiro;
 - muda contratos usados por várias issues abertas;
-- depende de uma decisão arquitetural pendente.
+- depende de uma decisão arquitetural pendente;
+- implementa interface financeira enquanto a migração Flutter ainda não concluiu o shell canônico.

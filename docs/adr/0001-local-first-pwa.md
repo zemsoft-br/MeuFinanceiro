@@ -1,8 +1,9 @@
 # ADR-0001 — Aplicação local com interface PWA
 
-- Status: Accepted
+- Status: Superseded
 - Data: 2026-07-19
 - Decisores: mantenedores
+- Superseded by: ADR-0008 — Flutter como cliente canônico multiplataforma
 
 ## Contexto
 
@@ -10,11 +11,13 @@ O produto deve ser autohospedado, simples de instalar, utilizável em computador
 
 As alternativas principais eram aplicação desktop nativa, aplicação móvel nativa ou aplicação web local.
 
-## Decisão
+## Decisão histórica
 
-O cliente canônico será uma PWA em React e TypeScript, servida localmente e conectada a uma API FastAPI. A distribuição principal será Docker Compose. Um instalador/gerenciador poderá automatizar a operação dos containers, mas não criará um segundo cliente funcional.
+O cliente canônico seria uma PWA em React e TypeScript, servida localmente e conectada a uma API FastAPI. A distribuição principal seria Docker Compose. Um instalador/gerenciador poderia automatizar a operação dos containers, mas não criaria um segundo cliente funcional.
 
-Tailscale será a recomendação inicial para acesso remoto.
+Tailscale seria a recomendação inicial para acesso remoto.
+
+A escolha de React foi substituída pelo ADR-0008. Permanecem válidos os objetivos de autohospedagem, interface única, PWA, FastAPI, Docker Compose e acesso remoto seguro.
 
 ## Alternativas consideradas
 
@@ -26,11 +29,13 @@ Rejeitado na fundação por aumentar o número de superfícies, empacotamento e 
 
 Rejeitado no escopo inicial porque exigiria manter outro cliente e contratos de sincronização mais complexos.
 
+Essa avaliação foi revista no ADR-0008: Flutter passa a ser a única base de cliente, e não um segundo cliente concorrente.
+
 ### SaaS centralizado
 
 Rejeitado por conflitar com o objetivo de autohospedagem e controle dos dados.
 
-## Consequências positivas
+## Consequências positivas históricas
 
 - uma interface para desktop e dispositivos móveis;
 - instalação PWA sem loja;
@@ -47,4 +52,6 @@ Rejeitado por conflitar com o objetivo de autohospedagem e controle dos dados.
 
 ## Validação
 
-A fundação deve comprovar execução local, instalação PWA e acesso pela rede/Tailscale antes da primeira versão pública.
+A fundação deveria comprovar execução local, instalação PWA e acesso pela rede/Tailscale antes da primeira versão pública.
+
+Esses contratos continuam aplicáveis sob o ADR-0008.

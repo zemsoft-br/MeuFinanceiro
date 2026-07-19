@@ -10,13 +10,14 @@ A arquitetura deve priorizar:
 - segurança adequada para dados financeiros;
 - testes determinísticos;
 - compatibilidade `amd64` e `arm64`;
-- evolução sem exigir aplicativo móvel nativo.
+- uma única base de cliente para Web/PWA e futuros alvos Android, iOS e desktop;
+- evolução sem duplicar regras entre plataformas.
 
 ## 2. Stack-base
 
 | Camada | Tecnologia inicial |
 |---|---|
-| Interface | React + TypeScript + PWA |
+| Interface | Flutter + Dart; Web/PWA como primeiro alvo operacional |
 | API | FastAPI + Python |
 | Persistência | PostgreSQL |
 | Migrações | Alembic |
@@ -24,19 +25,21 @@ A arquitetura deve priorizar:
 | Proxy | Caddy |
 | Empacotamento | Docker Compose |
 | Contrato | OpenAPI |
-| Testes | Pytest e testes frontend apropriados à stack escolhida |
+| Testes | Pytest, `flutter_test`, testes de integração e smoke do Compose |
 
 Redis não é obrigatório na fundação. Ele somente será introduzido mediante necessidade comprovada.
+
+A PR #21 integrou um shell React transitório. O ADR-0008 define Flutter como cliente canônico e a issue #24 controla a migração. Nenhuma nova funcionalidade financeira deve ser criada no frontend React.
 
 ## 3. Topologia local
 
 ```text
-Navegador / PWA
+Cliente Flutter Web/PWA
        |
        v
      Caddy
        |
-       +--------> Frontend estático
+       +--------> Artefato Flutter Web estático
        |
        +--------> FastAPI
                     |
@@ -49,25 +52,27 @@ Navegador / PWA
 
 Serviços iniciais esperados no Docker Compose:
 
-- `web`;
+- `web`, servindo o build Flutter Web após a migração;
 - `api`;
 - `worker`;
 - `postgres`;
 - `caddy`.
 
+O nome do serviço `web` descreve o artefato servido e não obriga o uso de React.
+
 ## 4. Organização do repositório
 
-Estrutura proposta:
+Estrutura alvo:
 
 ```text
 MeuFinanceiro/
 ├── apps/
 │   ├── api/
-│   ├── web/
+│   ├── app/        Flutter multiplataforma
 │   └── worker/
 ├── packages/
 │   ├── contracts/
-│   └── shared-web/
+│   └── shared-app/ componentes e contratos compartilhados futuros
 ├── infra/
 │   ├── docker/
 │   └── scripts/
@@ -80,7 +85,14 @@ MeuFinanceiro/
 └── README.md
 ```
 
-A estrutura final deve ser validada pela issue de bootstrap técnico antes de iniciar funcionalidades.
+Durante a migração:
+
+- `apps/web` permanece como shell React transitório da PR #21;
+- `apps/app` será criado pela issue #24;
+- o React só será removido após paridade, testes e smoke do runtime Flutter;
+- a coexistência não autoriza dois clientes funcionais permanentes.
+
+A estrutura final deve ser validada pela migração técnica antes de iniciar funcionalidades financeiras.
 
 ## 5. Arquitetura de backend
 
@@ -122,11 +134,11 @@ Cada módulo deve conter, conforme necessário:
 - rotas e schemas de API;
 - testes unitários e de integração.
 
-Regras financeiras não devem ficar em rotas, componentes React ou adaptadores da Pluggy.
+Regras financeiras não devem ficar em rotas, widgets Flutter, providers, caches locais ou adaptadores da Pluggy.
 
 ## 6. Fonte de verdade
 
-O modelo local normalizado é a fonte de verdade.
+O modelo local normalizado no backend é a fonte de verdade.
 
 Provedores e arquivos são fontes de observação. Seus registros podem:
 
@@ -137,6 +149,8 @@ Provedores e arquivos são fontes de observação. Seus registros podem:
 - gerar críticas.
 
 Eles não podem sobrescrever silenciosamente decisões do usuário.
+
+O cliente Flutter pode manter estado de interface e caches explicitamente autorizados. Persistência local de dados financeiros não se torna autoridade e exige decisão própria sobre sincronização, criptografia, expiração, revogação e conflitos.
 
 ## 7. Identidade e residência
 
@@ -152,7 +166,7 @@ ResourceVisibility
 
 Todo recurso financeiro deve pertencer a uma residência. Recursos pessoais também possuem proprietário explícito.
 
-Filtros de autorização devem existir na camada de caso de uso e persistência, não apenas no frontend.
+Filtros de autorização devem existir na camada de caso de uso e persistência, não apenas no cliente.
 
 ## 8. Livro financeiro
 
@@ -187,6 +201,7 @@ AuditEvent
 - Persistência usa tipos decimais ou inteiros em unidade mínima conforme decisão formal.
 - Arredondamentos devem ser explícitos e testados.
 - Moeda inicial é BRL, mas o cartão pode registrar moeda original e conversão.
+- Serialização para Dart não pode degradar precisão monetária.
 
 ### 8.3 Tempo
 
@@ -194,6 +209,7 @@ AuditEvent
 - Instantes de auditoria e integração devem ser UTC.
 - Apresentação usa o fuso configurado da residência.
 - Competência, vencimento, liquidação e importação são conceitos distintos.
+- Testes do cliente e backend usam relógio controlável quando a regra depender do tempo.
 
 ## 9. Importadores
 
@@ -240,7 +256,7 @@ Credenciais e tokens:
 
 - criptografados em repouso;
 - nunca registrados em logs;
-- nunca enviados ao frontend sem necessidade;
+- nunca enviados ao cliente sem necessidade;
 - removíveis sem apagar obrigatoriamente o histórico.
 
 ## 11. Worker e tarefas
@@ -294,6 +310,8 @@ Proteção recomendada:
 - backups criptografados;
 - TLS no acesso remoto.
 
+Persistência local no cliente, quando adotada, deverá definir proteção equivalente por plataforma e não poderá assumir que armazenamento local comum é seguro.
+
 ## 13. Anexos
 
 O backend controla anexos por uma porta de armazenamento.
@@ -318,20 +336,49 @@ S3 compatível pode ser adicionado posteriormente sem alterar o domínio.
 - Paginação e filtros padronizados.
 - Idempotência em mutações financeiras críticas.
 - Webhooks de saída somente após definição de assinatura e segurança.
+- DTOs Dart devem ser gerados ou mantidos sob contrato testável, sem duplicar semântica financeira.
 
-## 15. Frontend
+## 15. Cliente Flutter
 
 Princípios:
 
-- PWA responsiva;
-- acessibilidade mínima WCAG AA nos fluxos principais;
+- uma única base para Web/PWA e futuros Android, iOS e desktop;
+- `go_router` para rotas e deep links;
+- Riverpod para estado e injeção de dependências;
+- organização por feature, com `core`, `routing`, `theme` e adaptadores de plataforma;
+- Material 3 adaptado ao Design System do MeuFinanceiro;
+- acessibilidade WCAG AA nos fluxos Web principais;
 - componentes compartilhados;
 - formulários com validação consistente;
 - estados de erro e carregamento explícitos;
 - nenhuma regra financeira exclusiva do cliente;
-- suporte a instalação no Android e iOS conforme limitações do navegador.
+- suporte a instalação PWA conforme limitações do navegador;
+- assets e fontes empacotados, sem CDN obrigatória;
+- abstrações de persistência e plataforma testáveis.
 
-O frontend pode manter cache de interface, mas o backend local é a autoridade sobre dados financeiros.
+O Flutter Web é o primeiro alvo operacional. Android, iOS e desktop usarão a mesma base quando entrarem no roadmap, sem criar outro domínio.
+
+### 15.1 PWA e cache
+
+- cache de shell não pode armazenar respostas `/api/` indiscriminadamente;
+- `index.html`, service worker, `version.json`, `main.dart.js` e WASM exigem política explícita de revalidação;
+- somente assets realmente imutáveis recebem cache longo;
+- atualização de versão deve ser testada;
+- o backend local permanece autoridade sobre dados financeiros.
+
+### 15.2 Qualidade
+
+O cliente deverá passar por:
+
+- `dart format`;
+- `flutter analyze`;
+- testes unitários;
+- testes de widget;
+- build Web release;
+- auditoria de dependências e licenças;
+- smoke Docker/Caddy;
+- inspeção desktop e mobile;
+- testes de teclado, foco, semântica, contraste e overflow.
 
 ## 16. Observabilidade e telemetria
 
@@ -363,6 +410,8 @@ O contrato de backup deve incluir:
 
 A restauração deve ser testada automaticamente em CI quando possível e documentada em runbook.
 
+Dados locais do cliente, quando existirem, devem ser tratados como cache reconstruível ou possuir estratégia explícita de inclusão, migração e invalidação. Eles não substituem o backup do backend.
+
 ## 18. Estratégia de evolução
 
 - ADR obrigatório para decisões estruturais.
@@ -370,3 +419,5 @@ A restauração deve ser testada automaticamente em CI quando possível e docume
 - Mudanças de contrato exigem migração e compatibilidade documentadas.
 - Provedores externos entram por adaptadores.
 - Dependências novas precisam justificar custo operacional, segurança e manutenção.
+- Nenhuma funcionalidade financeira nova será implementada no shell React transitório.
+- A remoção do React ocorrerá somente após paridade Flutter, quality gates e smoke aprovados.

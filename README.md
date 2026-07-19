@@ -12,7 +12,8 @@ O sistema não executará, agendará ou iniciará transações financeiras.
 
 ## Princípios
 
-- execução local por Docker, com interface Web/PWA;
+- execução local por Docker, com cliente Flutter Web/PWA;
+- uma única base Flutter para Web/PWA e futuros alvos Android, iOS e desktop;
 - funcionamento sem integração bancária obrigatória;
 - PostgreSQL local como fonte principal de verdade;
 - Open Finance opcional por adaptadores, começando por uma prova de conceito da Pluggy;
@@ -24,7 +25,7 @@ O sistema não executará, agendará ou iniciará transações financeiras.
 ## Arquitetura
 
 ```text
-React + TypeScript
+Flutter — Web/PWA e futuros clientes multiplataforma
         |
       Caddy
         |
@@ -34,6 +35,12 @@ React + TypeScript
 ```
 
 A distribuição principal é Docker Compose. As imagens escolhidas possuem variantes oficiais para `amd64` e `arm64`.
+
+### Transição do frontend
+
+A PR #21 integrou um shell React executável para validar navegação, acessibilidade, PWA, cache e runtime estático. O ADR-0008 substitui React por Flutter como cliente canônico.
+
+O shell React permanece temporariamente no repositório apenas como referência executável e caminho de rollback durante a migração da issue #24. Nenhuma nova funcionalidade financeira deve ser implementada nele.
 
 ## Início rápido
 
@@ -51,6 +58,8 @@ Windows PowerShell:
 
 Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação fica disponível em `http://127.0.0.1:8080`.
 
+Enquanto a migração Flutter não estiver concluída, esse endereço ainda serve o shell React transitório integrado pela PR #21.
+
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
 ## Quality gates locais
@@ -63,18 +72,20 @@ python infra/scripts/run-quality.py
 
 Ela valida segurança do repositório, Python, frontend, dependências e licenças. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
 
+Os gates atuais ainda validam React. A issue #24 os migrará para `dart format`, `flutter analyze`, testes Flutter e build Web antes da remoção do frontend antigo.
+
 ## Estrutura do monorepo
 
 ```text
 apps/
   api/       FastAPI e OpenAPI
-  web/       shell React responsivo e PWA instalável
+  app/       cliente Flutter multiplataforma alvo; será criado pela issue #24
+  web/       shell React transitório da PR #21; será removido após paridade Flutter
   worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
   persistence/ SQLAlchemy, Alembic, health e fila PostgreSQL
   contracts/ contratos compartilhados futuros
-  shared-web/componentes compartilhados futuros
 infra/
   caddy/     entrada HTTP local
   scripts/   inicialização, diagnóstico e quality gates
@@ -83,14 +94,15 @@ tests/
   smoke/     validação ponta a ponta do Compose
 ```
 
-O shell atual define navegação, estados comuns, tokens e componentes básicos. A identidade visual ainda é evolutiva e pode incorporar referências do Google Stitch sem alterar o contrato `/api/v1` ou a política de cache seguro.
+O Flutter deve reproduzir os contratos já validados pelo shell existente sem copiar regras financeiras para o cliente. A identidade visual incorporará as referências do Google Stitch sob contratos versionados do repositório.
 
 ## Documentação
 
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
+- [Migração do cliente para Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
-- [Shell Web/PWA](docs/runbooks/WEB_PWA.md)
+- [Shell Web/PWA atual](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
 - [Quality gates e CI](docs/runbooks/QUALITY_GATES.md)
@@ -132,7 +144,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. implementar identidade e residência;
-2. iniciar o núcleo financeiro;
-3. avançar modo demonstração e dados fictícios;
-4. concluir instalação, backup e spike Pluggy.
+1. migrar o shell Web/PWA para Flutter;
+2. concluir modo demonstração, instalação, backup e spike Pluggy;
+3. implementar identidade e residência;
+4. iniciar o núcleo financeiro.

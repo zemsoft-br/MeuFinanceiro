@@ -1,18 +1,19 @@
 # ADR-0007 — Shell Web, design system mínimo e cache seguro da PWA
 
-- Status: Accepted
+- Status: Superseded
 - Data: 2026-07-19
 - Decisores: mantenedores
+- Superseded by: ADR-0008 — Flutter como cliente canônico multiplataforma
 
 ## Contexto
 
-O ADR-0001 definiu React e TypeScript como cliente canônico, mas a interface provisória não estabelecia navegação, componentes, acessibilidade ou política concreta de cache. A fundação precisa permitir que módulos futuros sejam adicionados sem duplicar padrões e sem introduzir armazenamento offline acidental de dados financeiros.
+O ADR-0001 definiu React e TypeScript como cliente canônico, mas a interface provisória não estabelecia navegação, componentes, acessibilidade ou política concreta de cache. A fundação precisava permitir que módulos futuros fossem adicionados sem duplicar padrões e sem introduzir armazenamento offline acidental de dados financeiros.
 
-Nesta fase existem apenas três rotas estáticas e nenhuma autenticação. Adicionar uma biblioteca de roteamento ou um framework completo de componentes aumentaria dependências e superfície de atualização antes de haver necessidade funcional comprovada.
+Nesta fase existiam apenas três rotas estáticas e nenhuma autenticação. Adicionar uma biblioteca de roteamento ou um framework completo de componentes aumentaria dependências e superfície de atualização antes de haver necessidade funcional comprovada.
 
-## Decisão
+## Decisão histórica
 
-O shell Web será uma aplicação React responsiva com:
+O shell Web foi implementado como aplicação React responsiva com:
 
 - navegação cliente mínima baseada na History API para as rotas estáticas da fundação;
 - layout único para desktop e dispositivos móveis;
@@ -23,57 +24,65 @@ O shell Web será uma aplicação React responsiva com:
 - manifesto PWA e ícones `192x192` e `512x512`;
 - service worker próprio, versionado, restrito a assets da interface.
 
-O service worker deve ignorar toda requisição que:
+O service worker ignorava toda requisição que:
 
-- não seja `GET`;
-- seja de outra origem;
-- tenha caminho iniciado por `/api/`;
-- não seja navegação ou um asset de interface reconhecido.
+- não fosse `GET`;
+- fosse de outra origem;
+- tivesse caminho iniciado por `/api/`;
+- não fosse navegação ou um asset de interface reconhecido.
 
-Navegações usam estratégia network-first com fallback para o shell estático. Scripts, estilos, fontes e imagens usam cache-first dentro de um cache identificado por versão. Uma nova versão deve alterar o nome do cache e remover versões anteriores no evento `activate`.
+Navegações usavam estratégia network-first com fallback para o shell estático. Scripts, estilos, fontes e imagens usavam cache-first dentro de um cache identificado por versão.
 
-## Alternativas consideradas
+O ADR-0008 substitui React por Flutter, mas preserva como requisitos obrigatórios os contratos de acessibilidade, health degradável, PWA, exclusão de `/api/` do cache, runtime estático e validação desktop/mobile.
+
+## Alternativas consideradas historicamente
 
 ### React Router
 
-Adiado. A fundação possui poucas rotas estáticas e não exige parâmetros, loaders ou rotas aninhadas. A adoção poderá ocorrer quando o domínio justificar o custo adicional.
+Adiado. A fundação possuía poucas rotas estáticas e não exigia parâmetros, loaders ou rotas aninhadas.
 
 ### Biblioteca de componentes
 
-Adiada. Os componentes necessários nesta fase são pequenos e servem principalmente para definir contratos visuais e acessíveis. Não há identidade visual definitiva.
+Adiada. Os componentes necessários nessa fase eram pequenos e serviam principalmente para definir contratos visuais e acessíveis.
 
 ### Plugin PWA do Vite
 
-Não adotado nesta fase. Um service worker explícito torna a exclusão de `/api/` auditável sem depender de geração indireta ou configuração adicional.
+Não adotado. Um service worker explícito tornava a exclusão de `/api/` auditável.
 
 ### Cache offline de respostas da API
 
-Rejeitado. Dados financeiros, tokens e respostas operacionais exigem uma política própria de classificação, criptografia, expiração e revogação que ainda não foi especificada.
+Rejeitado. Dados financeiros, tokens e respostas operacionais exigem política própria de classificação, criptografia, expiração e revogação.
 
-## Consequências positivas
+Essa rejeição continua vigente após a migração para Flutter.
+
+## Consequências positivas históricas
 
 - navegação e comportamento visual consistentes em desktop e celular;
-- dependências diretas permanecem reduzidas;
 - política de cache legível, testável e conservadora;
 - falha da API não impede acesso à interface e à documentação visual;
-- componentes básicos podem ser evoluídos ou substituídos sem alterar contratos do backend.
+- contratos executáveis para orientar a migração Flutter.
 
 ## Consequências negativas e riscos
 
-- o roteador mínimo não cobre rotas dinâmicas ou aninhadas;
-- manutenção manual do service worker exige incrementar sua versão quando a estratégia mudar;
-- a aparência é uma fundação funcional, não a identidade visual definitiva;
-- instalação PWA e o evento `beforeinstallprompt` variam por navegador.
+- o shell React será transitório e precisará ser removido após a paridade Flutter;
+- a política de cache precisa ser reinterpretada para os artefatos gerados pelo Flutter;
+- instalação PWA varia por navegador;
+- acessibilidade deve ser novamente validada na nova implementação.
 
-## Validação
+## Validação histórica
 
 - lint, typecheck, testes e build Vite;
 - testes dos componentes básicos com renderização estática;
 - teste estrutural do manifesto e da exclusão de `/api/` no service worker;
-- smoke test do Compose para shell, rota cliente, manifesto e service worker;
-- inspeção manual em viewport desktop e móvel antes do merge.
+- smoke do Compose para shell, rota cliente, manifesto e service worker;
+- inspeção manual em viewport desktop e móvel.
+
+A PR #21 concluiu essa validação. O ADR-0008 exige que os mesmos contratos sejam reproduzidos antes da remoção do shell React.
 
 ## Referências
 
 - ADR-0001 — Aplicação local com interface PWA
-- Issue #8 — Criar shell Web/PWA e design system inicial
+- ADR-0008 — Flutter como cliente canônico multiplataforma
+- Issue #8
+- Issue #24
+- PR #21
