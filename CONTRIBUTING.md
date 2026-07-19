@@ -2,15 +2,27 @@
 
 Obrigado pelo interesse em contribuir. O MeuFinanceiro manipula dados financeiros sensíveis e regras que não podem produzir resultados ambíguos. Por isso, contribuições devem seguir contratos explícitos, testes e revisão.
 
+A governança completa está em [`docs/GOVERNANCE.md`](docs/GOVERNANCE.md).
+
 ## 1. Antes de começar
 
 1. Leia `docs/PRODUCT_SPECIFICATION.md`.
 2. Leia `docs/ARCHITECTURE.md`.
 3. Escolha uma issue com escopo e critérios de aceite completos.
-4. Confirme que ela não está atribuída a outra pessoa.
-5. Comente que pretende trabalhar nela e aguarde a atribuição quando necessário.
+4. Confirme que ela possui `status:ready` e não está atribuída a outra pessoa.
+5. Comente objetivamente que pretende trabalhar nela.
+6. Aguarde a atribuição do mantenedor antes de iniciar mudanças substanciais.
 
 Não inicie funcionalidades sem issue. Discussões exploratórias podem começar em issues marcadas no título como `[DISCUSSION]` ou `[SPIKE]`.
+
+### Atribuição e inatividade
+
+- O padrão inicial é uma issue funcional por colaborador.
+- Abra uma Pull Request draft cedo para tornar o progresso visível.
+- Após 7 dias corridos sem commit, comentário ou atualização relevante, o mantenedor pode solicitar status.
+- Sem resposta nos 3 dias seguintes, a issue pode ser desatribuída.
+- Ausências comunicadas previamente não são tratadas como abandono.
+- Trabalho já enviado permanece creditado e pode ser reaproveitado.
 
 ## 2. Fluxo de branches
 
@@ -20,6 +32,7 @@ fix/*      -> develop
 release/*  -> main
 hotfix/*   -> main e retorno obrigatório para develop
 docs/*     -> develop, salvo documentação exclusiva de release
+chore/*    -> develop
 ```
 
 Regras:
@@ -45,7 +58,9 @@ Marque como pronta somente quando:
 
 Para economizar minutos de GitHub Actions, os workflows principais devem ser configurados para executar automaticamente quando a PR sair de draft e ficar pronta para revisão. Execução manual pode permanecer disponível para diagnóstico.
 
-PRs de `feature/*`, `fix/*` e `docs/*` usam squash merge por padrão. Releases podem usar merge commit quando isso preservar melhor o histórico de promoção.
+PRs de `feature/*`, `fix/*`, `docs/*` e `chore/*` usam squash merge por padrão. Releases podem usar merge commit quando isso preservar melhor o histórico de promoção.
+
+O autor não realiza o próprio merge, salvo exceção emergencial documentada.
 
 ## 4. Commits
 
