@@ -1,0 +1,298 @@
+name: Bootstrap Flutter scaffold
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - reopened
+      - synchronize
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-flutter-scaffold-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    name: Generate and validate Flutter scaffold
+    if: github.event.pull_request.number == 33 && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout source branch
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Install Flutter 3.44.6
+        shell: bash
+        run: |
+          set -euo pipefail
+          FLUTTER_ROOT="$RUNNER_TEMP/flutter-3.44.6"
+          git clone --depth 1 --branch 3.44.6 https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" config --no-analytics
+          "$FLUTTER_ROOT/bin/flutter" precache --web
+          "$FLUTTER_ROOT/bin/flutter" --version
+
+      - name: Generate Web scaffold
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf apps/app
+          flutter create \
+            --empty \
+            --platforms=web \
+            --project-name=meufinanceiro_app \
+            --org=br.com.zemsoft \
+            --description='Cliente Flutter multiplataforma do MeuFinanceiro.' \
+            apps/app
+
+      - name: Apply foundation contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > apps/app/pubspec.yaml <<'EOF'
+          name: meufinanceiro_app
+          description: Cliente Flutter multiplataforma do MeuFinanceiro.
+          publish_to: none
+          version: 0.1.0+1
+
+          environment:
+            sdk: '>=3.10.0 <4.0.0'
+
+          dependencies:
+            flutter:
+              sdk: flutter
+            flutter_localizations:
+              sdk: flutter
+            flutter_riverpod: 3.3.2
+            go_router: 17.3.0
+
+          dev_dependencies:
+            flutter_test:
+              sdk: flutter
+            flutter_lints: 6.0.0
+
+          flutter:
+            uses-material-design: true
+          EOF
+
+          mkdir -p \
+            apps/app/lib/app \
+            apps/app/lib/routing \
+            apps/app/lib/features/bootstrap \
+            apps/app/test
+
+          cat > apps/app/lib/main.dart <<'EOF'
+          import 'package:flutter/widgets.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:meufinanceiro_app/app/app.dart';
+
+          void main() {
+            WidgetsFlutterBinding.ensureInitialized();
+            runApp(const ProviderScope(child: MeuFinanceiroApp()));
+          }
+          EOF
+
+          cat > apps/app/lib/app/app.dart <<'EOF'
+          import 'package:flutter/material.dart';
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:meufinanceiro_app/routing/app_router.dart';
+
+          class MeuFinanceiroApp extends ConsumerWidget {
+            const MeuFinanceiroApp({super.key});
+
+            @override
+            Widget build(BuildContext context, WidgetRef ref) {
+              final router = ref.watch(appRouterProvider);
+
+              return MaterialApp.router(
+                title: 'MeuFinanceiro',
+                debugShowCheckedModeBanner: false,
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(
+                    seedColor: const Color(0xFF365C4D),
+                  ),
+                  useMaterial3: true,
+                ),
+                routerConfig: router,
+              );
+            }
+          }
+          EOF
+
+          cat > apps/app/lib/routing/app_router.dart <<'EOF'
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:go_router/go_router.dart';
+          import 'package:meufinanceiro_app/features/bootstrap/bootstrap_screen.dart';
+
+          final appRouterProvider = Provider<GoRouter>((ref) {
+            final router = GoRouter(
+              routes: [
+                GoRoute(
+                  path: '/',
+                  name: 'bootstrap',
+                  builder: (context, state) => const BootstrapScreen(),
+                ),
+              ],
+            );
+
+            ref.onDispose(router.dispose);
+            return router;
+          });
+          EOF
+
+          cat > apps/app/lib/features/bootstrap/bootstrap_screen.dart <<'EOF'
+          import 'package:flutter/material.dart';
+
+          class BootstrapScreen extends StatelessWidget {
+            const BootstrapScreen({super.key});
+
+            static const titleKey = Key('bootstrap-title');
+
+            @override
+            Widget build(BuildContext context) {
+              return Scaffold(
+                body: SafeArea(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 560),
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Semantics(
+                              header: true,
+                              child: Text(
+                                'MeuFinanceiro',
+                                key: titleKey,
+                                style: Theme.of(context).textTheme.headlineMedium,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Base Flutter inicial. O shell funcional será portado em uma entrega posterior.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+          }
+          EOF
+
+          cat > apps/app/test/app_bootstrap_test.dart <<'EOF'
+          import 'package:flutter_riverpod/flutter_riverpod.dart';
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:meufinanceiro_app/app/app.dart';
+          import 'package:meufinanceiro_app/features/bootstrap/bootstrap_screen.dart';
+
+          void main() {
+            testWidgets('boots through ProviderScope and GoRouter', (tester) async {
+              await tester.pumpWidget(
+                const ProviderScope(child: MeuFinanceiroApp()),
+              );
+              await tester.pumpAndSettle();
+
+              expect(find.byKey(BootstrapScreen.titleKey), findsOneWidget);
+              expect(find.text('MeuFinanceiro'), findsOneWidget);
+              expect(find.textContaining('Base Flutter inicial'), findsOneWidget);
+              expect(tester.takeException(), isNull);
+            });
+          }
+          EOF
+
+          cat > apps/app/README.md <<'EOF'
+          # Cliente Flutter
+
+          Base canônica do cliente MeuFinanceiro.
+
+          ## Estado
+
+          Nesta etapa, o projeto comprova somente:
+
+          - toolchain fixada;
+          - composição Riverpod;
+          - roteamento GoRouter;
+          - análise, testes e build Web reproduzíveis.
+
+          O shell React permanece como runtime ativo até as entregas de paridade e Docker/PWA da issue #24.
+
+          ## Comandos
+
+          ```bash
+          flutter pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze
+          flutter test
+          flutter build web --release
+          ```
+
+          Use exatamente a versão registrada em `/.flutter-version`.
+          EOF
+
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          index = Path('apps/app/web/index.html')
+          text = index.read_text(encoding='utf-8')
+          text = text.replace('meufinanceiro_app', 'MeuFinanceiro')
+          text = text.replace(
+              'A new Flutter project.',
+              'Gestor financeiro pessoal e familiar autohospedado.',
+          )
+          index.write_text(text, encoding='utf-8')
+
+          manifest_path = Path('apps/app/web/manifest.json')
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          manifest.update(
+              {
+                  'name': 'MeuFinanceiro',
+                  'short_name': 'MeuFinanceiro',
+                  'description': 'Gestor financeiro pessoal e familiar autohospedado.',
+              }
+          )
+          manifest_path.write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Resolve and validate dependencies
+        working-directory: apps/app
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter pub get --enforce-lockfile
+          dart format --output=none --set-exit-if-changed lib test
+          flutter analyze
+          flutter test
+          flutter build web --release
+
+      - name: Commit generated scaffold
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/bootstrap-flutter-scaffold.yml
+          git config user.name 'Vinicius Eduardo Dezem'
+          git config user.email '291430811+zemsoft-br@users.noreply.github.com'
+          git add .flutter-version apps/app .github/workflows/bootstrap-flutter-scaffold.yml
+          git commit -s -m 'feat(flutter): add initial client scaffold'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
