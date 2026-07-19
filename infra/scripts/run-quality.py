@@ -1,0 +1,119 @@
+#!/usr/bin/env python3
+"""Run the same mandatory quality gates locally and in GitHub Actions."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import venv
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+VENV_DIR = ROOT / ".quality-venv"
+TOOLS = (
+    "mypy==2.3.0",
+    "pip-audit==2.10.1",
+    "ruff==0.15.22",
+)
+
+
+def run(
+    command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None
+) -> None:
+    print(f"+ {' '.join(command)}", flush=True)
+    subprocess.run(command, cwd=cwd, env=env, check=True)
+
+
+def venv_python() -> Path:
+    scripts = "Scripts" if os.name == "nt" else "bin"
+    executable = "python.exe" if os.name == "nt" else "python"
+    return VENV_DIR / scripts / executable
+
+
+def ensure_python_environment(recreate: bool) -> Path:
+    if recreate and VENV_DIR.exists():
+        shutil.rmtree(VENV_DIR)
+    if not venv_python().exists():
+        venv.EnvBuilder(with_pip=True, clear=False).create(VENV_DIR)
+
+    python = venv_python()
+    run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            *TOOLS,
+            "-e",
+            "./apps/api[test]",
+            "-e",
+            "./apps/worker",
+        ]
+    )
+    return python
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--recreate", action="store_true", help="Recreate the quality virtualenv"
+    )
+    args = parser.parse_args()
+
+    run([sys.executable, "infra/scripts/check-repository-safety.py"])
+    python = ensure_python_environment(args.recreate)
+
+    run(
+        [
+            str(python),
+            "-m",
+            "ruff",
+            "check",
+            "apps/api",
+            "apps/worker",
+            "infra/scripts",
+            "tests/quality",
+        ]
+    )
+    run(
+        [
+            str(python),
+            "-m",
+            "ruff",
+            "format",
+            "--check",
+            "apps/api",
+            "apps/worker",
+            "infra/scripts",
+            "tests/quality",
+        ]
+    )
+    run([str(python), "-m", "mypy", "--strict", "apps/api/app", "apps/worker/worker"])
+    run([str(python), "-m", "pytest", "apps/api/tests", "tests/quality"])
+    run([str(python), "infra/scripts/check-python-licenses.py"])
+    run([str(python), "-m", "pip_audit", "--local"])
+
+    web = ROOT / "apps" / "web"
+    if not (web / "package-lock.json").exists():
+        raise RuntimeError(
+            "apps/web/package-lock.json is required; generate and commit it first"
+        )
+
+    run(["npm", "ci", "--no-audit", "--no-fund"], cwd=web)
+    run(["npm", "run", "lint"], cwd=web)
+    run(["npm", "run", "typecheck"], cwd=web)
+    run(["npm", "test"], cwd=web)
+    run(["npm", "run", "build"], cwd=web)
+    run(["npm", "audit", "--audit-level=high"], cwd=web)
+    run(["node", "infra/scripts/check-node-licenses.mjs", "apps/web"])
+
+    print("All mandatory quality gates passed.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

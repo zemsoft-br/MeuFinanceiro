@@ -53,6 +53,16 @@ Os scripts geram uma senha local aleatória, constroem os containers e executam 
 
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
+## Quality gates locais
+
+A suíte obrigatória pode ser executada antes de marcar uma Pull Request como pronta:
+
+```bash
+python infra/scripts/run-quality.py
+```
+
+Ela valida segurança do repositório, Python, frontend, dependências e licenças. O gate de containers é executado separadamente quando a infraestrutura é alterada. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+
 ## Estrutura do monorepo
 
 ```text
@@ -65,8 +75,9 @@ packages/
   shared-web/componentes compartilhados futuros
 infra/
   caddy/     entrada HTTP local
-  scripts/   inicialização e diagnóstico
+  scripts/   inicialização, diagnóstico e quality gates
 tests/
+  quality/   provas dos validadores do repositório
   smoke/     validação ponta a ponta do Compose
 ```
 
@@ -77,6 +88,7 @@ A interface atual é deliberadamente neutra e pode ser substituída pelo design 
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
+- [Quality gates e CI](docs/runbooks/QUALITY_GATES.md)
 - [Dependências diretas da fundação](docs/DEPENDENCIES.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Governança](docs/GOVERNANCE.md)
@@ -95,7 +107,7 @@ Fluxo principal:
 feature/* -> develop -> release/* -> main
 ```
 
-Pull Requests devem começar como draft. Os quality gates principais serão executados quando a PR estiver pronta para revisão, reduzindo consumo desnecessário de GitHub Actions durante o desenvolvimento.
+Pull Requests devem começar como draft. Os quality gates principais são executados automaticamente quando a PR fica pronta para revisão, reduzindo consumo desnecessário de GitHub Actions durante o desenvolvimento.
 
 Todas as contribuições exigem sign-off conforme o [Developer Certificate of Origin 1.1](DCO). Consulte [CONTRIBUTING.md](CONTRIBUTING.md) e a [governança](docs/GOVERNANCE.md) antes de assumir uma issue.
 
@@ -115,7 +127,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. configurar quality gates e CI econômico;
-2. implementar configuração, segredos, migrações e fila persistida;
-3. incorporar o shell Web/PWA e o design system;
-4. implementar identidade, residência e núcleo financeiro.
+1. implementar configuração, segredos, migrações e fila persistida;
+2. incorporar o shell Web/PWA e o design system;
+3. implementar identidade e residência;
+4. iniciar o núcleo financeiro.

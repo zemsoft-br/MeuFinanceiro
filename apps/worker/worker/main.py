@@ -72,7 +72,9 @@ def main() -> None:
     signal.signal(signal.SIGTERM, request_shutdown)
     signal.signal(signal.SIGINT, request_shutdown)
 
-    server = ThreadingHTTPServer(("0.0.0.0", settings.worker_health_port), HealthHandler)
+    server = ThreadingHTTPServer(
+        ("0.0.0.0", settings.worker_health_port), HealthHandler
+    )
     server.timeout = 1
     logger.info("worker started health_port=%s", settings.worker_health_port)
 

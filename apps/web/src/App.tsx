@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-type ApiState = 'checking' | 'online' | 'offline'
+import { apiStateFromResponse, type ApiState } from './api-status'
 
 function App() {
   const [apiState, setApiState] = useState<ApiState>('checking')
@@ -10,7 +10,7 @@ function App() {
 
     fetch('/api/v1/health/ready', { signal: controller.signal })
       .then((response) => {
-        setApiState(response.ok ? 'online' : 'offline')
+        setApiState(apiStateFromResponse(response.ok))
       })
       .catch(() => {
         if (!controller.signal.aborted) setApiState('offline')
