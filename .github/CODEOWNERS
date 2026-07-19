@@ -1,0 +1,16 @@
+# Responsável padrão enquanto o time de mantenedores é formado.
+* @zemsoft-br
+
+# Governança, segurança e decisões arquiteturais exigem revisão do mantenedor.
+/.github/ @zemsoft-br
+/SECURITY.md @zemsoft-br
+/CONTRIBUTING.md @zemsoft-br
+/docs/adr/ @zemsoft-br
+/docs/GOVERNANCE.md @zemsoft-br
+
+# Contratos centrais e infraestrutura sensível.
+/apps/api/app/core/security/ @zemsoft-br
+/apps/api/app/core/database/ @zemsoft-br
+/apps/api/app/modules/identities/ @zemsoft-br
+/apps/api/app/modules/ledger/ @zemsoft-br
+/infra/ @zemsoft-br
