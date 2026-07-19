@@ -9,7 +9,7 @@ from app.core.config import get_settings
 def get_engine() -> Engine:
     settings = get_settings()
     return create_engine(
-        settings.database_url,
+        settings.database_url.get_secret_value(),
         pool_pre_ping=True,
         pool_size=5,
         max_overflow=5,

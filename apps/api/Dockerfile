@@ -8,12 +8,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --home-dir /app app
 
+WORKDIR /workspace
+
+COPY packages/security/pyproject.toml ./packages/security/
+COPY packages/security/src ./packages/security/src
+COPY apps/api/pyproject.toml ./apps/api/
+COPY apps/api/app ./apps/api/app
+RUN python -m pip install ./packages/security ./apps/api
+
 WORKDIR /app
-
-COPY pyproject.toml ./
-COPY app ./app
-RUN python -m pip install .
-
 USER app
 EXPOSE 8000
 

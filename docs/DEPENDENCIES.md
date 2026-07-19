@@ -24,9 +24,17 @@ As imagens `python:*‑slim`, `node:*‑alpine`, `postgres:*‑alpine` e `caddy:
 | psycopg | 3.3.4 | driver PostgreSQL | LGPL-3.0-only |
 | SQLAlchemy | 2.0.51 | acesso à persistência da API | MIT |
 | Uvicorn | 0.51.0 | servidor ASGI | BSD-3-Clause |
+| cryptography | 49.0.0 | AES-256-GCM autenticado | Apache-2.0 OR BSD-3-Clause |
+| argon2-cffi | 25.1.0 | hashing Argon2id de senhas | MIT |
 | httpx | 0.28.1 | testes da API | BSD-3-Clause |
 | pytest | 9.1.1 | testes Python | MIT |
 | setuptools | 80.9.0 | build dos pacotes locais | MIT |
+
+## Pacotes internos
+
+| Pacote | Versão | Uso | Licença |
+|---|---:|---|---|
+| meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
 
 ## Ferramentas Python de qualidade
 
@@ -60,6 +68,8 @@ Essas ferramentas são instaladas em `.quality-venv` pelo script local e não fa
 ## Avaliação
 
 Não foi identificada incompatibilidade direta que impeça a combinação com `AGPL-3.0-only`. A LGPL do psycopg permite uso e distribuição nas condições da própria licença; seus avisos e código-fonte correspondente devem ser tratados no inventário de terceiros aplicável.
+
+`cryptography` utiliza licença dual permissiva Apache-2.0/BSD-3-Clause. `argon2-cffi` declara MIT. Ambas permanecem sujeitas ao inventário transitivo e aos notices da distribuição.
 
 Os gates geram inventários preliminares das dependências instaladas e bloqueiam famílias conhecidas que exigem revisão específica. Esse controle não substitui revisão jurídica nem um SBOM da release.
 

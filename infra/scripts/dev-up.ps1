@@ -2,6 +2,40 @@ $ErrorActionPreference = "Stop"
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "../..")).Path
 $EnvFile = Join-Path $RootDir ".env"
+$SecretsDir = Join-Path $RootDir ".secrets"
+$KeyringFile = Join-Path $SecretsDir "keyring.json"
+
+function New-RandomBytes([int]$Length) {
+    $bytes = New-Object byte[] $Length
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    }
+    finally {
+        $rng.Dispose()
+    }
+    return $bytes
+}
+
+function ConvertTo-Base64Url([byte[]]$Bytes) {
+    return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+}
+
+function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
+    if (-not (Get-Command icacls -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rights = if ($IsDirectory) { "(OI)(CI)F" } else { "F" }
+    & icacls $Path /inheritance:r /grant:r `
+        "$identity`:$rights" `
+        "*S-1-5-18`:$rights" `
+        "*S-1-5-32-544`:$rights" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Não foi possível restringir automaticamente a ACL de $Path."
+    }
+}
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
@@ -10,25 +44,43 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
 docker compose version | Out-Null
 
 if (-not (Test-Path $EnvFile)) {
-    $bytes = New-Object byte[] 24
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    try {
-        $rng.GetBytes($bytes)
-    }
-    finally {
-        $rng.Dispose()
-    }
-    $password = -join ($bytes | ForEach-Object { $_.ToString("x2") })
+    $password = -join ((New-RandomBytes 24) | ForEach-Object { $_.ToString("x2") })
 
     @"
 POSTGRES_DB=meufinanceiro
 POSTGRES_USER=meufinanceiro
 POSTGRES_PASSWORD=$password
 APP_HTTP_PORT=8080
+APP_KEYRING_FILE_HOST=.secrets/keyring.json
 "@ | Set-Content -Path $EnvFile -Encoding utf8
 
     Write-Host "Configuração local criada em .env."
 }
+elseif (-not (Select-String -Path $EnvFile -Pattern '^APP_KEYRING_FILE_HOST=' -Quiet)) {
+    Add-Content -Path $EnvFile -Value "`nAPP_KEYRING_FILE_HOST=.secrets/keyring.json"
+}
+Set-PrivateAcl -Path $EnvFile -IsDirectory $false
+
+if (-not (Test-Path $KeyringFile)) {
+    New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
+    $keyId = "k_$(ConvertTo-Base64Url (New-RandomBytes 12))"
+    $keys = [ordered]@{}
+    $keys[$keyId] = ConvertTo-Base64Url (New-RandomBytes 32)
+    $keyring = [ordered]@{
+        active_key_id = $keyId
+        keys = $keys
+        version = 1
+    }
+    $json = $keyring | ConvertTo-Json -Compress -Depth 4
+    [System.IO.File]::WriteAllText(
+        $KeyringFile,
+        "$json`n",
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+    Write-Host "Keyring local criado em .secrets/keyring.json."
+}
+Set-PrivateAcl -Path $SecretsDir -IsDirectory $true
+Set-PrivateAcl -Path $KeyringFile -IsDirectory $false
 
 $port = 8080
 Get-Content $EnvFile | ForEach-Object {

@@ -13,11 +13,13 @@ on:
     paths:
       - compose.yaml
       - '**/Dockerfile'
+      - packages/security/**
       - apps/api/pyproject.toml
       - apps/worker/pyproject.toml
       - apps/web/package.json
       - apps/web/package-lock.json
       - infra/caddy/**
+      - infra/scripts/manage-secrets.py
       - tests/smoke/**
       - .github/workflows/container-quality.yml
   workflow_dispatch:
@@ -34,7 +36,7 @@ jobs:
     name: Docker Compose integration
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout pull request head
@@ -43,7 +45,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - name: Create disposable environment
+      - name: Create disposable environment and keyring
         shell: bash
         run: |
           umask 077
@@ -52,7 +54,9 @@ jobs:
           POSTGRES_USER=meufinanceiro_ci
           POSTGRES_PASSWORD=$(openssl rand -hex 32)
           APP_HTTP_PORT=8080
+          APP_KEYRING_FILE_HOST=.secrets/keyring.json
           EOF
+          python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
 
       - name: Validate Compose contract
         run: docker compose config --quiet

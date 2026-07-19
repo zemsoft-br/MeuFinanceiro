@@ -10,7 +10,11 @@ DENIED = re.compile(
     r"GPL-2\.0-only|SSPL|BUSL|Business Source License|Commons Clause|Elastic License|PolyForm",
     re.IGNORECASE,
 )
-LOCAL_PACKAGES = {"meufinanceiro-api", "meufinanceiro-worker"}
+LOCAL_PACKAGES = {
+    "meufinanceiro-api",
+    "meufinanceiro-security",
+    "meufinanceiro-worker",
+}
 
 
 def license_text(distribution: metadata.Distribution) -> str:

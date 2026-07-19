@@ -4,13 +4,18 @@ import signal
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 import psycopg
+from meufinanceiro_security.keyring import load_keyring
+from meufinanceiro_security.redaction import install_log_redaction
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    database_url: str
+    database_url: SecretStr
+    app_keyring_file: Path = Path("/run/secrets/app_keyring")
     worker_health_port: int = 8081
     app_log_level: str = "INFO"
 
@@ -22,13 +27,17 @@ logging.basicConfig(
     level=getattr(logging, settings.app_log_level.upper(), logging.INFO),
     format='{"timestamp":"%(asctime)s","level":"%(levelname)s","service":"worker","message":"%(message)s"}',
 )
+install_log_redaction()
 logger = logging.getLogger("meufinanceiro.worker")
 stop_event = threading.Event()
 
 
 def database_is_ready() -> bool:
     try:
-        with psycopg.connect(settings.database_url, connect_timeout=2) as connection:
+        with psycopg.connect(
+            settings.database_url.get_secret_value(),
+            connect_timeout=2,
+        ) as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1")
                 cursor.fetchone()
@@ -72,8 +81,11 @@ def main() -> None:
     signal.signal(signal.SIGTERM, request_shutdown)
     signal.signal(signal.SIGINT, request_shutdown)
 
+    load_keyring(settings.app_keyring_file)
+
     server = ThreadingHTTPServer(
-        ("0.0.0.0", settings.worker_health_port), HealthHandler
+        ("0.0.0.0", settings.worker_health_port),
+        HealthHandler,
     )
     server.timeout = 1
     logger.info("worker started health_port=%s", settings.worker_health_port)

@@ -64,12 +64,16 @@ services:
 
   api:
     build:
-      context: ./apps/api
+      context: .
+      dockerfile: apps/api/Dockerfile
     init: true
     environment:
       APP_ENV: local
       APP_LOG_LEVEL: INFO
+      APP_KEYRING_FILE: /run/secrets/app_keyring
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?run infra/scripts/dev-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
+    secrets:
+      - app_keyring
     expose:
       - "8000"
     depends_on:
@@ -99,13 +103,17 @@ services:
 
   worker:
     build:
-      context: ./apps/worker
+      context: .
+      dockerfile: apps/worker/Dockerfile
     init: true
     environment:
       APP_ENV: local
       APP_LOG_LEVEL: INFO
+      APP_KEYRING_FILE: /run/secrets/app_keyring
       DATABASE_URL: postgresql://${POSTGRES_USER:?run infra/scripts/dev-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
       WORKER_HEALTH_PORT: "8081"
+    secrets:
+      - app_keyring
     expose:
       - "8081"
     depends_on:
@@ -162,3 +170,7 @@ networks:
 
 volumes:
   postgres_data:
+
+secrets:
+  app_keyring:
+    file: ${APP_KEYRING_FILE_HOST:-./.secrets/keyring.json}
