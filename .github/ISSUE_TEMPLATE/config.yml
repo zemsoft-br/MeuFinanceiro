@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Relatar vulnerabilidade
+    url: https://github.com/zemsoft-br/MeuFinanceiro/security/advisories/new
+    about: Não publique vulnerabilidades em issues públicas.
