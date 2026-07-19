@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Any, Mapping
 from uuid import UUID, uuid4
 
 from meufinanceiro_security.redaction import redact_text
-from sqlalchemy import Engine, and_, delete, or_, select, update
+from sqlalchemy import Engine, and_, delete, func, or_, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
@@ -97,7 +97,7 @@ class TaskQueue:
         if max_attempts < 1:
             raise ValueError("max_attempts must be positive")
 
-        now = _utcnow()
+        database_now = func.now()
         insert_statement = postgresql_insert(task_queue).values(
             id=uuid4(),
             task_type=task_type,
@@ -107,14 +107,14 @@ class TaskQueue:
             correlation_id=correlation_id or uuid4(),
             attempts=0,
             max_attempts=max_attempts,
-            available_at=available_at or now,
+            available_at=available_at if available_at is not None else database_now,
             locked_at=None,
             lease_expires_at=None,
             locked_by=None,
             lease_token=None,
             last_error=None,
-            created_at=now,
-            updated_at=now,
+            created_at=database_now,
+            updated_at=database_now,
             completed_at=None,
         )
         statement = insert_statement.on_conflict_do_update(
@@ -132,7 +132,7 @@ class TaskQueue:
         if lease_seconds < 1:
             raise ValueError("lease_seconds must be positive")
 
-        now = _utcnow()
+        database_now = func.now()
         lease_token = uuid4()
         candidate = (
             select(task_queue.c.id)
@@ -141,11 +141,11 @@ class TaskQueue:
                 or_(
                     and_(
                         task_queue.c.status == TaskStatus.PENDING.value,
-                        task_queue.c.available_at <= now,
+                        task_queue.c.available_at <= database_now,
                     ),
                     and_(
                         task_queue.c.status == TaskStatus.RUNNING.value,
-                        task_queue.c.lease_expires_at <= now,
+                        task_queue.c.lease_expires_at <= database_now,
                     ),
                 ),
             )
@@ -160,12 +160,12 @@ class TaskQueue:
             .values(
                 status=TaskStatus.RUNNING.value,
                 attempts=task_queue.c.attempts + 1,
-                locked_at=now,
-                lease_expires_at=now + timedelta(seconds=lease_seconds),
+                locked_at=database_now,
+                lease_expires_at=database_now + timedelta(seconds=lease_seconds),
                 locked_by=worker_id,
                 lease_token=lease_token,
                 last_error=None,
-                updated_at=now,
+                updated_at=database_now,
                 completed_at=None,
             )
             .returning(*task_queue.c)
@@ -177,7 +177,7 @@ class TaskQueue:
 
     def succeed(self, task: TaskRecord) -> TaskRecord:
         lease_token = _require_lease(task)
-        now = _utcnow()
+        database_now = func.now()
         statement = (
             update(task_queue)
             .where(
@@ -185,7 +185,7 @@ class TaskQueue:
                 task_queue.c.status == TaskStatus.RUNNING.value,
                 task_queue.c.locked_by == task.locked_by,
                 task_queue.c.lease_token == lease_token,
-                task_queue.c.lease_expires_at > now,
+                task_queue.c.lease_expires_at > database_now,
             )
             .values(
                 status=TaskStatus.SUCCEEDED.value,
@@ -194,8 +194,8 @@ class TaskQueue:
                 locked_by=None,
                 lease_token=None,
                 last_error=None,
-                updated_at=now,
-                completed_at=now,
+                updated_at=database_now,
+                completed_at=database_now,
             )
             .returning(*task_queue.c)
         )
@@ -212,7 +212,7 @@ class TaskQueue:
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds must not be negative")
 
-        now = _utcnow()
+        database_now = func.now()
         sanitized_error = redact_text(str(error))[:MAX_ERROR_LENGTH]
         should_retry = task.attempts < task.max_attempts
         status = TaskStatus.PENDING if should_retry else TaskStatus.FAILED
@@ -223,12 +223,12 @@ class TaskQueue:
                 task_queue.c.status == TaskStatus.RUNNING.value,
                 task_queue.c.locked_by == task.locked_by,
                 task_queue.c.lease_token == lease_token,
-                task_queue.c.lease_expires_at > now,
+                task_queue.c.lease_expires_at > database_now,
             )
             .values(
                 status=status.value,
                 available_at=(
-                    now + timedelta(seconds=retry_delay_seconds)
+                    database_now + timedelta(seconds=retry_delay_seconds)
                     if should_retry
                     else task.available_at
                 ),
@@ -237,8 +237,8 @@ class TaskQueue:
                 locked_by=None,
                 lease_token=None,
                 last_error=sanitized_error,
-                updated_at=now,
-                completed_at=None if should_retry else now,
+                updated_at=database_now,
+                completed_at=None if should_retry else database_now,
             )
             .returning(*task_queue.c)
         )
@@ -248,7 +248,7 @@ class TaskQueue:
         lease_token = _require_lease(task)
         if lease_seconds < 1:
             raise ValueError("lease_seconds must be positive")
-        now = _utcnow()
+        database_now = func.now()
         statement = (
             update(task_queue)
             .where(
@@ -256,23 +256,23 @@ class TaskQueue:
                 task_queue.c.status == TaskStatus.RUNNING.value,
                 task_queue.c.locked_by == task.locked_by,
                 task_queue.c.lease_token == lease_token,
-                task_queue.c.lease_expires_at > now,
+                task_queue.c.lease_expires_at > database_now,
             )
             .values(
-                lease_expires_at=now + timedelta(seconds=lease_seconds),
-                updated_at=now,
+                lease_expires_at=database_now + timedelta(seconds=lease_seconds),
+                updated_at=database_now,
             )
             .returning(*task_queue.c)
         )
         return self._execute_lease_update(statement)
 
     def recover_exhausted_leases(self) -> int:
-        now = _utcnow()
+        database_now = func.now()
         statement = (
             update(task_queue)
             .where(
                 task_queue.c.status == TaskStatus.RUNNING.value,
-                task_queue.c.lease_expires_at <= now,
+                task_queue.c.lease_expires_at <= database_now,
                 task_queue.c.attempts >= task_queue.c.max_attempts,
             )
             .values(
@@ -282,8 +282,8 @@ class TaskQueue:
                 locked_by=None,
                 lease_token=None,
                 last_error="task lease expired after maximum attempts",
-                updated_at=now,
-                completed_at=now,
+                updated_at=database_now,
+                completed_at=database_now,
             )
         )
         with self._engine.begin() as connection:
@@ -314,7 +314,3 @@ def _require_lease(task: TaskRecord) -> UUID:
     if task.status is not TaskStatus.RUNNING or task.lease_token is None:
         raise LostLeaseError("task does not contain an active lease")
     return task.lease_token
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)

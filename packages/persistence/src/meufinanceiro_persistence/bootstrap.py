@@ -25,6 +25,16 @@ def bootstrap_runtime_role(settings: BootstrapSettings) -> None:
     with psycopg.connect(database_url, autocommit=True) as connection:
         database_name = connection.info.dbname
         with connection.cursor() as cursor:
+            cursor.execute("SELECT current_user")
+            administrative_row = cursor.fetchone()
+            if administrative_row is None:
+                raise RuntimeError("database did not return the administrative role")
+            administrative_role = administrative_row[0]
+            if role_name == administrative_role:
+                raise ValueError(
+                    "APP_DATABASE_USER must differ from the administrative database role"
+                )
+
             cursor.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role_name,))
             exists = cursor.fetchone() is not None
             if not exists:

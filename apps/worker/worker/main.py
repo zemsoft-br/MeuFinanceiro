@@ -74,6 +74,66 @@ def retry_delay(task: TaskRecord, settings: Settings) -> int:
     return min(delay, settings.worker_retry_max_seconds)
 
 
+class LeaseHeartbeat:
+    """Renew a task lease while its handler is still running."""
+
+    def __init__(
+        self,
+        queue: TaskQueue,
+        task: TaskRecord,
+        *,
+        lease_seconds: int,
+        interval_seconds: float | None = None,
+    ) -> None:
+        self._queue = queue
+        self._task = task
+        self._lease_seconds = lease_seconds
+        self._interval_seconds = (
+            interval_seconds
+            if interval_seconds is not None
+            else max(0.1, lease_seconds / 3)
+        )
+        self._stop = threading.Event()
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"lease-heartbeat-{task.id}",
+            daemon=True,
+        )
+
+    def __enter__(self) -> LeaseHeartbeat:
+        self._thread.start()
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: type[BaseException] | None,
+        _exc_value: BaseException | None,
+        _traceback: object,
+    ) -> None:
+        self._stop.set()
+        self._thread.join(timeout=max(self._interval_seconds + 1, 2))
+
+    def _run(self) -> None:
+        while not self._stop.wait(self._interval_seconds):
+            try:
+                self._queue.renew(
+                    self._task,
+                    lease_seconds=self._lease_seconds,
+                )
+            except LostLeaseError:
+                logger.warning(
+                    "task lease heartbeat lost ownership task_id=%s",
+                    self._task.id,
+                )
+                return
+            except SQLAlchemyError:
+                logger.exception(
+                    "task lease heartbeat could not reach database task_id=%s",
+                    self._task.id,
+                )
+                return
+
+
 def build_health_handler(database: Database) -> type[BaseHTTPRequestHandler]:
     class HealthHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:  # noqa: N802 - stdlib contract
@@ -167,7 +227,12 @@ def run_worker(settings: Settings) -> None:
 
             try:
                 handler = HANDLERS[task.task_type]
-                handler(database, task)
+                with LeaseHeartbeat(
+                    queue,
+                    task,
+                    lease_seconds=settings.worker_lease_seconds,
+                ):
+                    handler(database, task)
             except Exception as exc:
                 try:
                     failed = queue.fail(

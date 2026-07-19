@@ -121,7 +121,9 @@ Campos operacionais principais:
 
 ## Recuperação de tarefa abandonada
 
-Uma tarefa `running` com lease expirado pode ser reservada por outro Worker se ainda houver tentativas. A nova reserva recebe outro `lease_token`; o Worker antigo não pode concluir a tarefa.
+Uma tarefa `running` tem o lease renovado periodicamente enquanto o handler permanece em execução. Todos os cálculos de validade usam o relógio do PostgreSQL, não o relógio local do container.
+
+Se o Worker parar de renovar e o lease expirar, outro Worker pode reservar a tarefa quando ainda houver tentativas. A nova reserva recebe outro `lease_token`; o Worker antigo não pode concluir a tarefa.
 
 Quando o lease expira após a última tentativa, o Worker a move para `failed` com erro operacional estável.
 

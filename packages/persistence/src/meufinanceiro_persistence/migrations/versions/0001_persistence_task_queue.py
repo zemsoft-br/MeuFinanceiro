@@ -114,6 +114,12 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    role = _quoted_role()
+    op.execute(
+        f"ALTER DEFAULT PRIVILEGES IN SCHEMA infra "
+        f"REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM {role}"
+    )
+    op.execute(f"REVOKE SELECT ON TABLE public.alembic_version FROM {role}")
     op.drop_table("demo_task_effects", schema="infra")
     op.drop_index("ix_task_queue_claimable", table_name="task_queue", schema="infra")
     op.drop_table("task_queue", schema="infra")

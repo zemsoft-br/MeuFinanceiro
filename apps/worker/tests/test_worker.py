@@ -1,9 +1,10 @@
+import threading
 from pathlib import Path
 from uuid import uuid4
 
 from meufinanceiro_persistence.queue import TaskRecord, TaskStatus
 
-from worker.main import Settings, retry_delay
+from worker.main import LeaseHeartbeat, Settings, retry_delay
 
 
 def task(attempts: int) -> TaskRecord:
@@ -42,3 +43,29 @@ def test_retry_delay_is_exponential_and_capped(tmp_path: Path) -> None:
     assert retry_delay(task(1), settings) == 2
     assert retry_delay(task(2), settings) == 4
     assert retry_delay(task(4), settings) == 10
+
+
+class RecordingQueue:
+    def __init__(self) -> None:
+        self.renewed = threading.Event()
+        self.calls = 0
+
+    def renew(self, task: TaskRecord, *, lease_seconds: int) -> TaskRecord:
+        assert lease_seconds == 30
+        self.calls += 1
+        self.renewed.set()
+        return task
+
+
+def test_lease_heartbeat_renews_during_handler() -> None:
+    queue = RecordingQueue()
+
+    with LeaseHeartbeat(
+        queue,  # type: ignore[arg-type]
+        task(1),
+        lease_seconds=30,
+        interval_seconds=0.01,
+    ):
+        assert queue.renewed.wait(timeout=1)
+
+    assert queue.calls >= 1

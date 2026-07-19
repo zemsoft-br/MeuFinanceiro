@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Barrier
 from uuid import uuid4
 
+import psycopg
 import pytest
 from sqlalchemy import Engine, func, select, update
 
@@ -14,10 +15,15 @@ from meufinanceiro_persistence import (
     TaskRecord,
     TaskStatus,
 )
+from meufinanceiro_persistence.bootstrap import (
+    bootstrap_runtime_role,
+    normalize_psycopg_url,
+)
 from meufinanceiro_persistence.database import Database
 from meufinanceiro_persistence.health import inspect_persistence_health
 from meufinanceiro_persistence.migrations import downgrade_to_base, upgrade
 from meufinanceiro_persistence.schema import demo_task_effects, task_queue
+from meufinanceiro_persistence.settings import BootstrapSettings
 
 
 def test_00_initial_migration_round_trip(
@@ -32,6 +38,29 @@ def test_00_initial_migration_round_trip(
     health = inspect_persistence_health(engine)
     assert health.ready
     assert health.current_revision == health.expected_revision
+
+
+def test_bootstrap_rejects_administrative_role_as_runtime_role(
+    database_url: str,
+) -> None:
+    with psycopg.connect(normalize_psycopg_url(database_url)) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT current_user")
+            administrative_row = cursor.fetchone()
+            assert administrative_row is not None
+            administrative_role = administrative_row[0]
+
+    settings = BootstrapSettings(
+        admin_database_url=database_url,
+        app_database_user=administrative_role,
+        app_database_password="disposable-test-password",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="must differ from the administrative database role",
+    ):
+        bootstrap_runtime_role(settings)
 
 
 def test_database_transaction_commits_and_rolls_back(

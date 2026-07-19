@@ -19,8 +19,8 @@ Adicionar Redis, RabbitMQ ou outro broker nesta fase aumentaria a superfície op
 5. Objetos da fila ficam no schema `infra`, separados dos futuros schemas funcionais.
 6. Bootstrap e migração usam a role administrativa local. API e Worker usam uma role de runtime sem `SUPERUSER`, `CREATEDB`, `CREATEROLE`, `REPLICATION` ou `BYPASSRLS`.
 7. A fila possui os estados `pending`, `running`, `succeeded`, `failed` e `cancelled`.
-8. A reserva usa `FOR UPDATE SKIP LOCKED`, incrementa a tentativa e cria um lease com `lease_token`, proprietário e expiração.
-9. Finalização, falha e renovação exigem o mesmo lease ainda válido. Um Worker com lease antigo não pode concluir tarefa recuperada por outro consumidor.
+8. A reserva usa `FOR UPDATE SKIP LOCKED`, incrementa a tentativa e cria um lease com `lease_token`, proprietário e expiração. Comparações e prazos do lease usam o relógio transacional do PostgreSQL, evitando divergência entre relógios dos processos.
+9. Finalização, falha e renovação exigem o mesmo lease ainda válido. Enquanto um handler executa, o Worker renova o lease periodicamente; um Worker com lease antigo não pode concluir tarefa recuperada por outro consumidor.
 10. Locks expirados podem ser reservados novamente enquanto houver tentativas. Locks expirados sem tentativas restantes tornam-se falhas terminais auditáveis.
 11. `idempotency_key` possui unicidade global. Repetir o enqueue retorna a tarefa existente.
 12. Retry usa `available_at` e backoff exponencial limitado. Erros persistidos são sanitizados e truncados.
@@ -59,7 +59,7 @@ Rejeitada como promessa global. Falhas entre o efeito externo e a confirmação 
 
 - a fila compartilha capacidade com o banco principal;
 - consultas e índices da fila precisarão de observação conforme o volume crescer;
-- leases exigem dimensionamento compatível com o tempo máximo dos handlers ou renovação periódica;
+- leases exigem heartbeat ativo; indisponibilidade prolongada do banco pode tornar a propriedade incerta e requer efeitos idempotentes;
 - idempotência de enqueue não elimina a obrigação de handlers idempotentes;
 - alterações futuras de schema precisam preservar grants da role de runtime.
 
