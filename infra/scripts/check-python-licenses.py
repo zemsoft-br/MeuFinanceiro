@@ -18,7 +18,9 @@ def license_text(distribution: metadata.Distribution) -> str:
     declared = distribution.metadata.get("License")
     classifiers = distribution.metadata.get_all("Classifier") or []
     license_classifiers = [
-        item.removeprefix("License :: ") for item in classifiers if item.startswith("License :: ")
+        item.removeprefix("License :: ")
+        for item in classifiers
+        if item.startswith("License :: ")
     ]
     return expression or declared or "; ".join(license_classifiers) or "UNKNOWN"
 

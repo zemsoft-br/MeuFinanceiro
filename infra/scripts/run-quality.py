@@ -20,7 +20,9 @@ TOOLS = (
 )
 
 
-def run(command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None) -> None:
+def run(
+    command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None
+) -> None:
     print(f"+ {' '.join(command)}", flush=True)
     subprocess.run(command, cwd=cwd, env=env, check=True)
 
@@ -57,13 +59,26 @@ def ensure_python_environment(recreate: bool) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--recreate", action="store_true", help="Recreate the quality virtualenv")
+    parser.add_argument(
+        "--recreate", action="store_true", help="Recreate the quality virtualenv"
+    )
     args = parser.parse_args()
 
     run([sys.executable, "infra/scripts/check-repository-safety.py"])
     python = ensure_python_environment(args.recreate)
 
-    run([str(python), "-m", "ruff", "check", "apps/api", "apps/worker", "infra/scripts", "tests/quality"])
+    run(
+        [
+            str(python),
+            "-m",
+            "ruff",
+            "check",
+            "apps/api",
+            "apps/worker",
+            "infra/scripts",
+            "tests/quality",
+        ]
+    )
     run(
         [
             str(python),
@@ -84,7 +99,9 @@ def main() -> int:
 
     web = ROOT / "apps" / "web"
     if not (web / "package-lock.json").exists():
-        raise RuntimeError("apps/web/package-lock.json is required; generate and commit it first")
+        raise RuntimeError(
+            "apps/web/package-lock.json is required; generate and commit it first"
+        )
 
     run(["npm", "ci", "--no-audit", "--no-fund"], cwd=web)
     run(["npm", "run", "lint"], cwd=web)

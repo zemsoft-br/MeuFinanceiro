@@ -28,7 +28,11 @@ def git(repo: Path, *args: str) -> str:
 
 def validate(repo: Path, base: str, head: str) -> list[str]:
     commit_range = f"{base}..{head}"
-    commits = [line for line in git(repo, "rev-list", "--reverse", commit_range).splitlines() if line]
+    commits = [
+        line
+        for line in git(repo, "rev-list", "--reverse", commit_range).splitlines()
+        if line
+    ]
     failures: list[str] = []
 
     for commit in commits:
