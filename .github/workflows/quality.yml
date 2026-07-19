@@ -24,7 +24,24 @@ jobs:
     name: Mandatory quality gates
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres-test-password@127.0.0.1:5432/meufinanceiro_test
+      TEST_APP_DATABASE_USER: postgres
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: meufinanceiro_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meufinanceiro_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
 
     steps:
       - name: Checkout pull request head
@@ -41,6 +58,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             packages/security/pyproject.toml
+            packages/persistence/pyproject.toml
             apps/api/pyproject.toml
             apps/worker/pyproject.toml
             infra/scripts/run-quality.py
@@ -82,28 +100,29 @@ jobs:
             pip-audit==2.10.1 \
             ruff==0.15.22 \
             -e './packages/security[test]' \
+            -e './packages/persistence[test]' \
             -e './apps/api[test]' \
-            -e ./apps/worker
+            -e './apps/worker[test]'
 
       - name: Lint Python
         run: >-
           .quality-venv/bin/python -m ruff check
-          packages/security apps/api apps/worker infra/scripts tests/quality
+          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality
 
       - name: Check Python formatting
         run: >-
           .quality-venv/bin/python -m ruff format --check
-          packages/security apps/api apps/worker infra/scripts tests/quality
+          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality
 
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
-          packages/security/src apps/api/app apps/worker/worker
+          packages/security/src packages/persistence/src apps/api/app apps/worker/worker
 
       - name: Test Python
         run: >-
           .quality-venv/bin/python -m pytest
-          packages/security/tests apps/api/tests tests/quality
+          packages/security/tests packages/persistence/tests apps/api/tests apps/worker/tests tests/quality
 
       - name: Check Python licenses
         run: .quality-venv/bin/python infra/scripts/check-python-licenses.py

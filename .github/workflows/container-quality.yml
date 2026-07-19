@@ -14,6 +14,7 @@ on:
       - compose.yaml
       - '**/Dockerfile'
       - packages/security/**
+      - packages/persistence/**
       - apps/api/pyproject.toml
       - apps/worker/pyproject.toml
       - apps/web/package.json
@@ -36,7 +37,7 @@ jobs:
     name: Docker Compose integration
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout pull request head
@@ -49,13 +50,15 @@ jobs:
         shell: bash
         run: |
           umask 077
-          cat > .env <<EOF
+          cat > .env <<EOF_ENV
           POSTGRES_DB=meufinanceiro_ci
-          POSTGRES_USER=meufinanceiro_ci
+          POSTGRES_USER=meufinanceiro_admin_ci
           POSTGRES_PASSWORD=$(openssl rand -hex 32)
+          APP_DATABASE_USER=meufinanceiro_app_ci
+          APP_DATABASE_PASSWORD=$(openssl rand -hex 32)
           APP_HTTP_PORT=8080
           APP_KEYRING_FILE_HOST=.secrets/keyring.json
-          EOF
+          EOF_ENV
           python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
 
       - name: Validate Compose contract
@@ -82,10 +85,36 @@ jobs:
       - name: Run smoke test
         run: bash tests/smoke/compose-smoke.sh
 
+      - name: Verify runtime role is unprivileged
+        shell: bash
+        run: |
+          docker compose exec -T api python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as connection:
+              row = connection.execute(text(
+                  "SELECT current_user AS name, rolsuper, rolcreatedb, rolcreaterole, "
+                  "rolreplication, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+              )).mappings().one()
+          assert not row["rolsuper"]
+          assert not row["rolcreatedb"]
+          assert not row["rolcreaterole"]
+          assert not row["rolreplication"]
+          assert not row["rolbypassrls"]
+          with engine.connect() as connection:
+              can_create = connection.scalar(text(
+                  "SELECT has_schema_privilege(current_user, 'infra', 'CREATE')"
+              ))
+          assert can_create is False
+          print(f"runtime role validated: {row['name']}")
+          PY
+
       - name: Validate restart
         shell: bash
         run: |
-          docker compose restart
+          docker compose restart postgres api worker web caddy
           docker compose up --detach --wait --wait-timeout 120
           bash tests/smoke/compose-smoke.sh
 
@@ -97,4 +126,4 @@ jobs:
 
       - name: Stop stack gracefully
         if: always()
-        run: docker compose down --volumes --remove-orphans --timeout 30
+        run: docker compose down --volumes --remove-orphans --timeout 40
