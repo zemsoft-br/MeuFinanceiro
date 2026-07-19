@@ -281,6 +281,7 @@ jobs:
           set -euo pipefail
           flutter pub get
           flutter pub get --enforce-lockfile
+          dart format lib test
           dart format --output=none --set-exit-if-changed lib test
           flutter analyze
           flutter test
