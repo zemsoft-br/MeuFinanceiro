@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process'
 import process from 'node:process'
 
 const workingDirectory = process.argv[2] ?? 'apps/web'
-const result = spawnSync('npm', ['query', '.', '--json'], {
+const result = spawnSync('npm', ['query', '*', '--json'], {
   cwd: workingDirectory,
   encoding: 'utf8',
 })
