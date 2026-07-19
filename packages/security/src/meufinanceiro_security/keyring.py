@@ -10,6 +10,8 @@ import re
 import secrets
 import stat
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -194,17 +196,39 @@ def write_keyring(path: str | Path, keyring: Keyring) -> None:
         raise
 
 
+@contextmanager
+def _exclusive_keyring_lock(path: Path) -> Iterator[None]:
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        parent.chmod(0o700)
+    lock_path = path.with_name(f".{path.name}.lock")
+    try:
+        descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    except FileExistsError as exc:
+        raise KeyringError("another keyring operation is already in progress") from exc
+    try:
+        os.write(descriptor, f"pid={os.getpid()}\n".encode("ascii"))
+        os.fsync(descriptor)
+        yield
+    finally:
+        os.close(descriptor)
+        lock_path.unlink(missing_ok=True)
+
+
 def initialize_keyring_file(path: str | Path) -> Keyring:
     resolved = Path(path)
-    if resolved.exists():
-        raise KeyringError("keyring file already exists")
-    keyring = create_keyring()
-    write_keyring(resolved, keyring)
+    with _exclusive_keyring_lock(resolved):
+        if resolved.exists():
+            raise KeyringError("keyring file already exists")
+        keyring = create_keyring()
+        write_keyring(resolved, keyring)
     return keyring
 
 
 def rotate_keyring_file(path: str | Path) -> Keyring:
     resolved = Path(path)
-    rotated = rotate_keyring(load_keyring(resolved))
-    write_keyring(resolved, rotated)
+    with _exclusive_keyring_lock(resolved):
+        rotated = rotate_keyring(load_keyring(resolved))
+        write_keyring(resolved, rotated)
     return rotated

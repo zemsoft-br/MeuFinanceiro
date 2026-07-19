@@ -9,16 +9,24 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 REDACTED = "[REDACTED]"
-SENSITIVE_KEY_PATTERN = re.compile(
-    r"(?:password|passwd|pwd|token|authorization|cookie|api[_-]?key|client[_-]?secret|"
-    r"master[_-]?key|key[_-]?material|database[_-]?url|connection[_-]?string)",
-    re.IGNORECASE,
+SENSITIVE_KEYS = (
+    r"password|passwd|pwd|token|authorization|cookie|api[_-]?key|client[_-]?secret|"
+    r"master[_-]?key|key[_-]?material|database[_-]?url|connection[_-]?string"
 )
+SENSITIVE_KEY_PATTERN = re.compile(rf"(?:{SENSITIVE_KEYS})", re.IGNORECASE)
 URL_CREDENTIAL_PATTERN = re.compile(
     r"(?P<prefix>[A-Za-z][A-Za-z0-9+.-]*://[^:/\s@]+:)(?P<secret>[^@\s]+)(?P<suffix>@)"
 )
 AUTHORIZATION_PATTERN = re.compile(
     r"(?P<prefix>\b(?:Bearer|Basic)\s+)(?P<secret>[A-Za-z0-9._~+/=-]+)",
+    re.IGNORECASE,
+)
+COOKIE_PATTERN = re.compile(
+    r"(?P<prefix>\b(?:Cookie|Set-Cookie)\s*:\s*)(?P<secret>[^\r\n]+)",
+    re.IGNORECASE,
+)
+JSON_ASSIGNMENT_PATTERN = re.compile(
+    rf'(?P<prefix>"(?:{SENSITIVE_KEYS})"\s*:\s*")(?P<secret>(?:\\.|[^"])*)"',
     re.IGNORECASE,
 )
 ASSIGNMENT_PATTERN = re.compile(
@@ -35,6 +43,14 @@ def redact_text(value: str) -> str:
     )
     redacted = AUTHORIZATION_PATTERN.sub(
         lambda match: f"{match.group('prefix')}{REDACTED}",
+        redacted,
+    )
+    redacted = COOKIE_PATTERN.sub(
+        lambda match: f"{match.group('prefix')}{REDACTED}",
+        redacted,
+    )
+    redacted = JSON_ASSIGNMENT_PATTERN.sub(
+        lambda match: f'{match.group("prefix")}{REDACTED}"',
         redacted,
     )
     return ASSIGNMENT_PATTERN.sub(
@@ -73,14 +89,18 @@ class RedactingFilter(logging.Filter):
         return True
 
 
+def _ensure_filter(target: logging.Filterer) -> None:
+    if not any(isinstance(existing, RedactingFilter) for existing in target.filters):
+        target.addFilter(RedactingFilter())
+
+
 def install_log_redaction() -> None:
-    redacting_filter = RedactingFilter()
     root = logging.getLogger()
-    root.addFilter(redacting_filter)
+    _ensure_filter(root)
     for handler in root.handlers:
-        handler.addFilter(redacting_filter)
+        _ensure_filter(handler)
     for candidate in logging.Logger.manager.loggerDict.values():
         if isinstance(candidate, logging.Logger):
-            candidate.addFilter(redacting_filter)
+            _ensure_filter(candidate)
             for handler in candidate.handlers:
-                handler.addFilter(redacting_filter)
+                _ensure_filter(handler)

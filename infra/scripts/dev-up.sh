@@ -30,11 +30,11 @@ POSTGRES_PASSWORD=$PASSWORD
 APP_HTTP_PORT=8080
 APP_KEYRING_FILE_HOST=.secrets/keyring.json
 ENV
-  chmod 600 "$ENV_FILE"
   echo "Configuração local criada em .env."
 elif ! grep -q '^APP_KEYRING_FILE_HOST=' "$ENV_FILE"; then
   printf '\nAPP_KEYRING_FILE_HOST=.secrets/keyring.json\n' >> "$ENV_FILE"
 fi
+chmod 600 "$ENV_FILE"
 
 if [ ! -f "$KEYRING_FILE" ]; then
   python3 "$ROOT_DIR/infra/scripts/manage-secrets.py" init --path "$KEYRING_FILE"

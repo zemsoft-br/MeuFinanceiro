@@ -21,6 +21,22 @@ function ConvertTo-Base64Url([byte[]]$Bytes) {
     return [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
+function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
+    if (-not (Get-Command icacls -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    $identity = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $rights = if ($IsDirectory) { "(OI)(CI)F" } else { "F" }
+    & icacls $Path /inheritance:r /grant:r `
+        "$identity`:$rights" `
+        "*S-1-5-18`:$rights" `
+        "*S-1-5-32-544`:$rights" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Não foi possível restringir automaticamente a ACL de $Path."
+    }
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
 }
@@ -43,6 +59,7 @@ APP_KEYRING_FILE_HOST=.secrets/keyring.json
 elseif (-not (Select-String -Path $EnvFile -Pattern '^APP_KEYRING_FILE_HOST=' -Quiet)) {
     Add-Content -Path $EnvFile -Value "`nAPP_KEYRING_FILE_HOST=.secrets/keyring.json"
 }
+Set-PrivateAcl -Path $EnvFile -IsDirectory $false
 
 if (-not (Test-Path $KeyringFile)) {
     New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
@@ -60,15 +77,10 @@ if (-not (Test-Path $KeyringFile)) {
         "$json`n",
         (New-Object System.Text.UTF8Encoding($false))
     )
-
-    if (Get-Command icacls -ErrorAction SilentlyContinue) {
-        & icacls $SecretsDir /inheritance:r /grant:r "$env:USERNAME`:(OI)(CI)F" | Out-Null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Warning "Não foi possível restringir automaticamente a ACL de .secrets."
-        }
-    }
     Write-Host "Keyring local criado em .secrets/keyring.json."
 }
+Set-PrivateAcl -Path $SecretsDir -IsDirectory $true
+Set-PrivateAcl -Path $KeyringFile -IsDirectory $false
 
 $port = 8080
 Get-Content $EnvFile | ForEach-Object {

@@ -30,6 +30,12 @@ python3 infra/scripts/manage-secrets.py validate
 
 A saída contém somente versão, identificador ativo e quantidade de chaves. Material Base64, plaintext e ciphertext não são exibidos.
 
+## Exclusão mútua
+
+Inicialização e rotação criam atomicamente um arquivo temporário `.keyring.json.lock`. Uma segunda operação concorrente falha antes de ler ou gravar o keyring, evitando perda de uma chave recém-gerada.
+
+O lock é removido ao final da operação, inclusive em falhas tratadas. Após encerramento abrupto do processo, um lock residual deve ser investigado antes da remoção manual; nunca apague o lock enquanto outro operador estiver executando a CLI.
+
 ## Rotação
 
 Antes da rotação:
@@ -80,7 +86,7 @@ chmod 644 .secrets/keyring.json
 
 O arquivo é legível porque o Compose o monta em processos não-root com UID fixo. O diretório `0700` impede descoberta e abertura pelo restante dos usuários do host. O arquivo nunca pode ser gravável por grupo ou outros.
 
-No Windows, `dev-up.ps1` tenta remover herança e conceder controle ao usuário atual. Revise a ACL manualmente em hosts compartilhados.
+No Windows, `dev-up.ps1` remove herança e preserva acesso apenas ao usuário atual, SYSTEM e ao grupo interno de administradores, permitindo a operação do Docker Desktop sem abrir o diretório a usuários comuns. Revise a ACL manualmente em hosts compartilhados.
 
 ## Incidente de perda ou exposição
 
