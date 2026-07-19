@@ -2,6 +2,7 @@
 .github
 .env
 .env.*
+.secrets
 **/__pycache__
 **/*.pyc
 **/.pytest_cache
