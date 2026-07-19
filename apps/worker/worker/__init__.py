@@ -1,0 +1,1 @@
+"""MeuFinanceiro worker package."""
