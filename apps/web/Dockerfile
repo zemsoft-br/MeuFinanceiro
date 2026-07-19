@@ -7,8 +7,8 @@ RUN mkdir -p /app && chown node:node /app
 WORKDIR /app
 USER node
 
-COPY --chown=node:node package.json ./
-RUN npm install --include=dev --no-audit --no-fund
+COPY --chown=node:node package.json package-lock.json ./
+RUN npm ci --include=dev --no-audit --no-fund
 
 COPY --chown=node:node . .
 EXPOSE 5173
