@@ -40,8 +40,10 @@ A distribuição principal será Docker Compose, com imagens `amd64` e `arm64`. 
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
+- [Governança](docs/GOVERNANCE.md)
 - [Decisões arquiteturais](docs/adr/README.md)
 - [Como contribuir](CONTRIBUTING.md)
+- [Suporte](SUPPORT.md)
 - [Política de segurança](SECURITY.md)
 
 ## Colaboração
@@ -56,7 +58,7 @@ feature/* -> develop -> release/* -> main
 
 Pull Requests devem começar como draft. Os quality gates principais serão executados quando a PR estiver pronta para revisão, reduzindo consumo desnecessário de GitHub Actions durante o desenvolvimento.
 
-Consulte [CONTRIBUTING.md](CONTRIBUTING.md) antes de assumir uma issue.
+Consulte [CONTRIBUTING.md](CONTRIBUTING.md) e a [governança](docs/GOVERNANCE.md) antes de assumir uma issue.
 
 ## Licença
 
