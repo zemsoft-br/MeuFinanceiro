@@ -50,8 +50,9 @@ def test_dco_checker_rejects_unsigned_commit(tmp_path: Path) -> None:
 
 def test_repository_safety_rejects_private_key(tmp_path: Path) -> None:
     initialize_repository(tmp_path)
+    private_key_marker = "-----BEGIN " + "PRIVATE KEY-----"
     (tmp_path / "leaked.pem").write_text(
-        "-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n",
+        f"{private_key_marker}\nnot-a-real-key\n",
         encoding="utf-8",
     )
     run("git", "add", "leaked.pem", cwd=tmp_path)
