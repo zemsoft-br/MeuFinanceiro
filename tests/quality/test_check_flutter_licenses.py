@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -19,6 +20,7 @@ def load_module() -> ModuleType:
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -108,4 +110,6 @@ def test_validate_licenses_reports_direct_packages(
 
     assert len(reports) == 1 + len(module.DIRECT_PACKAGES)
     assert reports[0].startswith("flutter-sdk\tBSD-3-Clause")
-    assert any(report.startswith("flutter_riverpod@3.3.2\tMIT") for report in reports)
+    assert any(
+        report.startswith("flutter_riverpod@3.3.2\tMIT") for report in reports
+    )
