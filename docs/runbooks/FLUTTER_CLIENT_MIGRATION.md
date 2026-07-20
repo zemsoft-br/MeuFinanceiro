@@ -3,9 +3,9 @@
 - Issue principal: #24
 - Fase A — scaffold e gates: #27 / PR #33
 - Fase B — paridade do shell: #34 / PR #35
-- Fase C — runtime Web/PWA: #36
+- Fase C — runtime Web/PWA: #36 / PR #37
 - Decisão: ADR-0008
-- Estado: Fases A e B integradas; Fase C em validação; React preservado apenas como rollback
+- Estado: Fases A e B integradas; Fase C implementada e revisada, pendente de validação local completa e autorização de merge
 
 ## 1. Objetivo
 
@@ -27,7 +27,7 @@ Em `develop`, após as PRs #33 e #35:
 - o workflow `Quality` valida Python, React transitório e Flutter;
 - o Compose ainda serve React até a integração da Fase C.
 
-Na branch da issue #36, a Fase C:
+Na PR #37, a Fase C:
 
 - produz o build Flutter Web em Docker;
 - usa Flutter como target padrão do serviço `web`;
@@ -35,9 +35,9 @@ Na branch da issue #36, a Fase C:
 - adiciona runtime estático Caddy não-root;
 - registra manifesto e service worker próprios;
 - valida cache, headers, deep links e artefato gerado;
-- aciona `Container Quality` para a integração completa.
+- adiciona suíte local equivalente aos gates de `Quality` e `Container Quality`.
 
-A remoção definitiva do React continua bloqueada até a Fase C ser integrada e revisada.
+A remoção definitiva do React continua bloqueada até a Fase C ser integrada e validada localmente no HEAD final.
 
 ## 3. Estrutura alvo
 
@@ -54,6 +54,7 @@ apps/
     test/
     web/
       index.html
+      app_bootstrap.js
       manifest.json
       sw.js
     pubspec.yaml
@@ -96,7 +97,7 @@ Enquanto a Fase D não for concluída, `apps/web` permanece no repositório apen
 - health check com `cache: no-store` no servidor;
 - nenhuma regra financeira decidida apenas no cliente.
 
-O service worker não intercepta caminhos iniciados por `/api/`.
+O service worker não intercepta o caminho exato `/api` nem qualquer caminho iniciado por `/api/`.
 
 ### Persistência local
 
@@ -124,6 +125,7 @@ O build Web é auditado como artefato estático.
 Arquivos críticos:
 
 - `index.html`;
+- `app_bootstrap.js`;
 - `sw.js` mantido pelo projeto;
 - `manifest.json`;
 - `version.json`;
@@ -135,13 +137,16 @@ Arquivos críticos:
 
 Contratos:
 
-- build release com `--no-web-resources-cdn`;
+- build release com `--no-web-resources-cdn --pwa-strategy=none`;
+- finalização remove somente `flutter_service_worker.js` vazio e rejeita conteúdo não vazio;
+- CanvasKit é selecionado e empacotado localmente;
 - nenhuma fonte, script, ícone ou engine depende de CDN pública;
-- requisições `/api/` não são respondidas pelo cache do shell;
+- requisições `/api` e `/api/` não são respondidas pelo cache do shell;
 - navegação e executáveis usam rede primeiro;
 - atualização online não mantém JavaScript ou WASM antigo indefinidamente;
 - ativação remove caches antigos Flutter e o cache legado React;
 - somente respostas same-origin, `GET`, bem-sucedidas e `basic` podem ser armazenadas;
+- espera pela primeira ativação do worker é limitada a três segundos;
 - headers de bootstrap e executáveis são conservadores;
 - asset inexistente retorna `404`;
 - fallback SPA é limitado a rotas sem extensão;
@@ -178,7 +183,7 @@ Issue #34 / PR #35:
 
 ### Fase C — Runtime Web/PWA
 
-Issue #36:
+Issue #36 / PR #37:
 
 - [x] definir build Flutter Web Docker multi-stage;
 - [x] definir runtime estático não-root;
@@ -186,9 +191,11 @@ Issue #36:
 - [x] criar manifesto e service worker próprios;
 - [x] definir cache seguro e headers;
 - [x] atualizar smoke e gatilhos de containers;
-- [ ] concluir Quality no HEAD final;
-- [ ] concluir Container Quality no HEAD final;
-- [ ] realizar revisão independente;
+- [x] concluir revisão independente estática;
+- [x] corrigir os achados identificados na revisão e nas execuções parciais do CI;
+- [ ] executar `python infra/scripts/run-quality.py --recreate` localmente no HEAD final;
+- [ ] executar o gate local completo de containers no HEAD final;
+- [ ] registrar os resultados locais na PR;
 - [ ] obter autorização explícita para merge.
 
 ### Fase D — Remoção do React
@@ -221,7 +228,7 @@ Antes de remover React, validar:
 - manifesto instalável;
 - service worker próprio registrado;
 - atualização de cache;
-- `/api/` fora do service worker;
+- `/api` e `/api/` fora do service worker;
 - ausência de CDN obrigatória;
 - build reproduzível;
 - container não privilegiado;
@@ -264,4 +271,4 @@ Até a remoção final, os documentos distinguem:
 
 ## 10. Conclusão
 
-Nenhuma nova funcionalidade financeira deve ser implementada em React. Após a Fase C, o próximo passo é remover o shell antigo em uma PR isolada, sem misturar essa limpeza com módulos de negócio.
+Nenhuma nova funcionalidade financeira deve ser implementada em React. Após a validação local e integração da Fase C, o próximo passo é remover o shell antigo em uma PR isolada, sem misturar essa limpeza com módulos de negócio.
