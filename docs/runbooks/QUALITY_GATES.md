@@ -27,20 +27,25 @@ Executa:
 - detecção de nomes de arquivos sensíveis, arquivos financeiros reais e padrões óbvios de segredo;
 - Ruff lint e formatação do Python;
 - mypy em modo estrito para API e Worker;
-- testes da API e dos validadores de qualidade;
+- testes da API, Worker, persistência, segurança e validadores de qualidade;
 - inventário e política preliminar de licenças Python;
 - `pip-audit`;
-- instalação reprodutível do frontend por `npm ci`;
-- ESLint;
-- TypeScript;
-- testes frontend;
-- build Vite;
+- instalação reprodutível do shell React transitório por `npm ci`;
+- ESLint, TypeScript, testes e build Vite;
 - `npm audit` com bloqueio em severidade alta ou crítica;
-- inventário e política preliminar de licenças Node.
+- inventário e política preliminar de licenças Node;
+- validação da versão Flutter fixada em `.flutter-version`;
+- resolução Flutter com `pubspec.lock` obrigatório e `--enforce-lockfile`;
+- verificação de formatação Dart;
+- `flutter analyze`;
+- testes Flutter;
+- build Web Flutter em modo release.
+
+React e Flutter permanecem nos gates enquanto o shell React for o runtime ativo. A remoção dos gates Node ocorrerá somente junto da remoção validada do frontend antigo.
 
 ### Container Quality
 
-Executa somente quando arquivos de containers, Compose, dependências ou smoke tests são alterados:
+Executa somente quando arquivos de containers, Compose, dependências do runtime ou smoke tests são alterados:
 
 - validação do contrato Compose;
 - build das imagens com atualização das bases;
@@ -50,6 +55,8 @@ Executa somente quando arquivos de containers, Compose, dependências ou smoke t
 - captura de estado e logs em falha;
 - encerramento gracioso com remoção do ambiente descartável.
 
+O scaffold Flutter ainda não é servido pelo Compose. Alterar apenas `apps/app` e os gates Flutter não comprova runtime de container e não substitui a futura PR de Docker/PWA.
+
 O PostgreSQL utilizado é descartável e não possui dados reais.
 
 ## Execução local
@@ -57,10 +64,17 @@ O PostgreSQL utilizado é descartável e não possui dados reais.
 Pré-requisitos:
 
 - Python 3.13;
-- Node.js 24;
-- npm;
+- Node.js 24 e npm, enquanto React permanecer;
+- Flutter na versão exata de `.flutter-version`;
+- Dart fornecido por essa instalação Flutter;
 - Git;
 - Docker Compose somente para o gate de containers.
+
+Valide a toolchain Flutter isoladamente:
+
+```bash
+python infra/scripts/check-flutter-toolchain.py
+```
 
 Suíte principal:
 
@@ -73,6 +87,8 @@ Para recriar o ambiente virtual dos gates:
 ```bash
 python infra/scripts/run-quality.py --recreate
 ```
+
+O script executa Python, React transitório e Flutter nessa ordem. Quando Flutter não estiver no `PATH`, estiver em versão diferente ou o lockfile não existir, a execução falha com uma mensagem explícita antes dos comandos do cliente.
 
 Gate de containers:
 
@@ -91,18 +107,38 @@ docker compose down --volumes --remove-orphans --timeout 30
 
 No Windows, o gate de aplicação pode ser executado pelo mesmo script Python. O smoke test pode ser executado por WSL ou por ambiente Unix equivalente enquanto não houver uma versão PowerShell específica.
 
-## Lockfile frontend
+## Lockfiles dos clientes
 
-`apps/web/package-lock.json` é obrigatório para `npm ci`, cache e auditoria reprodutíveis.
+São obrigatórios:
 
-Durante a implantação inicial, caso o lockfile ainda não exista, o workflow `Quality`:
+- `apps/web/package-lock.json` para o shell React transitório;
+- `apps/app/pubspec.lock` para o cliente Flutter.
 
-1. gera o arquivo com scripts de instalação desativados;
-2. publica o artefato `web-package-lock` com retenção de um dia;
-3. falha deliberadamente;
-4. exige que o arquivo revisado seja incorporado ao repositório.
+O workflow não gera lockfile ausente. A ausência falha deliberadamente e exige geração e revisão no mesmo Pull Request que altera o manifesto.
 
-Mudanças futuras em `package.json` devem atualizar e revisar o lockfile no mesmo Pull Request.
+Para Flutter:
+
+```bash
+cd apps/app
+flutter pub get
+flutter pub get --enforce-lockfile
+```
+
+O primeiro comando atualiza o lockfile de forma consciente. O segundo comprova que a resolução é reproduzível sem modificá-lo.
+
+## Instalação Flutter no GitHub Actions
+
+O workflow:
+
+1. lê `.flutter-version`;
+2. restaura um cache separado por sistema, arquitetura e versão;
+3. quando necessário, clona a tag correspondente do repositório oficial Flutter;
+4. adiciona o SDK ao `PATH`;
+5. desativa analytics no SDK do runner;
+6. prepara somente os artefatos Web necessários;
+7. executa `check-flutter-toolchain.py` antes dos gates do cliente.
+
+A versão não é escolhida por um action de terceiros nem por canal móvel. Atualizações exigem PR explícita, revisão do changelog, novo lockfile e execução completa dos gates.
 
 ## Política de dependências
 
@@ -120,6 +156,15 @@ O Dependabot propõe atualizações semanalmente, mas não realiza merge automá
 
 Os comandos executados são exibidos no log. O workflow não imprime `.env`, senhas ou payloads financeiros.
 
+Falhas Flutter devem ser classificadas por etapa:
+
+- instalação ou divergência da toolchain;
+- lockfile;
+- formatação;
+- análise estática;
+- teste;
+- compilação Web.
+
 No gate de containers, uma falha captura:
 
 ```bash
@@ -131,11 +176,15 @@ Esses logs devem continuar sanitizados. Não adicione dados reais a testes ou me
 
 ## Provas de bloqueio
 
-`tests/quality/test_quality_scripts.py` cria repositórios temporários e comprova que:
+`tests/quality/` comprova, entre outros contratos:
 
 - um commit com DCO é aceito;
 - um commit sem `Signed-off-by` é rejeitado;
-- um arquivo `.pem` rastreado é rejeitado.
+- um arquivo `.pem` rastreado é rejeitado;
+- versão Flutter válida é lida;
+- saída de máquina do Flutter é validada;
+- ausência de Flutter produz mensagem acionável;
+- divergência de versão bloqueia o gate.
 
 Falhas intencionais permanecem confinadas aos diretórios temporários dos testes e nunca são commitadas no repositório real.
 

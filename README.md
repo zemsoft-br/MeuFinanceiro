@@ -40,7 +40,7 @@ A distribuição principal é Docker Compose. As imagens escolhidas possuem vari
 
 A PR #21 integrou um shell React executável para validar navegação, acessibilidade, PWA, cache e runtime estático. O ADR-0008 substitui React por Flutter como cliente canônico.
 
-O shell React permanece temporariamente no repositório apenas como referência executável e caminho de rollback durante a migração da issue #24. Nenhuma nova funcionalidade financeira deve ser implementada nele.
+`apps/app` contém o scaffold Flutter e seus gates de compilação. O shell React permanece temporariamente como runtime servido e caminho de rollback durante a migração da issue #24. Nenhuma nova funcionalidade financeira deve ser implementada nele.
 
 ## Início rápido
 
@@ -58,7 +58,7 @@ Windows PowerShell:
 
 Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação fica disponível em `http://127.0.0.1:8080`.
 
-Enquanto a migração Flutter não estiver concluída, esse endereço ainda serve o shell React transitório integrado pela PR #21.
+Enquanto a migração Flutter não estiver concluída, esse endereço ainda serve o shell React transitório integrado pela PR #21. O build Flutter desta fase não participa do Compose.
 
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
@@ -70,16 +70,16 @@ A suíte obrigatória pode ser executada antes de marcar uma Pull Request como p
 python infra/scripts/run-quality.py
 ```
 
-Ela valida segurança do repositório, Python, frontend, dependências e licenças. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+Ela valida segurança do repositório, Python, o shell React transitório, o cliente Flutter, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
 
-Os gates atuais ainda validam React. A issue #24 os migrará para `dart format`, `flutter analyze`, testes Flutter e build Web antes da remoção do frontend antigo.
+A execução local requer a versão exata registrada em `.flutter-version`. Os gates Flutter incluem lockfile, formatação, análise, testes e build Web release.
 
 ## Estrutura do monorepo
 
 ```text
 apps/
   api/       FastAPI e OpenAPI
-  app/       cliente Flutter multiplataforma alvo; será criado pela issue #24
+  app/       cliente Flutter canônico; scaffold Web e gates já versionados
   web/       shell React transitório da PR #21; será removido após paridade Flutter
   worker/    consumidor da fila persistente
 packages/
@@ -107,6 +107,7 @@ O Flutter deve reproduzir os contratos já validados pelo shell existente sem co
 - [Auditoria dos protótipos Stitch](docs/design/STITCH_AUDIT.md)
 - [Inventário das referências Stitch](docs/design/STITCH_SCREEN_INVENTORY.csv)
 - [Manifesto da exportação Stitch](docs/design/STITCH_SOURCE_ARCHIVE.md)
+- [Referências visuais do Stitch](docs/design/stitch/references/README.md)
 - [Migração do cliente para Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
 - [Shell Web/PWA atual](docs/runbooks/WEB_PWA.md)
@@ -151,7 +152,8 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. migrar o shell Web/PWA para Flutter;
-2. concluir modo demonstração, instalação, backup e spike Pluggy;
-3. implementar identidade e residência;
-4. iniciar o núcleo financeiro.
+1. portar o shell responsivo e as rotas existentes para Flutter;
+2. servir o build Flutter Web pelo Compose com política PWA auditada;
+3. remover o shell React após paridade e smoke aprovados;
+4. concluir modo demonstração, instalação, backup e spike Pluggy;
+5. implementar identidade, residência e núcleo financeiro.

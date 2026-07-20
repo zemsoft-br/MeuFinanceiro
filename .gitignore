@@ -21,6 +21,12 @@ dist/
 .vite/
 coverage/
 
+# Flutter and Dart
+.dart_tool/
+.pub-cache/
+.flutter-plugins
+.flutter-plugins-dependencies
+
 # IDE and OS
 .vscode/
 .idea/

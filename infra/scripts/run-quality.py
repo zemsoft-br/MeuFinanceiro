@@ -69,16 +69,7 @@ def ensure_python_environment(recreate: bool) -> Path:
     return python
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--recreate", action="store_true", help="Recreate the quality virtualenv"
-    )
-    args = parser.parse_args()
-
-    run([sys.executable, "infra/scripts/check-repository-safety.py"])
-    python = ensure_python_environment(args.recreate)
-
+def run_python_quality(python: Path) -> None:
     run([str(python), "-m", "ruff", "check", *PYTHON_PATHS])
     run([str(python), "-m", "ruff", "format", "--check", *PYTHON_PATHS])
     run(
@@ -108,6 +99,8 @@ def main() -> int:
     run([str(python), "infra/scripts/check-python-licenses.py"])
     run([str(python), "-m", "pip_audit", "--local"])
 
+
+def run_react_quality() -> None:
     web = ROOT / "apps" / "web"
     if not (web / "package-lock.json").exists():
         raise RuntimeError(
@@ -121,6 +114,41 @@ def main() -> int:
     run(["npm", "run", "build"], cwd=web)
     run(["npm", "audit", "--audit-level=high"], cwd=web)
     run(["node", "infra/scripts/check-node-licenses.mjs", "apps/web"])
+
+
+def run_flutter_quality() -> None:
+    app = ROOT / "apps" / "app"
+    lockfile = app / "pubspec.lock"
+    if not lockfile.exists():
+        raise RuntimeError(
+            "apps/app/pubspec.lock is required; run flutter pub get and commit it first"
+        )
+
+    run([sys.executable, "infra/scripts/check-flutter-toolchain.py"])
+    run(["flutter", "pub", "get", "--enforce-lockfile"], cwd=app)
+    run([sys.executable, "infra/scripts/check-flutter-licenses.py"])
+    run(
+        ["dart", "format", "--output=none", "--set-exit-if-changed", "lib", "test"],
+        cwd=app,
+    )
+    run(["flutter", "analyze"], cwd=app)
+    run(["flutter", "test"], cwd=app)
+    run(["flutter", "build", "web", "--release"], cwd=app)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--recreate", action="store_true", help="Recreate the quality virtualenv"
+    )
+    args = parser.parse_args()
+
+    run([sys.executable, "infra/scripts/check-repository-safety.py"])
+    python = ensure_python_environment(args.recreate)
+
+    run_python_quality(python)
+    run_react_quality()
+    run_flutter_quality()
 
     print("All mandatory quality gates passed.")
     return 0
