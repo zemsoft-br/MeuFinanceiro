@@ -22,6 +22,7 @@ class AppShell extends ConsumerStatefulWidget {
   static const desktopSidebarKey = Key('desktop-sidebar');
   static const mobileMenuButtonKey = Key('mobile-menu-button');
   static const mobileDrawerKey = Key('mobile-drawer');
+  static const mobileDrawerBrandKey = Key('mobile-drawer-brand');
   static const mobileNavigationKey = Key('mobile-navigation');
   static const mainContentKey = Key('main-content');
 
@@ -176,6 +177,8 @@ class _AppShellState extends ConsumerState<AppShell> {
                               desktop: desktop,
                               health: health,
                               menuButtonFocusNode: _menuButtonFocusNode,
+                              onNavigateHome: () =>
+                                  _navigate(AppRoutes.destinations.first),
                               onOpenMenu: _openDrawer,
                             ),
                             _ApiNotice(

@@ -179,6 +179,24 @@ void main() {
       expect(mainContent.focusNode?.hasFocus, isTrue);
     });
 
+    testWidgets('drawer brand closes the menu and focuses the home content', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/sistema', size: const Size(390, 844));
+
+      await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(AppShell.mobileDrawerBrandKey));
+      await tester.pumpAndSettle();
+
+      final mainContent = tester.widget<Focus>(
+        find.byKey(AppShell.mainContentKey),
+      );
+      expect(find.byKey(HomeScreen.titleKey), findsOneWidget);
+      expect(find.byKey(AppShell.mobileDrawerKey), findsNothing);
+      expect(mainContent.focusNode?.hasFocus, isTrue);
+    });
+
     testWidgets('backdrop dismisses the mobile drawer and restores focus', (
       tester,
     ) async {

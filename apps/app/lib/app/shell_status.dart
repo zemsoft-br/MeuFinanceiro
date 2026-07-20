@@ -5,12 +5,14 @@ class _TopBar extends StatelessWidget {
     required this.desktop,
     required this.health,
     required this.menuButtonFocusNode,
+    required this.onNavigateHome,
     required this.onOpenMenu,
   });
 
   final bool desktop;
   final AsyncValue<ApiHealthSnapshot> health;
   final FocusNode menuButtonFocusNode;
+  final VoidCallback onNavigateHome;
   final VoidCallback onOpenMenu;
 
   @override
@@ -37,7 +39,8 @@ class _TopBar extends StatelessWidget {
                 tooltip: 'Abrir menu',
                 icon: const Icon(Icons.menu_rounded),
               ),
-            if (!desktop) const _Brand(compact: true),
+            if (!desktop)
+              _Brand(compact: true, onTap: onNavigateHome),
             if (desktop)
               Text(
                 'Fundação do cliente',

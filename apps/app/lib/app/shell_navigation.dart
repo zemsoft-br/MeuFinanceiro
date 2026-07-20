@@ -1,8 +1,9 @@
 part of 'app_shell.dart';
 
 class _Brand extends StatelessWidget {
-  const _Brand({this.compact = false});
+  const _Brand({required this.onTap, this.compact = false, super.key});
 
+  final VoidCallback onTap;
   final bool compact;
 
   @override
@@ -12,7 +13,7 @@ class _Brand extends StatelessWidget {
       button: true,
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
-        onTap: () => context.goNamed(AppRoutes.home),
+        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(
             horizontal: AppTokens.space8,
@@ -93,7 +94,9 @@ class _DesktopSidebar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _Brand(),
+              _Brand(
+                onTap: () => onNavigate(AppRoutes.destinations.first),
+              ),
               const SizedBox(height: AppTokens.space24),
               Semantics(
                 label: 'Navegação principal',
@@ -164,7 +167,12 @@ class _MobileDrawer extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Expanded(child: _Brand()),
+                Expanded(
+                  child: _Brand(
+                    key: AppShell.mobileDrawerBrandKey,
+                    onTap: () => onNavigate(AppRoutes.destinations.first),
+                  ),
+                ),
                 IconButton(
                   autofocus: true,
                   onPressed: onClose,
