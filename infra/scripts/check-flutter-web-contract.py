@@ -30,13 +30,18 @@ REQUIRED_ICON_PATHS = (
     "icons/Icon-maskable-192.png",
     "icons/Icon-maskable-512.png",
 )
-FORBIDDEN_RUNTIME_ORIGINS = (
+REQUIRED_LOCAL_ENGINE_PATHS = (
+    "canvaskit/canvaskit.js",
+    "canvaskit/canvaskit.wasm",
+)
+FORBIDDEN_PROJECT_ORIGINS = (
     "https://www.gstatic.com",
     "https://fonts.googleapis.com",
     "https://fonts.gstatic.com",
     "https://storage.googleapis.com",
 )
 API_EXCLUSION = "url.pathname === '/api' || url.pathname.startsWith('/api/')"
+LOCAL_CANVASKIT_CONFIG = '"useLocalCanvasKit":true'
 
 
 class FlutterWebContractError(RuntimeError):
@@ -189,16 +194,36 @@ def validate_service_worker(path: Path) -> None:
         )
 
 
-def validate_no_remote_runtime_resources(build_dir: Path) -> None:
-    """Reject generated bootstrap configuration that depends on public CDNs."""
-    for relative in ("index.html", "app_bootstrap.js", "flutter_bootstrap.js"):
+def validate_project_owned_files_have_no_remote_origins(build_dir: Path) -> None:
+    """Reject public CDN dependencies in files controlled by this project."""
+    for relative in ("index.html", "app_bootstrap.js"):
         path = build_dir / relative
         content = read_text(path)
-        found = [origin for origin in FORBIDDEN_RUNTIME_ORIGINS if origin in content]
+        found = [origin for origin in FORBIDDEN_PROJECT_ORIGINS if origin in content]
         if found:
             raise FlutterWebContractError(
                 f"{path}: remote runtime origins are forbidden: {', '.join(found)}"
             )
+
+
+def validate_local_flutter_engine(build_dir: Path) -> None:
+    """Require the generated loader to select the locally packaged engine."""
+    bootstrap = build_dir / "flutter_bootstrap.js"
+    content = read_text(bootstrap)
+    if LOCAL_CANVASKIT_CONFIG not in content:
+        raise FlutterWebContractError(
+            f"{bootstrap}: generated build does not enable local CanvasKit"
+        )
+
+    missing = [
+        relative
+        for relative in REQUIRED_LOCAL_ENGINE_PATHS
+        if not (build_dir / relative).is_file()
+    ]
+    if missing:
+        raise FlutterWebContractError(
+            f"{build_dir}: missing local Flutter engine files: {', '.join(missing)}"
+        )
 
 
 def validate_source(source_dir: Path = SOURCE_WEB) -> None:
@@ -231,7 +256,8 @@ def validate_build(build_dir: Path = DEFAULT_BUILD_WEB) -> None:
     validate_app_bootstrap(build_dir / "app_bootstrap.js")
     validate_manifest(build_dir / "manifest.json")
     validate_service_worker(build_dir / "sw.js")
-    validate_no_remote_runtime_resources(build_dir)
+    validate_project_owned_files_have_no_remote_origins(build_dir)
+    validate_local_flutter_engine(build_dir)
 
     for relative in ("app_bootstrap.js", "sw.js"):
         source = read_text(SOURCE_WEB / relative)
