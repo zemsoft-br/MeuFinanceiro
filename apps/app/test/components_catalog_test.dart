@@ -26,7 +26,10 @@ void main() {
         child: const MeuFinanceiroApp(),
       ),
     );
-    await tester.pumpAndSettle();
+    // The catalog showcases an indeterminate loading state, whose
+    // animation never settles, so pumpAndSettle would time out.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
   }
 
   testWidgets('shows loading, empty, error and unavailable states', (
@@ -45,7 +48,10 @@ void main() {
 
     await tester.ensureVisible(find.byKey(ComponentsCatalogScreen.submitKey));
     await tester.tap(find.byKey(ComponentsCatalogScreen.submitKey));
-    await tester.pumpAndSettle();
+    // The catalog showcases an indeterminate loading state, whose
+    // animation never settles, so pumpAndSettle would time out.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Informe o nome da residência.'), findsOneWidget);
     expect(find.byKey(ComponentsCatalogScreen.successKey), findsNothing);
@@ -62,7 +68,10 @@ void main() {
     );
     await tester.ensureVisible(find.byKey(ComponentsCatalogScreen.submitKey));
     await tester.tap(find.byKey(ComponentsCatalogScreen.submitKey));
-    await tester.pumpAndSettle();
+    // The catalog showcases an indeterminate loading state, whose
+    // animation never settles, so pumpAndSettle would time out.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.byKey(ComponentsCatalogScreen.successKey), findsOneWidget);
     expect(find.text('Validação concluída.'), findsOneWidget);

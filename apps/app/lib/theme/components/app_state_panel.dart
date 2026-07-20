@@ -60,7 +60,6 @@ class AppStatePanel extends StatelessWidget {
                   width: 28,
                   height: 28,
                   child: CircularProgressIndicator(
-                    value: 0.65,
                     strokeWidth: 3,
                     color: presentation.color,
                     semanticsLabel: 'Carregando',

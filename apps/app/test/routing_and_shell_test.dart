@@ -65,6 +65,9 @@ void main() {
           tester,
           location: scenario.$1,
           size: const Size(1200, 900),
+          // The components catalog showcases an indeterminate loading
+          // state, whose animation never settles.
+          settle: scenario.$1 != '/componentes',
         );
         expect(find.byKey(scenario.$2), findsOneWidget);
       }
@@ -100,6 +103,9 @@ void main() {
         tester,
         location: '/componentes',
         size: const Size(1200, 900),
+        // The components catalog showcases an indeterminate loading
+        // state, whose animation never settles.
+        settle: false,
       );
 
       final selected = tester.getSemantics(
