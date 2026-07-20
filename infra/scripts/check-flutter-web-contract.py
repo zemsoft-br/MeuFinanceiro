@@ -126,19 +126,19 @@ def validate_index(path: Path) -> None:
 
 
 def validate_app_bootstrap(path: Path) -> None:
-    """Validate early worker activation and deferred Flutter bootstrap."""
+    """Validate early worker activation and bounded Flutter startup."""
     require_fragments(
         path,
         (
-            "const waitForController = async () =>",
+            "const waitForController = () =>",
             "navigator.serviceWorker.addEventListener('controllerchange'",
             "const loadFlutter = () =>",
             "script.src = 'flutter_bootstrap.js'",
             "navigator.serviceWorker.register('sw.js'",
             "updateViaCache: 'none'",
             "registration.update()",
-            "navigator.serviceWorker.ready",
-            "await waitForController()",
+            "navigator.serviceWorker.ready.then(waitForController)",
+            "wait(3000)",
             "loadFlutter()",
         ),
     )
