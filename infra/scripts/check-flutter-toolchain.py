@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate that the active Flutter executable matches the pinned SDK version."""
+"""Validate that the active Flutter executable matches the pinned SDK identity."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 VERSION_FILE = ROOT / ".flutter-version"
+REVISION_FILE = ROOT / ".flutter-revision"
 VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+REVISION_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 
 
 class FlutterToolchainError(RuntimeError):
@@ -34,8 +36,22 @@ def load_expected_version(path: Path = VERSION_FILE) -> str:
     return version
 
 
-def parse_framework_version(raw: str) -> str:
-    """Extract frameworkVersion from `flutter --version --machine` output."""
+def load_expected_revision(path: Path = REVISION_FILE) -> str:
+    """Read and validate the repository's pinned Flutter Git revision."""
+    try:
+        revision = path.read_text(encoding="utf-8").strip()
+    except FileNotFoundError as exc:
+        raise FlutterToolchainError(f"revision file not found: {path}") from exc
+
+    if not REVISION_PATTERN.fullmatch(revision):
+        raise FlutterToolchainError(
+            f"invalid Flutter revision {revision!r} in {path}; expected 40 lowercase hex characters"
+        )
+    return revision
+
+
+def parse_machine_identity(raw: str) -> tuple[str, str]:
+    """Extract frameworkVersion and frameworkRevision from Flutter JSON."""
     try:
         payload: Any = json.loads(raw)
     except json.JSONDecodeError as exc:
@@ -49,7 +65,14 @@ def parse_framework_version(raw: str) -> str:
         raise FlutterToolchainError(
             "Flutter machine output does not contain a valid frameworkVersion"
         )
-    return version
+
+    revision = payload.get("frameworkRevision")
+    if not isinstance(revision, str) or not REVISION_PATTERN.fullmatch(revision):
+        raise FlutterToolchainError(
+            "Flutter machine output does not contain a valid frameworkRevision"
+        )
+
+    return version, revision
 
 
 def find_flutter() -> str:
@@ -57,14 +80,14 @@ def find_flutter() -> str:
     executable = shutil.which("flutter")
     if executable is None:
         raise FlutterToolchainError(
-            "Flutter is not available on PATH. Install the version from .flutter-version "
-            "before running the quality gates."
+            "Flutter is not available on PATH. Install the SDK identity from "
+            ".flutter-version and .flutter-revision before running the quality gates."
         )
     return executable
 
 
-def read_installed_version(executable: str) -> str:
-    """Execute Flutter once and return its framework version."""
+def read_installed_identity(executable: str) -> tuple[str, str]:
+    """Execute Flutter once and return its version and revision."""
     completed = subprocess.run(
         [executable, "--version", "--machine"],
         check=False,
@@ -73,33 +96,42 @@ def read_installed_version(executable: str) -> str:
     )
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip() or "unknown error"
-        raise FlutterToolchainError(
-            f"could not execute {executable!r}: {detail}"
-        )
-    return parse_framework_version(completed.stdout)
+        raise FlutterToolchainError(f"could not execute {executable!r}: {detail}")
+    return parse_machine_identity(completed.stdout)
 
 
-def validate_toolchain() -> tuple[str, str]:
-    """Return expected and installed versions when they are identical."""
-    expected = load_expected_version()
+def validate_toolchain() -> tuple[str, str, str]:
+    """Return the trusted SDK identity and executable."""
+    expected_version = load_expected_version()
+    expected_revision = load_expected_revision()
     executable = find_flutter()
-    installed = read_installed_version(executable)
-    if installed != expected:
+    installed_version, installed_revision = read_installed_identity(executable)
+
+    if installed_version != expected_version:
         raise FlutterToolchainError(
-            f"Flutter version mismatch: expected {expected}, found {installed} at "
-            f"{executable}."
+            f"Flutter version mismatch: expected {expected_version}, found "
+            f"{installed_version} at {executable}."
         )
-    return expected, executable
+    if installed_revision != expected_revision:
+        raise FlutterToolchainError(
+            f"Flutter revision mismatch: expected {expected_revision}, found "
+            f"{installed_revision} at {executable}."
+        )
+
+    return expected_version, expected_revision, executable
 
 
 def main() -> int:
     try:
-        version, executable = validate_toolchain()
+        version, revision, executable = validate_toolchain()
     except FlutterToolchainError as exc:
         print(f"Flutter toolchain validation failed: {exc}", file=sys.stderr)
         return 1
 
-    print(f"Flutter toolchain validation passed: {version} ({executable})")
+    print(
+        f"Flutter toolchain validation passed: {version} "
+        f"({revision}, {executable})"
+    )
     return 0
 
 
