@@ -46,8 +46,9 @@ os dois runtimes respondendo simultaneamente pelo mesmo alias.
 ## PWA e cache
 
 `web/index.html` carrega `web/app_bootstrap.js`. O carregador registra
-`web/sw.js` antes de iniciar o bootstrap Flutter, permitindo que a primeira
-carga já seja controlada quando o navegador concluir a instalação do worker.
+`web/sw.js` antes de iniciar o bootstrap Flutter. Em uma instalação nova, a
+espera por readiness e aquisição de controle é limitada a três segundos; falha
+ou lentidão do worker nunca bloqueia indefinidamente a inicialização do app.
 
 O worker:
 
@@ -87,8 +88,13 @@ flutter analyze
 flutter test
 node --check web/app_bootstrap.js
 node --check web/sw.js
-flutter build web --release --no-web-resources-cdn
+flutter build web --release --no-web-resources-cdn --pwa-strategy=none
+python ../../infra/scripts/finalize-flutter-web-build.py --build-dir build/web
 python ../../infra/scripts/check-flutter-web-contract.py
 ```
+
+O finalizador remove somente o arquivo legado vazio produzido pelo SDK. Se
+`flutter_service_worker.js` contiver código, o comando falha em vez de apagar o
+artefato silenciosamente.
 
 Use exatamente a versão e a revisão registradas na raiz do repositório.
