@@ -39,8 +39,7 @@ class _TopBar extends StatelessWidget {
                 tooltip: 'Abrir menu',
                 icon: const Icon(Icons.menu_rounded),
               ),
-            if (!desktop)
-              _Brand(compact: true, onTap: onNavigateHome),
+            if (!desktop) _Brand(compact: true, onTap: onNavigateHome),
             if (desktop)
               Text(
                 'Fundação do cliente',

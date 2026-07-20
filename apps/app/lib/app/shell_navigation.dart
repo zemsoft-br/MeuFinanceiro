@@ -94,9 +94,7 @@ class _DesktopSidebar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Brand(
-                onTap: () => onNavigate(AppRoutes.destinations.first),
-              ),
+              _Brand(onTap: () => onNavigate(AppRoutes.destinations.first)),
               const SizedBox(height: AppTokens.space24),
               Semantics(
                 label: 'Navegação principal',
