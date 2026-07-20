@@ -126,6 +126,7 @@ def run_flutter_quality() -> None:
 
     run([sys.executable, "infra/scripts/check-flutter-toolchain.py"])
     run(["flutter", "pub", "get", "--enforce-lockfile"], cwd=app)
+    run([sys.executable, "infra/scripts/check-flutter-licenses.py"])
     run(
         ["dart", "format", "--output=none", "--set-exit-if-changed", "lib", "test"],
         cwd=app,
