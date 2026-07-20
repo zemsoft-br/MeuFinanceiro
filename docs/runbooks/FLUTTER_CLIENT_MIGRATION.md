@@ -1,8 +1,9 @@
 # Migração do cliente para Flutter
 
-- Issue: #24
+- Issue principal: #24
+- Scaffold e gates: #27 / PR #33
 - Decisão: ADR-0008
-- Estado: planejamento aprovado; implementação ainda não iniciada
+- Estado: Fase A em implementação; shell React ainda é o runtime ativo
 
 ## 1. Objetivo
 
@@ -12,24 +13,32 @@ A migração deve preservar os contratos executáveis já validados e evitar doi
 
 ## 2. Estado atual
 
-Em `develop`:
+Na PR #33:
+
+- `apps/app` contém um scaffold Flutter gerado pelo Flutter 3.44.6;
+- o alvo ativo do scaffold é Web;
+- `ProviderScope`, Riverpod e GoRouter compõem o bootstrap mínimo;
+- `pubspec.lock` está versionado;
+- formatação, análise, teste e build Web passam no scaffold;
+- o workflow `Quality` passa a validar Python, React transitório e Flutter;
+- o Compose não foi alterado.
+
+Em `develop`, até o merge e as fases seguintes:
 
 - `apps/web` contém o shell React/Vite;
-- Docker gera assets Web compilados e usa runtime estático;
+- Docker gera os assets React compilados e usa runtime estático;
 - Caddy expõe o frontend e encaminha `/api/v1` para FastAPI;
 - as rotas `/`, `/componentes` e `/sistema` estão funcionais;
 - PWA, manifesto, health check, acessibilidade e cache seguro foram validados;
 - não existem funcionalidades financeiras no frontend.
 
-Esse é o melhor ponto para migrar: o shell é pequeno e ainda não há telas de domínio para portar.
+O shell React permanece como referência executável e rollback até a paridade e a troca de runtime.
 
 ## 3. Estrutura alvo
 
 ```text
 apps/
   app/
-    android/
-    ios/
     lib/
       app/
       core/
@@ -41,43 +50,28 @@ apps/
     integration_test/
     web/
     pubspec.yaml
+    pubspec.lock
   api/
   worker/
 ```
 
-O diretório `apps/app` representa o cliente multiplataforma. O serviço Docker pode continuar chamado `web`, pois serve o build Web gerado.
+O diretório `apps/app` representa o cliente multiplataforma. Android, iOS e desktop serão gerados somente quando entrarem em escopo. O serviço Docker pode continuar chamado `web`, pois serve o build Web gerado.
 
-Estrutura inicial de `lib/`:
+Estrutura inicial já criada:
 
 ```text
 lib/
   main.dart
   app/
     app.dart
-    bootstrap.dart
   routing/
     app_router.dart
-    routes.dart
-  core/
-    api/
-    config/
-    errors/
-    health/
-    localization/
-    persistence/
-    security/
-  theme/
-    app_theme.dart
-    tokens.dart
-    components/
   features/
-    home/
-    components_catalog/
-    system_health/
-  platform/
-    pwa/
-    storage/
+    bootstrap/
+      bootstrap_screen.dart
 ```
+
+As pastas `core`, `theme`, `platform` e as features funcionais serão criadas conforme contratos reais entrarem em implementação, sem diretórios vazios antecipados.
 
 ## 4. Padrões do cliente
 
@@ -106,16 +100,16 @@ lib/
 - health check com `cache: no-store` no servidor;
 - nenhuma regra financeira decidida apenas no cliente.
 
+O scaffold da Fase A não realiza chamadas à API.
+
 ### Persistência local
 
 A migração do shell não adiciona cache financeiro offline.
 
-A camada deve ser preparada por portas/adaptadores para futura persistência local, mas:
-
 - PostgreSQL/backend continua fonte de verdade;
 - tokens e dados financeiros não podem ser gravados sem decisão própria;
 - Web, Android, iOS e desktop podem ter adaptadores distintos;
-- SQLite/WASM só entra quando o contrato de sincronização, criptografia, expiração e revogação estiver definido.
+- SQLite/WASM só entra após contrato de autoridade, sincronização, criptografia, expiração e revogação.
 
 ### UI e acessibilidade
 
@@ -127,6 +121,8 @@ A camada deve ser preparada por portas/adaptadores para futura persistência loc
 - suporte a escalonamento de texto e movimento reduzido quando disponível;
 - tabelas densas no desktop e cards/listas no mobile.
 
+O bootstrap da Fase A não representa a identidade visual final.
+
 ## 5. PWA e cache
 
 O build Web precisa ser auditado como artefato estático.
@@ -135,52 +131,58 @@ Arquivos que exigem revalidação ou política conservadora:
 
 - `index.html`;
 - `flutter_service_worker.js` ou equivalente gerado;
-- `manifest.json`/manifesto;
+- `manifest.json`;
 - `version.json`;
 - `main.dart.js`;
-- `sqlite3.wasm` ou outros WASM, quando existirem;
+- arquivos WASM quando existirem;
 - arquivos de bootstrap sem nome versionado.
 
-Somente assets com nome realmente imutável recebem cache longo.
-
-Requisitos:
+Requisitos futuros da Fase C:
 
 - requisições `/api/` não podem ser respondidas por cache de shell;
-- atualização não pode manter indefinidamente `main.dart.js` antigo;
-- a versão do service worker precisa ser testada em upgrade;
+- atualização não pode manter indefinidamente JavaScript ou WASM antigo;
+- upgrade do service worker precisa ser testado;
 - o app deve funcionar sem CDN de fontes, ícones ou scripts;
 - headers devem ser validados no smoke test.
 
+O build da Fase A comprova compilação, não política final de PWA nem runtime de produção.
+
 ## 6. Decomposição em PRs
 
-### PR A — Scaffold Flutter e quality gates
+### Fase A — Scaffold Flutter e quality gates
 
-- criar `apps/app`;
-- fixar Flutter/Dart e dependências diretas;
-- configurar format, analyze, testes e build Web;
-- adicionar licença e auditoria de dependências;
-- não alterar o runtime servido ao usuário.
+Issue #27 / PR #33:
 
-### PR B — Paridade do shell
+- [x] criar `apps/app` com alvo Web;
+- [x] fixar Flutter e dependências diretas;
+- [x] versionar lockfile;
+- [x] configurar format, analyze, testes e build Web;
+- [x] documentar licenças diretas;
+- [x] manter React nos gates;
+- [x] não alterar o runtime servido;
+- [ ] concluir revisão independente e Quality no HEAD final;
+- [ ] obter autorização explícita para merge.
+
+### Fase B — Paridade do shell
 
 - portar `/`, `/componentes` e `/sistema`;
 - portar tema, componentes, estados e health check;
 - implementar navegação desktop/mobile;
-- adicionar testes unitários e widget;
+- adicionar testes unitários e de widget;
 - validar acessibilidade e responsividade.
 
-### PR C — Runtime Web/PWA
+### Fase C — Runtime Web/PWA
 
 - gerar build Flutter Web em Docker multi-stage;
-- servir artefato estático;
+- servir o artefato estático;
 - configurar Caddy e headers;
 - validar manifesto, service worker e cache;
 - atualizar smoke do Compose;
 - manter rollback para o shell React durante a validação.
 
-### PR D — Remoção do React
+### Fase D — Remoção do React
 
-Somente após PRs A–C aprovadas:
+Somente após as Fases A–C aprovadas:
 
 - remover `apps/web` React/Vite;
 - remover Node do runtime e quality gates, salvo ferramenta ainda justificada;
@@ -193,7 +195,7 @@ Somente após PRs A–C aprovadas:
 Antes de remover React, validar:
 
 - três rotas existentes;
-- fallback SPA/deep link;
+- fallback SPA e deep links;
 - asset inexistente retorna `404`;
 - health operacional, degradado, indisponível e timeout;
 - loading, vazio, erro e indisponibilidade;
@@ -211,7 +213,9 @@ Antes de remover React, validar:
 - container não privilegiado;
 - restart e encerramento gracioso.
 
-## 8. Documentos que precisam ser atualizados durante a implementação
+## 8. Documentos afetados
+
+Durante a migração, manter alinhados:
 
 - `README.md`;
 - `docs/ARCHITECTURE.md`;
@@ -219,18 +223,19 @@ Antes de remover React, validar:
 - `docs/ROADMAP.md`;
 - `docs/runbooks/WEB_PWA.md`;
 - `docs/runbooks/QUALITY_GATES.md`;
-- `apps/web/README.md` ou seu substituto;
+- `apps/app/README.md`;
+- `apps/web/README.md` enquanto existir;
 - workflows de Quality e Container Quality;
 - scripts de segurança e licenças;
-- Compose e Caddy.
+- Compose e Caddy quando o runtime mudar.
 
-Até a remoção final, documentos devem distinguir claramente:
+Até a remoção final, os documentos devem distinguir:
 
 - arquitetura alvo Flutter;
 - shell React transitório ainda presente;
 - runtime atualmente ativo.
 
-## 9. Fora do escopo
+## 9. Fora do escopo da migração do shell
 
 - autenticação;
 - dados financeiros offline;
@@ -238,8 +243,8 @@ Até a remoção final, documentos devem distinguir claramente:
 - publicação em lojas;
 - deploy público;
 - mudança do backend;
-- implementação das telas funcionais do Stitch.
+- implementação das telas financeiras do Stitch.
 
 ## 10. Conclusão
 
-Nenhuma nova funcionalidade financeira deve ser implementada em React. O próximo trabalho de interface é o scaffold Flutter e a paridade do shell já validado.
+Nenhuma nova funcionalidade financeira deve ser implementada em React. Após a Fase A, o próximo trabalho de interface é a paridade do shell existente em Flutter, ainda sem trocar o runtime servido.
