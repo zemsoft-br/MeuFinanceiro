@@ -13,6 +13,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VENV_DIR = ROOT / ".quality-venv"
+SUPPORTED_PYTHON_MIN = (3, 13)
+SUPPORTED_PYTHON_MAX = (3, 14)
 TOOLS = (
     "mypy==2.3.0",
     "pip-audit==2.10.1",
@@ -33,6 +35,20 @@ def run(
 ) -> None:
     print(f"+ {' '.join(command)}", flush=True)
     subprocess.run(command, cwd=cwd, env=env, check=True)
+
+
+def validate_python_version(version: tuple[int, int] | None = None) -> None:
+    """Reject interpreters outside the repository's supported Python range."""
+    current = version or (sys.version_info.major, sys.version_info.minor)
+    if SUPPORTED_PYTHON_MIN <= current < SUPPORTED_PYTHON_MAX:
+        return
+
+    rendered = ".".join(str(part) for part in current)
+    raise RuntimeError(
+        "Python 3.13.x is required by the repository; "
+        f"the current interpreter is Python {rendered}. "
+        "On Windows, run: py -3.13 infra/scripts/run-quality.py --recreate"
+    )
 
 
 def venv_python() -> Path:
@@ -164,6 +180,12 @@ def main() -> int:
         "--recreate", action="store_true", help="Recreate the quality virtualenv"
     )
     args = parser.parse_args()
+
+    try:
+        validate_python_version()
+    except RuntimeError as exc:
+        print(f"Quality runner configuration error: {exc}", file=sys.stderr)
+        return 2
 
     run([sys.executable, "infra/scripts/check-repository-safety.py"])
     python = ensure_python_environment(args.recreate)
