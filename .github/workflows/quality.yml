@@ -205,6 +205,14 @@ jobs:
       - name: Check React licenses
         run: node infra/scripts/check-node-licenses.mjs apps/web
 
+      - name: Check Flutter Web JavaScript syntax
+        run: |
+          node --check apps/app/web/app_bootstrap.js
+          node --check apps/app/web/sw.js
+
+      - name: Test Flutter service worker invariants
+        run: node --test tests/quality/flutter-service-worker.test.mjs
+
       - name: Validate Flutter toolchain
         run: python infra/scripts/check-flutter-toolchain.py
 
@@ -229,4 +237,37 @@ jobs:
 
       - name: Build Flutter Web client
         working-directory: apps/app
-        run: flutter build web --release
+        run: >-
+          flutter build web --release --no-web-resources-cdn
+          --pwa-strategy=none
+
+      - name: Finalize Flutter Web artifact
+        run: >-
+          python infra/scripts/finalize-flutter-web-build.py
+          --build-dir apps/app/build/web
+
+      - name: Validate Flutter Web/PWA contract
+        id: flutter_web_contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          report_dir="$RUNNER_TEMP/flutter-web-contract"
+          mkdir -p "$report_dir/files"
+          find apps/app/build/web -maxdepth 3 -type f -printf '%P\n' \
+            | sort > "$report_dir/file-list.txt"
+          for relative in index.html app_bootstrap.js flutter_bootstrap.js manifest.json sw.js; do
+            if [[ -f "apps/app/build/web/$relative" ]]; then
+              cp "apps/app/build/web/$relative" "$report_dir/files/$relative"
+            fi
+          done
+          python infra/scripts/check-flutter-web-contract.py \
+            2>&1 | tee "$report_dir/validator.log"
+
+      - name: Upload Flutter Web contract diagnostics
+        if: failure() && steps.flutter_web_contract.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-flutter-web-contract-${{ github.run_id }}
+          path: ${{ runner.temp }}/flutter-web-contract
+          retention-days: 3
+          if-no-files-found: error

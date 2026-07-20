@@ -37,10 +37,18 @@ services:
 
   web:
     build:
-      context: ./apps/web
+      context: .
+      dockerfile: infra/web/Dockerfile
+      target: ${WEB_RUNTIME_TARGET:-flutter-runtime}
+    image: meufinanceiro-web:local
     init: true
+    environment:
+      XDG_CONFIG_HOME: /tmp/caddy-config
+      XDG_DATA_HOME: /tmp/caddy-data
     expose:
       - "5173"
+    tmpfs:
+      - /tmp
     networks:
       - edge
     restart: unless-stopped
@@ -50,13 +58,7 @@ services:
     cap_drop:
       - ALL
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:5173').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
-        ]
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173/"]
       interval: 10s
       timeout: 3s
       retries: 10

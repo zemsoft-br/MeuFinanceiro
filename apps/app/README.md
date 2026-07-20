@@ -4,8 +4,9 @@ Base canônica do cliente MeuFinanceiro.
 
 ## Estado
 
-A Fase B da migração reconstrói em Flutter os contratos do shell React sem
-alterar o runtime servido pelo Docker Compose.
+A Fase C da migração torna o build Flutter Web o runtime padrão do Docker
+Compose. O shell React continua versionado apenas como rollback transitório e
+não recebe funcionalidades novas.
 
 O cliente contém:
 
@@ -16,10 +17,49 @@ O cliente contém:
 - health check testável com timeout e classificação operacional, degradada e
   indisponível;
 - dependências de plataforma atrás de interfaces;
-- testes de rota, widget, foco, semântica, responsividade e health.
+- manifesto PWA, carregador e service worker próprios;
+- cache exclusivamente de shell, com `/api` e `/api/` fora da interceptação;
+- testes de rota, widget, foco, semântica, responsividade, health e contrato
+  Web/PWA.
 
-O shell React permanece como runtime ativo até as entregas de Docker/PWA e a
-validação de paridade operacional da issue #24.
+## Runtime Web
+
+O Compose usa, por padrão:
+
+```text
+WEB_RUNTIME_TARGET=flutter-runtime
+```
+
+O build é gerado pela toolchain exata registrada em `/.flutter-version` e
+`/.flutter-revision`, sem recursos Web carregados de CDN. O container final usa
+Caddy não-root e serve somente o artefato estático em `/srv`.
+
+O rollback React permanece disponível durante a validação:
+
+```text
+WEB_RUNTIME_TARGET=react-runtime
+```
+
+Depois de alterar o target em `.env`, reconstrua o serviço `web`. Não mantenha
+os dois runtimes respondendo simultaneamente pelo mesmo alias.
+
+## PWA e cache
+
+`web/index.html` carrega `web/app_bootstrap.js`. O carregador registra
+`web/sw.js` antes de iniciar o bootstrap Flutter, permitindo que a primeira
+carga já seja controlada quando o navegador concluir a instalação do worker.
+
+O worker:
+
+- ignora métodos diferentes de `GET`;
+- ignora recursos de outra origem;
+- ignora o caminho exato `/api` e todos os caminhos iniciados por `/api/`;
+- usa rede primeiro para navegação e recursos executáveis;
+- utiliza `index.html` armazenado apenas como fallback offline de navegação;
+- consulta somente o namespace de cache do MeuFinanceiro;
+- remove caches antigos do Flutter e o cache legado do shell React;
+- não armazena o próprio `sw.js`, tokens, respostas de health ou dados
+  financeiros.
 
 ## Organização
 
@@ -31,6 +71,11 @@ lib/
   platform/   adaptadores condicionais de plataforma
   routing/    rotas e destinos canônicos
   theme/      tokens, tema e componentes-base
+web/
+  index.html       metadados e carregamento do bootstrap versionado
+  app_bootstrap.js registro do worker e inicialização do Flutter
+  manifest.json
+  sw.js            política de cache do shell
 ```
 
 ## Comandos
@@ -40,7 +85,10 @@ flutter pub get --enforce-lockfile
 dart format --output=none --set-exit-if-changed lib test
 flutter analyze
 flutter test
-flutter build web --release
+node --check web/app_bootstrap.js
+node --check web/sw.js
+flutter build web --release --no-web-resources-cdn
+python ../../infra/scripts/check-flutter-web-contract.py
 ```
 
-Use exatamente a versão registrada em `/.flutter-version`.
+Use exatamente a versão e a revisão registradas na raiz do repositório.

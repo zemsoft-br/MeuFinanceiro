@@ -14,7 +14,7 @@
     Permissions-Policy "camera=(), microphone=(), geolocation=()"
   }
 
-  @api path /api/*
+  @api path /api /api/*
   handle @api {
     reverse_proxy api:8000
   }

@@ -7,6 +7,9 @@
 **/*.pyc
 **/.pytest_cache
 **/.venv
+**/.dart_tool
+**/.pub-cache
+**/build
 **/node_modules
 **/dist
 .vscode

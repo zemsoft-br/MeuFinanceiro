@@ -1,0 +1,44 @@
+{
+  admin off
+  auto_https off
+}
+
+:5173 {
+  root * /srv
+  encode zstd gzip
+
+  header {
+    -Server
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+  }
+
+  @api path /api /api/*
+  respond @api "Not found" 404
+
+  @revalidate path / /index.html /app_bootstrap.js /manifest.json /sw.js /flutter.js /flutter_bootstrap.js /main.dart.js /version.json
+  header @revalidate Cache-Control "no-cache, no-store, must-revalidate"
+
+  @shell_assets path /assets/* /canvaskit/* /icons/* /favicon.png
+  header @shell_assets Cache-Control "public, max-age=3600, must-revalidate"
+
+  @existing file
+  handle @existing {
+    file_server
+  }
+
+  @spa {
+    path_regexp route_without_extension ^/[^.]*$
+    not path /api /api/* /assets/* /canvaskit/* /icons/*
+  }
+  handle @spa {
+    rewrite * /index.html
+    header Cache-Control "no-cache, no-store, must-revalidate"
+    file_server
+  }
+
+  handle {
+    header Cache-Control "no-store"
+    respond "Not found" 404
+  }
+}

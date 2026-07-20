@@ -49,6 +49,7 @@ POSTGRES_PASSWORD=$adminPassword
 APP_DATABASE_USER=meufinanceiro_app
 APP_DATABASE_PASSWORD=$appPassword
 APP_HTTP_PORT=8080
+WEB_RUNTIME_TARGET=flutter-runtime
 APP_KEYRING_FILE_HOST=.secrets/keyring.json
 "@ | Set-Content -Path $EnvFile -Encoding utf8
     Write-Host "Configuração local criada em .env."
@@ -60,11 +61,22 @@ else {
     if (-not (Select-String -Path $EnvFile -Pattern '^APP_DATABASE_PASSWORD=' -Quiet)) {
         Add-Content -Path $EnvFile -Value "APP_DATABASE_PASSWORD=$(New-RandomPassword)"
     }
+    if (-not (Select-String -Path $EnvFile -Pattern '^WEB_RUNTIME_TARGET=' -Quiet)) {
+        Add-Content -Path $EnvFile -Value "WEB_RUNTIME_TARGET=flutter-runtime"
+    }
     if (-not (Select-String -Path $EnvFile -Pattern '^APP_KEYRING_FILE_HOST=' -Quiet)) {
         Add-Content -Path $EnvFile -Value "APP_KEYRING_FILE_HOST=.secrets/keyring.json"
     }
 }
 Set-PrivateAcl -Path $EnvFile -IsDirectory $false
+
+$runtimeTarget = "flutter-runtime"
+Get-Content $EnvFile | ForEach-Object {
+    if ($_ -match '^WEB_RUNTIME_TARGET=(.+)$') { $runtimeTarget = $Matches[1].Trim() }
+}
+if ($runtimeTarget -notin @("flutter-runtime", "react-runtime")) {
+    throw "WEB_RUNTIME_TARGET deve ser flutter-runtime ou react-runtime."
+}
 
 if (-not (Test-Path $KeyringFile)) {
     New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
@@ -100,7 +112,23 @@ try {
             $web = Invoke-WebRequest -UseBasicParsing "$baseUrl/"
             docker compose exec -T worker python -c `
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)" | Out-Null
-            if ($api.StatusCode -eq 200 -and $web.StatusCode -eq 200) {
+
+            $runtimeMatches = if ($runtimeTarget -eq "flutter-runtime") {
+                $bootstrap = Invoke-WebRequest -UseBasicParsing "$baseUrl/app_bootstrap.js"
+                $web.Content -match 'app_bootstrap\.js' -and
+                    $bootstrap.StatusCode -eq 200 -and
+                    $bootstrap.Content -match "register\('sw\.js'" -and
+                    $bootstrap.Content -match "flutter_bootstrap\.js"
+            }
+            else {
+                $web.Content -match 'id="root"'
+            }
+
+            if (
+                $api.StatusCode -eq 200 -and
+                $web.StatusCode -eq 200 -and
+                $runtimeMatches
+            ) {
                 $healthy = $true
                 break
             }
@@ -108,7 +136,7 @@ try {
         catch { Start-Sleep -Seconds 2 }
     }
     if (-not $healthy) {
-        throw "Smoke test falhou após 60 tentativas."
+        throw "Smoke test falhou após 60 tentativas para $runtimeTarget."
     }
 
     $idempotencyKey = "smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"
@@ -124,7 +152,7 @@ try {
         $task = (docker compose exec -T api python -m meufinanceiro_persistence.cli `
             get --task-id $first.id | ConvertFrom-Json)
         if ($task.status -eq "succeeded") {
-            Write-Host "MeuFinanceiro disponível em $baseUrl"
+            Write-Host "MeuFinanceiro ($runtimeTarget) disponível em $baseUrl"
             exit 0
         }
         Start-Sleep -Seconds 1

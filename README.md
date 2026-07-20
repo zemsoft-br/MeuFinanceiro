@@ -25,22 +25,26 @@ O sistema não executará, agendará ou iniciará transações financeiras.
 ## Arquitetura
 
 ```text
-Flutter — Web/PWA e futuros clientes multiplataforma
-        |
-      Caddy
-        |
-      FastAPI
-        |
- PostgreSQL + Worker
+Flutter Web/PWA
+       |
+   Web estático
+       |
+     Caddy
+       |
+    FastAPI
+       |
+PostgreSQL + Worker
 ```
 
 A distribuição principal é Docker Compose. As imagens escolhidas possuem variantes oficiais para `amd64` e `arm64`.
 
 ### Transição do frontend
 
-A PR #21 integrou um shell React executável para validar navegação, acessibilidade, PWA, cache e runtime estático. O ADR-0008 substitui React por Flutter como cliente canônico.
+A PR #21 integrou um shell React executável para validar navegação, acessibilidade, PWA, cache e runtime estático. O ADR-0008 substituiu React por Flutter como cliente canônico.
 
-`apps/app` contém o scaffold Flutter e seus gates de compilação. O shell React permanece temporariamente como runtime servido e caminho de rollback durante a migração da issue #24. Nenhuma nova funcionalidade financeira deve ser implementada nele.
+`apps/app` contém o cliente Flutter. O serviço `web` do Compose usa o target `flutter-runtime` por padrão e serve o build Flutter Web estático. `apps/web` permanece temporariamente apenas como rollback explícito por meio do target `react-runtime`; nenhuma funcionalidade financeira nova deve ser implementada nele.
+
+A remoção de React, Vite, Node e seus gates ocorrerá somente em uma PR própria, depois da validação completa do runtime Flutter e do smoke de containers.
 
 ## Início rápido
 
@@ -56,9 +60,15 @@ Windows PowerShell:
 ./infra/scripts/dev-up.ps1
 ```
 
-Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação fica disponível em `http://127.0.0.1:8080`.
+Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação Flutter fica disponível em `http://127.0.0.1:8080`.
 
-Enquanto a migração Flutter não estiver concluída, esse endereço ainda serve o shell React transitório integrado pela PR #21. O build Flutter desta fase não participa do Compose.
+O runtime padrão é declarado em `.env`:
+
+```text
+WEB_RUNTIME_TARGET=flutter-runtime
+```
+
+Durante a migração, o rollback React pode ser selecionado explicitamente com `WEB_RUNTIME_TARGET=react-runtime` e reconstrução do serviço `web`. Esse mecanismo não inicia dois runtimes simultaneamente.
 
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
@@ -70,24 +80,25 @@ A suíte obrigatória pode ser executada antes de marcar uma Pull Request como p
 python infra/scripts/run-quality.py
 ```
 
-Ela valida segurança do repositório, Python, o shell React transitório, o cliente Flutter, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+Ela valida segurança do repositório, Python, o rollback React transitório, o cliente Flutter, o artefato Web/PWA gerado, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
 
-A execução local requer a versão exata registrada em `.flutter-version`. Os gates Flutter incluem lockfile, formatação, análise, testes e build Web release.
+A execução local requer a versão exata registrada em `.flutter-version` e `.flutter-revision`. Os gates Flutter incluem lockfile, formatação, análise, testes, build Web sem recursos remotos e validação do contrato PWA/cache.
 
 ## Estrutura do monorepo
 
 ```text
 apps/
   api/       FastAPI e OpenAPI
-  app/       cliente Flutter canônico; scaffold Web e gates já versionados
-  web/       shell React transitório da PR #21; será removido após paridade Flutter
+  app/       cliente Flutter canônico e fontes Web/PWA
+  web/       shell React transitório disponível somente para rollback
   worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
   persistence/ SQLAlchemy, Alembic, health e fila PostgreSQL
   contracts/ contratos compartilhados futuros
 infra/
-  caddy/     entrada HTTP local
+  caddy/     entrada HTTP local e proxy da API
+  web/       build multi-target e runtime estático do cliente
   scripts/   inicialização, diagnóstico e quality gates
 tests/
   quality/   provas dos validadores do repositório
@@ -110,7 +121,7 @@ O Flutter deve reproduzir os contratos já validados pelo shell existente sem co
 - [Referências visuais do Stitch](docs/design/stitch/references/README.md)
 - [Migração do cliente para Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
-- [Shell Web/PWA atual](docs/runbooks/WEB_PWA.md)
+- [Runtime Web/PWA](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
 - [Quality gates e CI](docs/runbooks/QUALITY_GATES.md)
@@ -152,8 +163,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. portar o shell responsivo e as rotas existentes para Flutter;
-2. servir o build Flutter Web pelo Compose com política PWA auditada;
-3. remover o shell React após paridade e smoke aprovados;
-4. concluir modo demonstração, instalação, backup e spike Pluggy;
-5. implementar identidade, residência e núcleo financeiro.
+1. validar o runtime Flutter Web/PWA no Compose e concluir a issue #36;
+2. remover o shell React após paridade e smoke aprovados;
+3. concluir modo demonstração, instalação, backup e spike Pluggy;
+4. implementar identidade, residência e núcleo financeiro.

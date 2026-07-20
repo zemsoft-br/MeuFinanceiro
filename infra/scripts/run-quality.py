@@ -124,6 +124,9 @@ def run_flutter_quality() -> None:
             "apps/app/pubspec.lock is required; run flutter pub get and commit it first"
         )
 
+    run(["node", "--check", "apps/app/web/app_bootstrap.js"])
+    run(["node", "--check", "apps/app/web/sw.js"])
+    run(["node", "--test", "tests/quality/flutter-service-worker.test.mjs"])
     run([sys.executable, "infra/scripts/check-flutter-toolchain.py"])
     run(["flutter", "pub", "get", "--enforce-lockfile"], cwd=app)
     run([sys.executable, "infra/scripts/check-flutter-licenses.py"])
@@ -133,7 +136,26 @@ def run_flutter_quality() -> None:
     )
     run(["flutter", "analyze"], cwd=app)
     run(["flutter", "test"], cwd=app)
-    run(["flutter", "build", "web", "--release"], cwd=app)
+    run(
+        [
+            "flutter",
+            "build",
+            "web",
+            "--release",
+            "--no-web-resources-cdn",
+            "--pwa-strategy=none",
+        ],
+        cwd=app,
+    )
+    run(
+        [
+            sys.executable,
+            "infra/scripts/finalize-flutter-web-build.py",
+            "--build-dir",
+            "apps/app/build/web",
+        ]
+    )
+    run([sys.executable, "infra/scripts/check-flutter-web-contract.py"])
 
 
 def main() -> int:
