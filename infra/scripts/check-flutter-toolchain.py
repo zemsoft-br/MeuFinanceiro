@@ -55,7 +55,9 @@ def parse_machine_identity(raw: str) -> tuple[str, str]:
     try:
         payload: Any = json.loads(raw)
     except json.JSONDecodeError as exc:
-        raise FlutterToolchainError("Flutter returned invalid machine-readable JSON") from exc
+        raise FlutterToolchainError(
+            "Flutter returned invalid machine-readable JSON"
+        ) from exc
 
     if not isinstance(payload, dict):
         raise FlutterToolchainError("Flutter machine output must be a JSON object")
@@ -128,10 +130,7 @@ def main() -> int:
         print(f"Flutter toolchain validation failed: {exc}", file=sys.stderr)
         return 1
 
-    print(
-        f"Flutter toolchain validation passed: {version} "
-        f"({revision}, {executable})"
-    )
+    print(f"Flutter toolchain validation passed: {version} ({revision}, {executable})")
     return 0
 
 
