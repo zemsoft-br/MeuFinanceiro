@@ -4,14 +4,34 @@ Base canônica do cliente MeuFinanceiro.
 
 ## Estado
 
-Nesta etapa, o projeto comprova somente:
+A Fase B da migração reconstrói em Flutter os contratos do shell React sem
+alterar o runtime servido pelo Docker Compose.
 
-- toolchain fixada;
-- composição Riverpod;
-- roteamento GoRouter;
-- análise, testes e build Web reproduzíveis.
+O cliente contém:
 
-O shell React permanece como runtime ativo até as entregas de paridade e Docker/PWA da issue #24.
+- rotas nomeadas `/`, `/componentes` e `/sistema`;
+- shell responsivo com sidebar desktop, drawer e navegação inferior móvel;
+- tema e tokens locais, sem fontes ou assets remotos;
+- catálogo de componentes, formulário demonstrativo e estados comuns;
+- health check testável com timeout e classificação operacional, degradada e
+  indisponível;
+- dependências de plataforma atrás de interfaces;
+- testes de rota, widget, foco, semântica, responsividade e health.
+
+O shell React permanece como runtime ativo até as entregas de Docker/PWA e a
+validação de paridade operacional da issue #24.
+
+## Organização
+
+```text
+lib/
+  app/        composição e shell
+  core/       contratos e serviços independentes de UI
+  features/   páginas e estados por experiência
+  platform/   adaptadores condicionais de plataforma
+  routing/    rotas e destinos canônicos
+  theme/      tokens, tema e componentes-base
+```
 
 ## Comandos
 

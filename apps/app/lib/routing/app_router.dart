@@ -1,18 +1,80 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:meufinanceiro_app/features/bootstrap/bootstrap_screen.dart';
+import 'package:meufinanceiro_app/app/app_shell.dart';
+import 'package:meufinanceiro_app/core/health/api_health.dart';
+import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
+import 'package:meufinanceiro_app/features/home/home_screen.dart';
+import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
+import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
+import 'package:meufinanceiro_app/routing/app_routes.dart';
+
+final initialLocationProvider = Provider<String?>((ref) => null);
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
+    initialLocation: ref.watch(initialLocationProvider),
     routes: [
-      GoRoute(
-        path: '/',
-        name: 'bootstrap',
-        builder: (context, state) => const BootstrapScreen(),
+      ShellRoute(
+        builder: (context, state, child) {
+          return AppShell(
+            currentLocation: state.uri.path,
+            child: child,
+          );
+        },
+        routes: [
+          GoRoute(
+            path: '/',
+            name: AppRoutes.home,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(
+                child: _HomeRoute(),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/componentes',
+            name: AppRoutes.components,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(
+                child: ComponentsCatalogScreen(),
+              );
+            },
+          ),
+          GoRoute(
+            path: '/sistema',
+            name: AppRoutes.system,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(
+                child: SystemHealthScreen(),
+              );
+            },
+          ),
+        ],
       ),
     ],
+    errorPageBuilder: (context, state) {
+      final location = state.uri.toString();
+      return NoTransitionPage(
+        child: AppShell(
+          currentLocation: state.uri.path,
+          child: NotFoundScreen(location: location),
+        ),
+      );
+    },
   );
 
   ref.onDispose(router.dispose);
   return router;
 });
+
+class _HomeRoute extends ConsumerWidget {
+  const _HomeRoute();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final availability =
+        ref.watch(apiHealthProvider).value?.availability;
+    return HomeScreen(availability: availability);
+  }
+}
