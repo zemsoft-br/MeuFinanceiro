@@ -54,10 +54,7 @@ def test_find_package_license_requires_exactly_one_match(tmp_path: Path) -> None
     license_path = package / "LICENSE"
     license_path.write_text("license", encoding="utf-8")
 
-    assert (
-        module.find_package_license(tmp_path, "go_router", "17.3.0")
-        == license_path
-    )
+    assert module.find_package_license(tmp_path, "go_router", "17.3.0") == license_path
 
 
 def test_find_package_license_rejects_missing_file(tmp_path: Path) -> None:
@@ -110,6 +107,4 @@ def test_validate_licenses_reports_direct_packages(
 
     assert len(reports) == 1 + len(module.DIRECT_PACKAGES)
     assert reports[0].startswith("flutter-sdk\tBSD-3-Clause")
-    assert any(
-        report.startswith("flutter_riverpod@3.3.2\tMIT") for report in reports
-    )
+    assert any(report.startswith("flutter_riverpod@3.3.2\tMIT") for report in reports)
