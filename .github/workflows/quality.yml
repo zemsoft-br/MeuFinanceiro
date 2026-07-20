@@ -24,7 +24,7 @@ jobs:
     name: Mandatory quality gates
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres-test-password@127.0.0.1:5432/meufinanceiro_test
       TEST_APP_DATABASE_USER: postgres
@@ -77,6 +77,37 @@ jobs:
           restore-keys: |
             npm-${{ runner.os }}-
 
+      - name: Cache Flutter SDK
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/meufinanceiro/flutter
+          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version') }}
+
+      - name: Install pinned Flutter SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
+          FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION"
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            rm -rf "$FLUTTER_ROOT"
+            mkdir -p "$(dirname "$FLUTTER_ROOT")"
+            git clone --depth 1 --branch "$EXPECTED_VERSION" \
+              https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+          git config --global --add safe.directory "$FLUTTER_ROOT"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" config --no-analytics
+          "$FLUTTER_ROOT/bin/flutter" precache --web
+
+      - name: Cache Dart and Flutter packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('apps/app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
       - name: Validate DCO sign-offs
         if: github.event_name == 'pull_request'
         env:
@@ -86,8 +117,10 @@ jobs:
           git fetch --no-tags origin "$BASE_SHA"
           python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
 
-      - name: Require frontend lockfile
-        run: test -f apps/web/package-lock.json
+      - name: Require frontend lockfiles
+        run: |
+          test -f apps/web/package-lock.json
+          test -f apps/app/pubspec.lock
 
       - name: Validate repository safety
         run: python infra/scripts/check-repository-safety.py
@@ -130,29 +163,52 @@ jobs:
       - name: Audit Python dependencies
         run: .quality-venv/bin/python -m pip_audit --local
 
-      - name: Install frontend dependencies
+      - name: Install React dependencies
         working-directory: apps/web
         run: npm ci --no-audit --no-fund
 
-      - name: Lint frontend
+      - name: Lint React frontend
         working-directory: apps/web
         run: npm run lint
 
-      - name: Type-check frontend
+      - name: Type-check React frontend
         working-directory: apps/web
         run: npm run typecheck
 
-      - name: Test frontend
+      - name: Test React frontend
         working-directory: apps/web
         run: npm test
 
-      - name: Build frontend
+      - name: Build React frontend
         working-directory: apps/web
         run: npm run build
 
-      - name: Audit frontend dependencies
+      - name: Audit React dependencies
         working-directory: apps/web
         run: npm audit --audit-level=high
 
-      - name: Check frontend licenses
+      - name: Check React licenses
         run: node infra/scripts/check-node-licenses.mjs apps/web
+
+      - name: Validate Flutter toolchain
+        run: python infra/scripts/check-flutter-toolchain.py
+
+      - name: Resolve Flutter dependencies from lockfile
+        working-directory: apps/app
+        run: flutter pub get --enforce-lockfile
+
+      - name: Check Dart formatting
+        working-directory: apps/app
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze Flutter client
+        working-directory: apps/app
+        run: flutter analyze
+
+      - name: Test Flutter client
+        working-directory: apps/app
+        run: flutter test
+
+      - name: Build Flutter Web client
+        working-directory: apps/app
+        run: flutter build web --release
