@@ -1,17 +1,14 @@
 const wait = (milliseconds) =>
   new Promise((resolve) => window.setTimeout(resolve, milliseconds))
 
-const waitForController = async () => {
-  if (navigator.serviceWorker.controller) return
+const waitForController = () => {
+  if (navigator.serviceWorker.controller) return Promise.resolve()
 
-  await Promise.race([
-    new Promise((resolve) =>
-      navigator.serviceWorker.addEventListener('controllerchange', resolve, {
-        once: true,
-      }),
-    ),
-    wait(3000),
-  ])
+  return new Promise((resolve) =>
+    navigator.serviceWorker.addEventListener('controllerchange', resolve, {
+      once: true,
+    }),
+  )
 }
 
 const loadFlutter = () => {
@@ -34,8 +31,10 @@ const start = async () => {
           console.error('Falha ao atualizar o service worker.', error),
         )
       } else {
-        await Promise.race([navigator.serviceWorker.ready, wait(10000)])
-        await waitForController()
+        await Promise.race([
+          navigator.serviceWorker.ready.then(waitForController),
+          wait(3000),
+        ])
       }
     }
   } catch (error) {
