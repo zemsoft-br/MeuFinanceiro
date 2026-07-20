@@ -64,7 +64,6 @@ class AppStatePanel extends StatelessWidget {
                     strokeWidth: 3,
                     color: presentation.color,
                     semanticsLabel: 'Carregando',
-                    semanticsValue: '65 por cento',
                   ),
                 )
               else

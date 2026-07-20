@@ -96,9 +96,6 @@ void main() {
     });
 
     testWidgets('marks the active desktop navigation item', (tester) async {
-      final semantics = tester.ensureSemantics();
-      addTearDown(semantics.dispose);
-
       await pumpApp(
         tester,
         location: '/componentes',

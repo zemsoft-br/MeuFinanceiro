@@ -46,25 +46,32 @@ class _TopBar extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium,
               ),
             const Spacer(),
-            Semantics(
-              label: 'API: ${presentation.label}',
-              container: true,
-              child: Row(
-                children: [
-                  Icon(
-                    presentation.icon,
-                    size: 18,
-                    color: presentation.color,
-                    semanticLabel: presentation.label,
-                  ),
-                  const SizedBox(width: AppTokens.space8),
-                  const Text('API'),
-                  const SizedBox(width: AppTokens.space8),
-                  Text(
-                    presentation.label,
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                ],
+            Flexible(
+              child: Semantics(
+                label: 'API: ${presentation.label}',
+                container: true,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      presentation.icon,
+                      size: 18,
+                      color: presentation.color,
+                      semanticLabel: presentation.label,
+                    ),
+                    const SizedBox(width: AppTokens.space8),
+                    const Text('API'),
+                    const SizedBox(width: AppTokens.space8),
+                    Flexible(
+                      child: Text(
+                        presentation.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

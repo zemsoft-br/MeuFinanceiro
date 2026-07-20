@@ -47,20 +47,27 @@ class _Brand extends StatelessWidget {
               ),
               if (!compact) ...[
                 const SizedBox(width: AppTokens.space12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'MeuFinanceiro',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(
-                      'Cliente Flutter',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTokens.neutral600,
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'MeuFinanceiro',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium,
                       ),
-                    ),
-                  ],
+                      Text(
+                        'Cliente Flutter',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTokens.neutral600,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ],
@@ -235,19 +242,22 @@ class _NavigationTile extends StatelessWidget {
       button: true,
       label: destination.label,
       hint: destination.description,
-      child: ListTile(
-        selected: selected,
-        selectedColor: AppTokens.forest900,
-        selectedTileColor: AppTokens.forest100,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
+      child: Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          selected: selected,
+          selectedColor: AppTokens.forest900,
+          selectedTileColor: AppTokens.forest100,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
+          ),
+          leading: Icon(
+            selected ? destination.selectedIcon : destination.icon,
+            semanticLabel: destination.label,
+          ),
+          title: Text(destination.label),
+          onTap: onTap,
         ),
-        leading: Icon(
-          selected ? destination.selectedIcon : destination.icon,
-          semanticLabel: destination.label,
-        ),
-        title: Text(destination.label),
-        onTap: onTap,
       ),
     );
   }
