@@ -197,6 +197,9 @@ jobs:
         working-directory: apps/app
         run: flutter pub get --enforce-lockfile
 
+      - name: Check Flutter direct dependency licenses
+        run: python infra/scripts/check-flutter-licenses.py
+
       - name: Check Dart formatting
         working-directory: apps/app
         run: dart format --output=none --set-exit-if-changed lib test
