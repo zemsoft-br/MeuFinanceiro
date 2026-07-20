@@ -80,6 +80,18 @@ void main() {
       expect(find.text('/rota-inexistente'), findsOneWidget);
     });
 
+    testWidgets('does not mark a mobile destination on an unknown route',
+        (tester) async {
+      await pumpApp(
+        tester,
+        location: '/rota-inexistente',
+        size: const Size(390, 844),
+      );
+
+      expect(find.byKey(AppShell.mobileNavigationKey), findsNothing);
+      expect(find.byKey(NotFoundScreen.titleKey), findsOneWidget);
+    });
+
     testWidgets('marks the active desktop navigation item', (tester) async {
       final semantics = tester.ensureSemantics();
       addTearDown(semantics.dispose);
@@ -133,6 +145,10 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(
+        Focus.of(tester.element(find.byTooltip('Fechar menu'))).hasFocus,
+        isTrue,
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -154,6 +170,46 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(SystemHealthScreen.titleKey), findsOneWidget);
+    });
+
+    testWidgets('drawer navigation moves focus to the new main content',
+        (tester) async {
+      await pumpApp(
+        tester,
+        location: '/',
+        size: const Size(390, 844),
+      );
+
+      await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('navigation-system')));
+      await tester.pumpAndSettle();
+
+      final mainContent = tester.widget<Focus>(
+        find.byKey(AppShell.mainContentKey),
+      );
+      expect(find.byKey(SystemHealthScreen.titleKey), findsOneWidget);
+      expect(mainContent.focusNode?.hasFocus, isTrue);
+    });
+
+    testWidgets('backdrop dismisses the mobile drawer and restores focus',
+        (tester) async {
+      await pumpApp(
+        tester,
+        location: '/',
+        size: const Size(390, 844),
+      );
+
+      await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(370, 420));
+      await tester.pumpAndSettle();
+
+      final menuButton = tester.widget<IconButton>(
+        find.byKey(AppShell.mobileMenuButtonKey),
+      );
+      expect(find.byKey(AppShell.mobileDrawerKey), findsNothing);
+      expect(menuButton.focusNode?.hasFocus, isTrue);
     });
 
     testWidgets('close control dismisses the mobile drawer', (tester) async {
