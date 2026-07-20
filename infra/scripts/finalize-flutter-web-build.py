@@ -22,9 +22,7 @@ def remove_empty_legacy_worker(build_dir: Path) -> bool:
     if not worker.exists():
         return False
     if not worker.is_file():
-        raise FlutterWebFinalizationError(
-            f"legacy worker path is not a file: {worker}"
-        )
+        raise FlutterWebFinalizationError(f"legacy worker path is not a file: {worker}")
 
     size = worker.stat().st_size
     if size != 0:
