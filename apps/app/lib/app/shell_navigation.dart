@@ -56,8 +56,8 @@ class _Brand extends StatelessWidget {
                     Text(
                       'Cliente Flutter',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTokens.neutral600,
-                          ),
+                        color: AppTokens.neutral600,
+                      ),
                     ),
                   ],
                 ),
@@ -84,9 +84,7 @@ class _DesktopSidebar extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: AppTokens.white,
-        border: Border(
-          right: BorderSide(color: AppTokens.neutral200),
-        ),
+        border: Border(right: BorderSide(color: AppTokens.neutral200)),
       ),
       child: SafeArea(
         right: false,
@@ -103,13 +101,11 @@ class _DesktopSidebar extends StatelessWidget {
                 child: Column(
                   children: AppRoutes.destinations.map((destination) {
                     return Padding(
-                      padding:
-                          const EdgeInsets.only(bottom: AppTokens.space8),
+                      padding: const EdgeInsets.only(bottom: AppTokens.space8),
                       child: _NavigationTile(
                         destination: destination,
-                        selected: AppRoutes.destinationForLocation(
-                              currentLocation,
-                            ) ==
+                        selected:
+                            AppRoutes.destinationForLocation(currentLocation) ==
                             destination,
                         onTap: () => onNavigate(destination),
                       ),
@@ -132,8 +128,8 @@ class _DesktopSidebar extends StatelessWidget {
                     Text(
                       'Não use dados reais nesta fase.',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTokens.neutral600,
-                          ),
+                        color: AppTokens.neutral600,
+                      ),
                     ),
                   ],
                 ),
@@ -184,14 +180,11 @@ class _MobileDrawer extends StatelessWidget {
               child: Column(
                 children: AppRoutes.destinations.map((destination) {
                   return Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: AppTokens.space8,
-                    ),
+                    padding: const EdgeInsets.only(bottom: AppTokens.space8),
                     child: _NavigationTile(
                       destination: destination,
-                      selected: AppRoutes.destinationForLocation(
-                            currentLocation,
-                          ) ==
+                      selected:
+                          AppRoutes.destinationForLocation(currentLocation) ==
                           destination,
                       onTap: () => onNavigate(destination),
                     ),
@@ -205,9 +198,9 @@ class _MobileDrawer extends StatelessWidget {
               padding: const EdgeInsets.all(AppTokens.space8),
               child: Text(
                 'Shell Flutter em migração. O runtime React permanece ativo.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppTokens.neutral600,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral600),
               ),
             ),
           ],

@@ -6,10 +6,7 @@ import 'package:meufinanceiro_app/theme/components/app_badge.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({
-    required this.availability,
-    super.key,
-  });
+  const HomeScreen({required this.availability, super.key});
 
   final ApiAvailability? availability;
 
@@ -43,17 +40,17 @@ class _Hero extends StatelessWidget {
     final status = switch (availability) {
       null => (label: 'Verificando', tone: AppBadgeTone.neutral),
       ApiAvailability.operational => (
-          label: 'Operacional',
-          tone: AppBadgeTone.positive,
-        ),
+        label: 'Operacional',
+        tone: AppBadgeTone.positive,
+      ),
       ApiAvailability.degraded => (
-          label: 'Atenção',
-          tone: AppBadgeTone.warning,
-        ),
+        label: 'Atenção',
+        tone: AppBadgeTone.warning,
+      ),
       ApiAvailability.unavailable => (
-          label: 'Indisponível',
-          tone: AppBadgeTone.negative,
-        ),
+        label: 'Indisponível',
+        tone: AppBadgeTone.negative,
+      ),
     };
 
     return LayoutBuilder(
@@ -120,9 +117,9 @@ class _HeroContent extends StatelessWidget {
           'Esta versão apresenta a navegação, os padrões de interface e '
           'o diagnóstico do MeuFinanceiro. Nenhum dado financeiro real é '
           'solicitado ou armazenado nesta fase.',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: AppTokens.neutral700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
         ),
         const SizedBox(height: AppTokens.space24),
         Wrap(
@@ -219,9 +216,7 @@ class _FoundationSummary extends StatelessWidget {
                   semanticLabel: 'Privacidade',
                 ),
                 SizedBox(width: AppTokens.space12),
-                Expanded(
-                  child: Text('Dados sob controle de quem hospeda.'),
-                ),
+                Expanded(child: Text('Dados sob controle de quem hospeda.')),
               ],
             ),
           ],
@@ -279,10 +274,10 @@ class _FeatureSection extends StatelessWidget {
             final columns = constraints.maxWidth >= 1000
                 ? 4
                 : constraints.maxWidth >= 620
-                    ? 2
-                    : 1;
-            final width = (constraints.maxWidth -
-                    (columns - 1) * AppTokens.space16) /
+                ? 2
+                : 1;
+            final width =
+                (constraints.maxWidth - (columns - 1) * AppTokens.space16) /
                 columns;
 
             return Wrap(
@@ -312,9 +307,7 @@ class _FeatureSection extends StatelessWidget {
                           const SizedBox(height: AppTokens.space8),
                           Text(
                             feature.description,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: AppTokens.neutral700),
                           ),
                         ],
@@ -364,23 +357,23 @@ class _PrinciplesSection extends StatelessWidget {
           children: [
             Text(
               'Princípios do produto',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppTokens.amber100,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: AppTokens.amber100),
             ),
             const SizedBox(height: AppTokens.space8),
             Text(
               'Simples para usar, rigoroso com os dados.',
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    color: AppTokens.white,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.headlineMedium?.copyWith(color: AppTokens.white),
             ),
             const SizedBox(height: AppTokens.space24),
             LayoutBuilder(
               builder: (context, constraints) {
                 final columns = constraints.maxWidth >= 900 ? 3 : 1;
-                final width = (constraints.maxWidth -
-                        (columns - 1) * AppTokens.space24) /
+                final width =
+                    (constraints.maxWidth - (columns - 1) * AppTokens.space24) /
                     columns;
 
                 return Wrap(
@@ -394,17 +387,13 @@ class _PrinciplesSection extends StatelessWidget {
                         children: [
                           Text(
                             principle.title,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
+                            style: Theme.of(context).textTheme.titleMedium
                                 ?.copyWith(color: AppTokens.white),
                           ),
                           const SizedBox(height: AppTokens.space8),
                           Text(
                             principle.description,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium
+                            style: Theme.of(context).textTheme.bodyMedium
                                 ?.copyWith(color: AppTokens.forest100),
                           ),
                         ],
@@ -441,9 +430,9 @@ class _SectionHeading extends StatelessWidget {
           children: [
             Text(
               eyebrow,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppTokens.forest700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
             ),
             const SizedBox(height: AppTokens.space4),
             Semantics(
@@ -457,9 +446,9 @@ class _SectionHeading extends StatelessWidget {
         );
         final details = Text(
           description,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: AppTokens.neutral700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
         );
 
         if (constraints.maxWidth < 900) {

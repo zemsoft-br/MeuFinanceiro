@@ -17,25 +17,25 @@ class AppBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = switch (tone) {
       AppBadgeTone.neutral => (
-          background: AppTokens.neutral100,
-          foreground: AppTokens.neutral700,
-        ),
+        background: AppTokens.neutral100,
+        foreground: AppTokens.neutral700,
+      ),
       AppBadgeTone.positive => (
-          background: AppTokens.forest100,
-          foreground: AppTokens.forest900,
-        ),
+        background: AppTokens.forest100,
+        foreground: AppTokens.forest900,
+      ),
       AppBadgeTone.warning => (
-          background: AppTokens.amber100,
-          foreground: AppTokens.amber700,
-        ),
+        background: AppTokens.amber100,
+        foreground: AppTokens.amber700,
+      ),
       AppBadgeTone.negative => (
-          background: AppTokens.red100,
-          foreground: AppTokens.red700,
-        ),
+        background: AppTokens.red100,
+        foreground: AppTokens.red700,
+      ),
       AppBadgeTone.info => (
-          background: AppTokens.blue100,
-          foreground: AppTokens.blue700,
-        ),
+        background: AppTokens.blue100,
+        foreground: AppTokens.blue700,
+      ),
     };
 
     return Semantics(
@@ -50,9 +50,9 @@ class AppBadge extends StatelessWidget {
           child: Text(
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: colors.foreground,
-                  fontWeight: FontWeight.w700,
-                ),
+              color: colors.foreground,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ),

@@ -35,18 +35,20 @@ void main() {
     expect(transport.lastTimeout, timeout);
   });
 
-  test('keeps successful responses operational with defensive parsing',
-      () async {
-    final transport = FakeHealthTransport.response(
-      statusCode: 200,
-      body: '{"unexpected":true}',
-    );
+  test(
+    'keeps successful responses operational with defensive parsing',
+    () async {
+      final transport = FakeHealthTransport.response(
+        statusCode: 200,
+        body: '{"unexpected":true}',
+      );
 
-    final snapshot = await serviceFor(transport).check();
+      final snapshot = await serviceFor(transport).check();
 
-    expect(snapshot.availability, ApiAvailability.operational);
-    expect(snapshot.readiness?.status, 'unknown');
-  });
+      expect(snapshot.availability, ApiAvailability.operational);
+      expect(snapshot.readiness?.status, 'unknown');
+    },
+  );
 
   test('preserves degraded readiness independently of HTTP success', () async {
     final snapshot = await serviceFor(degradedHealthTransport()).check();
@@ -55,18 +57,20 @@ void main() {
     expect(snapshot.readiness?.database, 'unavailable');
   });
 
-  test('classifies malformed or unsuccessful responses as unavailable',
-      () async {
-    final transport = FakeHealthTransport.response(
-      statusCode: 500,
-      body: '<html>failure</html>',
-    );
+  test(
+    'classifies malformed or unsuccessful responses as unavailable',
+    () async {
+      final transport = FakeHealthTransport.response(
+        statusCode: 500,
+        body: '<html>failure</html>',
+      );
 
-    final snapshot = await serviceFor(transport).check();
+      final snapshot = await serviceFor(transport).check();
 
-    expect(snapshot.availability, ApiAvailability.unavailable);
-    expect(snapshot.readiness?.status, 'unknown');
-  });
+      expect(snapshot.availability, ApiAvailability.unavailable);
+      expect(snapshot.readiness?.status, 'unknown');
+    },
+  );
 
   test('maps transport failure to unavailable without throwing', () async {
     final transport = FakeHealthTransport.failure(

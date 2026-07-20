@@ -81,8 +81,9 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final health = ref.watch(apiHealthProvider);
-    final selectedDestination =
-        AppRoutes.destinationForLocation(widget.currentLocation);
+    final selectedDestination = AppRoutes.destinationForLocation(
+      widget.currentLocation,
+    );
     final selectedIndex = selectedDestination == null
         ? null
         : AppRoutes.destinations.indexOf(selectedDestination);

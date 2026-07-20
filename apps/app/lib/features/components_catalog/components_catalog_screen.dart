@@ -95,10 +95,7 @@ class _ComponentsCatalogScreenState extends State<ComponentsCatalogScreen> {
                 onPressed: () {},
                 child: const Text('Ação secundária'),
               ),
-              TextButton(
-                onPressed: () {},
-                child: const Text('Ação discreta'),
-              ),
+              TextButton(onPressed: () {}, child: const Text('Ação discreta')),
               FilledButton(
                 style: FilledButton.styleFrom(
                   backgroundColor: AppTokens.red700,
@@ -107,10 +104,7 @@ class _ComponentsCatalogScreenState extends State<ComponentsCatalogScreen> {
                 onPressed: () {},
                 child: const Text('Remover'),
               ),
-              const FilledButton(
-                onPressed: null,
-                child: Text('Indisponível'),
-              ),
+              const FilledButton(onPressed: null, child: Text('Indisponível')),
             ],
           ),
         ),
@@ -125,22 +119,10 @@ class _ComponentsCatalogScreenState extends State<ComponentsCatalogScreen> {
             runSpacing: AppTokens.space12,
             children: [
               AppBadge(label: 'Neutro'),
-              AppBadge(
-                label: 'Concluído',
-                tone: AppBadgeTone.positive,
-              ),
-              AppBadge(
-                label: 'Atenção',
-                tone: AppBadgeTone.warning,
-              ),
-              AppBadge(
-                label: 'Erro',
-                tone: AppBadgeTone.negative,
-              ),
-              AppBadge(
-                label: 'Informação',
-                tone: AppBadgeTone.info,
-              ),
+              AppBadge(label: 'Concluído', tone: AppBadgeTone.positive),
+              AppBadge(label: 'Atenção', tone: AppBadgeTone.warning),
+              AppBadge(label: 'Erro', tone: AppBadgeTone.negative),
+              AppBadge(label: 'Informação', tone: AppBadgeTone.info),
             ],
           ),
         ),
@@ -243,10 +225,10 @@ class _ComponentsCatalogScreenState extends State<ComponentsCatalogScreen> {
             final columns = constraints.maxWidth >= 1000
                 ? 4
                 : constraints.maxWidth >= 620
-                    ? 2
-                    : 1;
-            final width = (constraints.maxWidth -
-                    (columns - 1) * AppTokens.space16) /
+                ? 2
+                : 1;
+            final width =
+                (constraints.maxWidth - (columns - 1) * AppTokens.space16) /
                 columns;
 
             const states = [
@@ -267,8 +249,7 @@ class _ComponentsCatalogScreenState extends State<ComponentsCatalogScreen> {
               AppStatePanel(
                 kind: AppStateKind.error,
                 title: 'Não foi possível concluir',
-                description:
-                    'Revise os dados informados e tente novamente.',
+                description: 'Revise os dados informados e tente novamente.',
                 compact: true,
               ),
               AppStatePanel(
@@ -315,17 +296,14 @@ class _DocumentationCard extends StatelessWidget {
           children: [
             Semantics(
               header: true,
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              child: Text(title, style: Theme.of(context).textTheme.titleLarge),
             ),
             const SizedBox(height: AppTokens.space8),
             Text(
               description,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTokens.neutral700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
             const SizedBox(height: AppTokens.space20),
             child,
@@ -358,9 +336,9 @@ class _PageHeader extends StatelessWidget {
         children: [
           Text(
             eyebrow,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppTokens.forest700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
           ),
           const SizedBox(height: AppTokens.space4),
           Semantics(
@@ -374,9 +352,9 @@ class _PageHeader extends StatelessWidget {
           const SizedBox(height: AppTokens.space12),
           Text(
             description,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: AppTokens.neutral700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
           ),
         ],
       ),

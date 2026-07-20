@@ -6,10 +6,7 @@ class UnsupportedHealthTransport implements HealthTransport {
   const UnsupportedHealthTransport();
 
   @override
-  Future<HealthHttpResponse> get(
-    Uri uri, {
-    required Duration timeout,
-  }) {
+  Future<HealthHttpResponse> get(Uri uri, {required Duration timeout}) {
     throw UnsupportedError(
       'Health check HTTP transport is unavailable on this platform.',
     );

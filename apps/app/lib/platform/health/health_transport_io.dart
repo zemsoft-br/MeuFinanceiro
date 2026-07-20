@@ -7,10 +7,7 @@ HealthTransport createHealthTransport() => IoHealthTransport();
 
 class IoHealthTransport implements HealthTransport {
   @override
-  Future<HealthHttpResponse> get(
-    Uri uri, {
-    required Duration timeout,
-  }) async {
+  Future<HealthHttpResponse> get(Uri uri, {required Duration timeout}) async {
     if (!uri.hasScheme || uri.host.isEmpty) {
       throw const FormatException(
         'Native health endpoint must be an absolute URI.',
@@ -30,10 +27,7 @@ class IoHealthTransport implements HealthTransport {
           .join()
           .timeout(timeout);
 
-      return HealthHttpResponse(
-        statusCode: response.statusCode,
-        body: body,
-      );
+      return HealthHttpResponse(statusCode: response.statusCode, body: body);
     } finally {
       client.close(force: true);
     }

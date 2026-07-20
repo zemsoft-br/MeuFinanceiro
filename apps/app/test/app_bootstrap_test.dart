@@ -10,8 +10,9 @@ import 'package:meufinanceiro_app/routing/app_router.dart';
 import 'support/fake_health_transport.dart';
 
 void main() {
-  testWidgets('boots through ProviderScope, GoRouter and responsive shell',
-      (tester) async {
+  testWidgets('boots through ProviderScope, GoRouter and responsive shell', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1200, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);

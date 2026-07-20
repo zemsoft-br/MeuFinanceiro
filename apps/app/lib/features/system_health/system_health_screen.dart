@@ -76,9 +76,9 @@ class _PageHeader extends StatelessWidget {
         children: [
           Text(
             'Diagnóstico local',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: AppTokens.forest700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
           ),
           const SizedBox(height: AppTokens.space4),
           Semantics(
@@ -93,9 +93,9 @@ class _PageHeader extends StatelessWidget {
           Text(
             'Acompanhe a disponibilidade dos serviços. A instalação e a '
             'política PWA final serão validadas na fase de troca do runtime.',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: AppTokens.neutral700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
           ),
         ],
       ),
@@ -104,10 +104,7 @@ class _PageHeader extends StatelessWidget {
 }
 
 class _HealthCard extends StatelessWidget {
-  const _HealthCard({
-    required this.health,
-    required this.onRefresh,
-  });
+  const _HealthCard({required this.health, required this.onRefresh});
 
   final AsyncValue<ApiHealthSnapshot> health;
   final VoidCallback onRefresh;
@@ -132,10 +129,7 @@ class _HealthCard extends StatelessWidget {
                   semanticLabel: 'Diagnóstico da API',
                 ),
                 const Spacer(),
-                AppBadge(
-                  label: presentation.label,
-                  tone: presentation.tone,
-                ),
+                AppBadge(label: presentation.label, tone: presentation.tone),
               ],
             ),
             const SizedBox(height: AppTokens.space20),
@@ -151,8 +145,7 @@ class _HealthCard extends StatelessWidget {
               const AppStatePanel(
                 kind: AppStateKind.loading,
                 title: 'Verificando o ambiente',
-                description:
-                    'A disponibilidade da API está sendo consultada.',
+                description: 'A disponibilidade da API está sendo consultada.',
                 compact: true,
               )
             else
@@ -182,17 +175,15 @@ class _HealthCard extends StatelessWidget {
 
     return switch (health.value?.availability) {
       ApiAvailability.operational => (
-          label: 'Operacional',
-          tone: AppBadgeTone.positive,
-        ),
+        label: 'Operacional',
+        tone: AppBadgeTone.positive,
+      ),
       ApiAvailability.degraded => (
-          label: 'Atenção',
-          tone: AppBadgeTone.warning,
-        ),
-      ApiAvailability.unavailable || null => (
-          label: 'Indisponível',
-          tone: AppBadgeTone.negative,
-        ),
+        label: 'Atenção',
+        tone: AppBadgeTone.warning,
+      ),
+      ApiAvailability.unavailable ||
+      null => (label: 'Indisponível', tone: AppBadgeTone.negative),
     };
   }
 }
@@ -229,8 +220,8 @@ class _HealthDetails extends StatelessWidget {
                   child: Text(
                     row.$1,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTokens.neutral700,
-                        ),
+                      color: AppTokens.neutral700,
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppTokens.space16),
@@ -239,8 +230,8 @@ class _HealthDetails extends StatelessWidget {
                     row.$2,
                     textAlign: TextAlign.end,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
@@ -278,10 +269,7 @@ class _InstallCard extends StatelessWidget {
                   semanticLabel: 'Instalação',
                 ),
                 Spacer(),
-                AppBadge(
-                  label: 'Fase C',
-                  tone: AppBadgeTone.info,
-                ),
+                AppBadge(label: 'Fase C', tone: AppBadgeTone.info),
               ],
             ),
             const SizedBox(height: AppTokens.space20),
@@ -297,16 +285,15 @@ class _InstallCard extends StatelessWidget {
               'O build Flutter já compila para Web. Manifesto, service worker, '
               'headers e fluxo de instalação serão auditados junto da troca '
               'controlada do runtime.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTokens.neutral700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
             const SizedBox(height: AppTokens.space20),
             const AppStatePanel(
               kind: AppStateKind.unavailable,
               title: 'Instalação ainda não habilitada',
-              description:
-                  'Use o shell React ativo até a conclusão da Fase C.',
+              description: 'Use o shell React ativo até a conclusão da Fase C.',
               compact: true,
             ),
           ],
@@ -342,8 +329,8 @@ class _CachePolicyCard extends StatelessWidget {
                   Text(
                     'Política offline preservada',
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          color: AppTokens.forest700,
-                        ),
+                      color: AppTokens.forest700,
+                    ),
                   ),
                   const SizedBox(height: AppTokens.space4),
                   Semantics(
@@ -359,8 +346,8 @@ class _CachePolicyCard extends StatelessWidget {
                     'permanecem fora da política de cache. A implementação '
                     'produtiva será auditada na Fase C.',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: AppTokens.neutral700,
-                        ),
+                      color: AppTokens.neutral700,
+                    ),
                   ),
                 ],
               ),

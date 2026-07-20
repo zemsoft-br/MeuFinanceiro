@@ -17,37 +17,28 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       ShellRoute(
         builder: (context, state, child) {
-          return AppShell(
-            currentLocation: state.uri.path,
-            child: child,
-          );
+          return AppShell(currentLocation: state.uri.path, child: child);
         },
         routes: [
           GoRoute(
             path: '/',
             name: AppRoutes.home,
             pageBuilder: (context, state) {
-              return const NoTransitionPage(
-                child: _HomeRoute(),
-              );
+              return const NoTransitionPage(child: _HomeRoute());
             },
           ),
           GoRoute(
             path: '/componentes',
             name: AppRoutes.components,
             pageBuilder: (context, state) {
-              return const NoTransitionPage(
-                child: ComponentsCatalogScreen(),
-              );
+              return const NoTransitionPage(child: ComponentsCatalogScreen());
             },
           ),
           GoRoute(
             path: '/sistema',
             name: AppRoutes.system,
             pageBuilder: (context, state) {
-              return const NoTransitionPage(
-                child: SystemHealthScreen(),
-              );
+              return const NoTransitionPage(child: SystemHealthScreen());
             },
           ),
         ],
@@ -73,8 +64,7 @@ class _HomeRoute extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final availability =
-        ref.watch(apiHealthProvider).value?.availability;
+    final availability = ref.watch(apiHealthProvider).value?.availability;
     return HomeScreen(availability: availability);
   }
 }

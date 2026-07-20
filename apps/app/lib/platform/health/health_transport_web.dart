@@ -1,4 +1,4 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
 
 import 'dart:async';
 import 'dart:html' as html;
@@ -11,10 +11,7 @@ class BrowserHealthTransport implements HealthTransport {
   const BrowserHealthTransport();
 
   @override
-  Future<HealthHttpResponse> get(
-    Uri uri, {
-    required Duration timeout,
-  }) {
+  Future<HealthHttpResponse> get(Uri uri, {required Duration timeout}) {
     final request = html.HttpRequest();
     final completer = Completer<HealthHttpResponse>();
     var timedOut = false;
@@ -35,7 +32,7 @@ class BrowserHealthTransport implements HealthTransport {
       if (!completer.isCompleted) {
         completer.complete(
           HealthHttpResponse(
-            statusCode: request.status,
+            statusCode: request.status ?? 0,
             body: request.responseText ?? '',
           ),
         );

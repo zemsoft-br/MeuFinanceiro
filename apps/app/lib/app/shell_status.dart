@@ -20,9 +20,7 @@ class _TopBar extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: AppTokens.white,
-        border: Border(
-          bottom: BorderSide(color: AppTokens.neutral200),
-        ),
+        border: Border(bottom: BorderSide(color: AppTokens.neutral200)),
       ),
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -75,10 +73,7 @@ class _TopBar extends StatelessWidget {
 }
 
 class _ApiNotice extends StatelessWidget {
-  const _ApiNotice({
-    required this.health,
-    required this.onRefresh,
-  });
+  const _ApiNotice({required this.health, required this.onRefresh});
 
   final AsyncValue<ApiHealthSnapshot> health;
   final VoidCallback onRefresh;
@@ -103,8 +98,7 @@ class _ApiNotice extends StatelessWidget {
       );
     }
 
-    final degraded =
-        presentation.availability == ApiAvailability.degraded;
+    final degraded = presentation.availability == ApiAvailability.degraded;
 
     return Semantics(
       container: true,
@@ -146,9 +140,9 @@ class _ApiNotice extends StatelessWidget {
                     Text(
                       degraded
                           ? 'A interface continua acessível enquanto o '
-                              'ambiente é verificado.'
+                                'ambiente é verificado.'
                           : 'A navegação local continua disponível, mas '
-                              'operações dependentes da API estão suspensas.',
+                                'operações dependentes da API estão suspensas.',
                     ),
                   ],
                 ),
@@ -173,9 +167,7 @@ class _AppFooter extends StatelessWidget {
     return DecoratedBox(
       decoration: const BoxDecoration(
         color: AppTokens.white,
-        border: Border(
-          top: BorderSide(color: AppTokens.neutral200),
-        ),
+        border: Border(top: BorderSide(color: AppTokens.neutral200)),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(
@@ -189,15 +181,15 @@ class _AppFooter extends StatelessWidget {
           children: [
             Text(
               'MeuFinanceiro · Fundação do projeto',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTokens.neutral600,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral600),
             ),
             Text(
               'API: /api/v1/docs',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppTokens.neutral600,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral600),
             ),
           ],
         ),
@@ -219,9 +211,7 @@ class _HealthPresentation {
   final Color color;
   final ApiAvailability? availability;
 
-  factory _HealthPresentation.fromAsync(
-    AsyncValue<ApiHealthSnapshot> health,
-  ) {
+  factory _HealthPresentation.fromAsync(AsyncValue<ApiHealthSnapshot> health) {
     if (health.isLoading) {
       return const _HealthPresentation(
         label: 'Verificando',
@@ -233,23 +223,23 @@ class _HealthPresentation {
 
     return switch (health.value?.availability) {
       ApiAvailability.operational => const _HealthPresentation(
-          label: 'Operacional',
-          icon: Icons.check_circle_rounded,
-          color: AppTokens.forest700,
-          availability: ApiAvailability.operational,
-        ),
+        label: 'Operacional',
+        icon: Icons.check_circle_rounded,
+        color: AppTokens.forest700,
+        availability: ApiAvailability.operational,
+      ),
       ApiAvailability.degraded => const _HealthPresentation(
-          label: 'Atenção',
-          icon: Icons.warning_amber_rounded,
-          color: AppTokens.amber700,
-          availability: ApiAvailability.degraded,
-        ),
+        label: 'Atenção',
+        icon: Icons.warning_amber_rounded,
+        color: AppTokens.amber700,
+        availability: ApiAvailability.degraded,
+      ),
       ApiAvailability.unavailable || null => const _HealthPresentation(
-          label: 'Indisponível',
-          icon: Icons.cloud_off_outlined,
-          color: AppTokens.red700,
-          availability: ApiAvailability.unavailable,
-        ),
+        label: 'Indisponível',
+        icon: Icons.cloud_off_outlined,
+        color: AppTokens.red700,
+        availability: ApiAvailability.unavailable,
+      ),
     };
   }
 }

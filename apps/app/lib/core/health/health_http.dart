@@ -1,8 +1,5 @@
 class HealthHttpResponse {
-  const HealthHttpResponse({
-    required this.statusCode,
-    required this.body,
-  });
+  const HealthHttpResponse({required this.statusCode, required this.body});
 
   final int statusCode;
   final String body;
@@ -11,8 +8,5 @@ class HealthHttpResponse {
 }
 
 abstract interface class HealthTransport {
-  Future<HealthHttpResponse> get(
-    Uri uri, {
-    required Duration timeout,
-  });
+  Future<HealthHttpResponse> get(Uri uri, {required Duration timeout});
 }

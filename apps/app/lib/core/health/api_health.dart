@@ -18,12 +18,12 @@ class ApiReadiness {
   });
 
   const ApiReadiness.unknown()
-      : status = 'unknown',
-        process = 'unknown',
-        database = 'unknown',
-        schema = 'unknown',
-        currentRevision = null,
-        expectedRevision = null;
+    : status = 'unknown',
+      process = 'unknown',
+      database = 'unknown',
+      schema = 'unknown',
+      currentRevision = null,
+      expectedRevision = null;
 
   final String status;
   final String process;
@@ -40,14 +40,12 @@ class ApiReadiness {
     return ApiReadiness(
       status: _enumValue(payload['status'], const {'ok', 'degraded'}),
       process: _enumValue(payload['process'], const {'ok'}),
-      database: _enumValue(
-        payload['database'],
-        const {'ok', 'unavailable'},
-      ),
-      schema: _enumValue(
-        payload['schema'],
-        const {'ok', 'outdated', 'unavailable'},
-      ),
+      database: _enumValue(payload['database'], const {'ok', 'unavailable'}),
+      schema: _enumValue(payload['schema'], const {
+        'ok',
+        'outdated',
+        'unavailable',
+      }),
       currentRevision: _nullableString(payload['current_revision']),
       expectedRevision: _nullableString(payload['expected_revision']),
     );
@@ -166,9 +164,7 @@ final healthTimeoutProvider = Provider<Duration>(
   (ref) => const Duration(seconds: 8),
 );
 
-final healthClockProvider = Provider<HealthClock>(
-  (ref) => DateTime.now,
-);
+final healthClockProvider = Provider<HealthClock>((ref) => DateTime.now);
 
 final apiHealthServiceProvider = Provider<ApiHealthService>((ref) {
   return ApiHealthService(

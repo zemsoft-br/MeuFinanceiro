@@ -29,8 +29,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('shows loading, empty, error and unavailable states',
-      (tester) async {
+  testWidgets('shows loading, empty, error and unavailable states', (
+    tester,
+  ) async {
     await pumpCatalog(tester);
 
     expect(find.text('Carregando informações'), findsOneWidget);
@@ -42,9 +43,7 @@ void main() {
   testWidgets('rejects an invalid demonstrative form', (tester) async {
     await pumpCatalog(tester);
 
-    await tester.ensureVisible(
-      find.byKey(ComponentsCatalogScreen.submitKey),
-    );
+    await tester.ensureVisible(find.byKey(ComponentsCatalogScreen.submitKey));
     await tester.tap(find.byKey(ComponentsCatalogScreen.submitKey));
     await tester.pumpAndSettle();
 
@@ -52,17 +51,16 @@ void main() {
     expect(find.byKey(ComponentsCatalogScreen.successKey), findsNothing);
   });
 
-  testWidgets('accepts a valid demonstrative form without persistence',
-      (tester) async {
+  testWidgets('accepts a valid demonstrative form without persistence', (
+    tester,
+  ) async {
     await pumpCatalog(tester);
 
     await tester.enterText(
       find.byKey(ComponentsCatalogScreen.residenceFieldKey),
       'Residência Ipê',
     );
-    await tester.ensureVisible(
-      find.byKey(ComponentsCatalogScreen.submitKey),
-    );
+    await tester.ensureVisible(find.byKey(ComponentsCatalogScreen.submitKey));
     await tester.tap(find.byKey(ComponentsCatalogScreen.submitKey));
     await tester.pumpAndSettle();
 

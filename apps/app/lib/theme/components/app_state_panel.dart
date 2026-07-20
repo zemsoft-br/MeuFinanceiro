@@ -21,25 +21,25 @@ class AppStatePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final presentation = switch (kind) {
       AppStateKind.loading => (
-          icon: Icons.hourglass_top_rounded,
-          color: AppTokens.blue700,
-          semantics: 'Carregando',
-        ),
+        icon: Icons.hourglass_top_rounded,
+        color: AppTokens.blue700,
+        semantics: 'Carregando',
+      ),
       AppStateKind.empty => (
-          icon: Icons.inbox_outlined,
-          color: AppTokens.neutral700,
-          semantics: 'Vazio',
-        ),
+        icon: Icons.inbox_outlined,
+        color: AppTokens.neutral700,
+        semantics: 'Vazio',
+      ),
       AppStateKind.error => (
-          icon: Icons.error_outline_rounded,
-          color: AppTokens.red700,
-          semantics: 'Erro',
-        ),
+        icon: Icons.error_outline_rounded,
+        color: AppTokens.red700,
+        semantics: 'Erro',
+      ),
       AppStateKind.unavailable => (
-          icon: Icons.cloud_off_outlined,
-          color: AppTokens.amber700,
-          semantics: 'Indisponível',
-        ),
+        icon: Icons.cloud_off_outlined,
+        color: AppTokens.amber700,
+        semantics: 'Indisponível',
+      ),
     };
 
     return Semantics(
@@ -75,16 +75,13 @@ class AppStatePanel extends StatelessWidget {
                   semanticLabel: presentation.semantics,
                 ),
               const SizedBox(height: AppTokens.space16),
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text(title, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: AppTokens.space8),
               Text(
                 description,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTokens.neutral700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
               ),
             ],
           ),

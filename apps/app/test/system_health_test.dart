@@ -42,8 +42,9 @@ void main() {
     }
   }
 
-  testWidgets('renders checking before the health response completes',
-      (tester) async {
+  testWidgets('renders checking before the health response completes', (
+    tester,
+  ) async {
     await pumpSystem(
       tester,
       operationalHealthTransport(),
@@ -64,8 +65,9 @@ void main() {
     expect(find.text('01:02:03'), findsOneWidget);
   });
 
-  testWidgets('renders degraded health without blocking navigation',
-      (tester) async {
+  testWidgets('renders degraded health without blocking navigation', (
+    tester,
+  ) async {
     await pumpSystem(tester, degradedHealthTransport());
 
     expect(find.text('Atenção'), findsWidgets);
@@ -81,8 +83,9 @@ void main() {
     expect(find.text('não verificado'), findsWidgets);
   });
 
-  testWidgets('refresh invalidates the provider and performs another check',
-      (tester) async {
+  testWidgets('refresh invalidates the provider and performs another check', (
+    tester,
+  ) async {
     final transport = operationalHealthTransport();
     await pumpSystem(tester, transport);
 

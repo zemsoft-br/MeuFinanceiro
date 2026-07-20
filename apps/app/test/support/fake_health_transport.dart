@@ -3,15 +3,13 @@ import 'dart:async';
 import 'package:meufinanceiro_app/core/health/health_http.dart';
 
 class FakeHealthTransport implements HealthTransport {
-  FakeHealthTransport.response({
-    required int statusCode,
-    required String body,
-  }) : _handler = ((_, __) async {
-          return HealthHttpResponse(statusCode: statusCode, body: body);
-        });
+  FakeHealthTransport.response({required int statusCode, required String body})
+    : _handler = ((_, _) async {
+        return HealthHttpResponse(statusCode: statusCode, body: body);
+      });
 
   FakeHealthTransport.failure(Object error)
-      : _handler = ((_, __) async => throw error);
+    : _handler = ((_, _) async => throw error);
 
   FakeHealthTransport.handler(
     Future<HealthHttpResponse> Function(Uri uri, Duration timeout) handler,
@@ -24,10 +22,7 @@ class FakeHealthTransport implements HealthTransport {
   Duration? lastTimeout;
 
   @override
-  Future<HealthHttpResponse> get(
-    Uri uri, {
-    required Duration timeout,
-  }) async {
+  Future<HealthHttpResponse> get(Uri uri, {required Duration timeout}) async {
     callCount += 1;
     lastUri = uri;
     lastTimeout = timeout;

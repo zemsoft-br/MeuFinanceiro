@@ -31,9 +31,9 @@ class NotFoundScreen extends StatelessWidget {
               child: Text(
                 location,
                 key: titleKey,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTokens.neutral700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
               ),
             ),
             const SizedBox(height: AppTokens.space20),

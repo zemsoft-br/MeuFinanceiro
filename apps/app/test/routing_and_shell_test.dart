@@ -1,3 +1,5 @@
+import 'dart:ui' show Tristate;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -80,8 +82,9 @@ void main() {
       expect(find.text('/rota-inexistente'), findsOneWidget);
     });
 
-    testWidgets('does not mark a mobile destination on an unknown route',
-        (tester) async {
+    testWidgets('does not mark a mobile destination on an unknown route', (
+      tester,
+    ) async {
       await pumpApp(
         tester,
         location: '/rota-inexistente',
@@ -105,17 +108,13 @@ void main() {
       final selected = tester.getSemantics(
         find.byKey(const Key('navigation-components')),
       );
-      expect(selected.hasFlag(SemanticsFlag.isSelected), isTrue);
+      expect(selected.flagsCollection.isSelected, Tristate.isTrue);
     });
   });
 
   group('responsive shell', () {
     testWidgets('uses desktop sidebar without mobile controls', (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(1200, 900),
-      );
+      await pumpApp(tester, location: '/', size: const Size(1200, 900));
 
       expect(find.byKey(AppShell.desktopSidebarKey), findsOneWidget);
       expect(find.byKey(AppShell.mobileMenuButtonKey), findsNothing);
@@ -123,13 +122,10 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('uses mobile navigation and opens the accessible drawer',
-        (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(390, 844),
-      );
+    testWidgets('uses mobile navigation and opens the accessible drawer', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/', size: const Size(390, 844));
 
       expect(find.byKey(AppShell.desktopSidebarKey), findsNothing);
       expect(find.byKey(AppShell.mobileMenuButtonKey), findsOneWidget);
@@ -152,33 +148,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('mobile bottom navigation changes the active route',
-        (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(390, 844),
-      );
+    testWidgets('mobile bottom navigation changes the active route', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/', size: const Size(390, 844));
 
       final mobileNavigation = find.byKey(AppShell.mobileNavigationKey);
       await tester.tap(
-        find.descendant(
-          of: mobileNavigation,
-          matching: find.text('Sistema'),
-        ),
+        find.descendant(of: mobileNavigation, matching: find.text('Sistema')),
       );
       await tester.pumpAndSettle();
 
       expect(find.byKey(SystemHealthScreen.titleKey), findsOneWidget);
     });
 
-    testWidgets('drawer navigation moves focus to the new main content',
-        (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(390, 844),
-      );
+    testWidgets('drawer navigation moves focus to the new main content', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/', size: const Size(390, 844));
 
       await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
       await tester.pumpAndSettle();
@@ -192,13 +179,10 @@ void main() {
       expect(mainContent.focusNode?.hasFocus, isTrue);
     });
 
-    testWidgets('backdrop dismisses the mobile drawer and restores focus',
-        (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(390, 844),
-      );
+    testWidgets('backdrop dismisses the mobile drawer and restores focus', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/', size: const Size(390, 844));
 
       await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
       await tester.pumpAndSettle();
@@ -213,11 +197,7 @@ void main() {
     });
 
     testWidgets('close control dismisses the mobile drawer', (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(390, 844),
-      );
+      await pumpApp(tester, location: '/', size: const Size(390, 844));
 
       await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
       await tester.pumpAndSettle();
@@ -232,13 +212,10 @@ void main() {
       );
     });
 
-    testWidgets('Escape closes the mobile drawer and restores menu focus',
-        (tester) async {
-      await pumpApp(
-        tester,
-        location: '/',
-        size: const Size(390, 844),
-      );
+    testWidgets('Escape closes the mobile drawer and restores menu focus', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/', size: const Size(390, 844));
 
       await tester.tap(find.byKey(AppShell.mobileMenuButtonKey));
       await tester.pumpAndSettle();
@@ -252,8 +229,9 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('does not overflow horizontally on desktop or mobile',
-        (tester) async {
+    testWidgets('does not overflow horizontally on desktop or mobile', (
+      tester,
+    ) async {
       for (final size in [const Size(1440, 1000), const Size(320, 700)]) {
         await pumpApp(tester, location: '/', size: size);
         expect(tester.takeException(), isNull);

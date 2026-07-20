@@ -12,9 +12,9 @@ ThemeData buildAppTheme() {
   );
 
   final baseTextTheme = Typography.material2021().black.apply(
-        bodyColor: AppTokens.neutral950,
-        displayColor: AppTokens.neutral950,
-      );
+    bodyColor: AppTokens.neutral950,
+    displayColor: AppTokens.neutral950,
+  );
 
   return ThemeData(
     useMaterial3: true,
@@ -53,9 +53,7 @@ ThemeData buildAppTheme() {
       color: AppTokens.white,
       margin: EdgeInsets.zero,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(AppTokens.radiusMedium),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(AppTokens.radiusMedium)),
         side: BorderSide(color: AppTokens.neutral200),
       ),
     ),
@@ -63,33 +61,23 @@ ThemeData buildAppTheme() {
       filled: true,
       fillColor: AppTokens.white,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(AppTokens.radiusSmall),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(AppTokens.radiusSmall)),
         borderSide: BorderSide(color: AppTokens.neutral300),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(AppTokens.radiusSmall),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(AppTokens.radiusSmall)),
         borderSide: BorderSide(color: AppTokens.neutral300),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(AppTokens.radiusSmall),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(AppTokens.radiusSmall)),
         borderSide: BorderSide(color: AppTokens.forest700, width: 2),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(AppTokens.radiusSmall),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(AppTokens.radiusSmall)),
         borderSide: BorderSide(color: AppTokens.red700),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.all(
-          Radius.circular(AppTokens.radiusSmall),
-        ),
+        borderRadius: BorderRadius.all(Radius.circular(AppTokens.radiusSmall)),
         borderSide: BorderSide(color: AppTokens.red700, width: 2),
       ),
       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
