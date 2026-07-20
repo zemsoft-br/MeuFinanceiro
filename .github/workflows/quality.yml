@@ -81,20 +81,35 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.cache/meufinanceiro/flutter
-          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version') }}
+          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version', '.flutter-revision') }}
 
       - name: Install pinned Flutter SDK
         shell: bash
         run: |
           set -euo pipefail
           EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
-          FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION"
+          EXPECTED_REVISION="$(tr -d '[:space:]' < .flutter-revision)"
+          FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION-$EXPECTED_REVISION"
+
+          if [[ -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+            if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+              rm -rf "$FLUTTER_ROOT"
+            fi
+          fi
+
           if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
-            rm -rf "$FLUTTER_ROOT"
             mkdir -p "$(dirname "$FLUTTER_ROOT")"
             git clone --depth 1 --branch "$EXPECTED_VERSION" \
               https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
           fi
+
+          ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+            echo "Flutter revision mismatch after clone: expected $EXPECTED_REVISION, found $ACTUAL_REVISION" >&2
+            exit 1
+          fi
+
           git config --global --add safe.directory "$FLUTTER_ROOT"
           echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
           "$FLUTTER_ROOT/bin/flutter" config --no-analytics
