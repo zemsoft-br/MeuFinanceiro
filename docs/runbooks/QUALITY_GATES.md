@@ -15,7 +15,7 @@ Os workflows principais escutam eventos de Pull Request, mas os jobs somente exe
 5. o GitHub Actions executar `Quality` e, quando aplicável, `Container Quality`;
 6. novos pushes em PR pronta iniciarem nova execução e cancelarem a anterior do mesmo workflow.
 
-Ambos os workflows também expõem `workflow_dispatch` para diagnóstico ou validação manual.
+Ambos os workflows também expõem `workflow_dispatch` para diagnóstico ou validação manual. Quando o GitHub Actions estiver indisponível por cota ou incidente externo, a PR permanece bloqueada para merge até que a suíte equivalente seja executada localmente e os resultados sejam registrados.
 
 ## Gates obrigatórios
 
@@ -39,8 +39,9 @@ Executa:
 - verificação de formatação Dart;
 - `flutter analyze`;
 - testes Flutter;
-- build Web Flutter release com `--no-web-resources-cdn`;
-- validação do manifesto, index, service worker, ícones, ausência de worker legado e ausência de origins de CDN no artefato gerado.
+- build Web Flutter release com `--no-web-resources-cdn` e `--pwa-strategy=none`;
+- finalização estrita do artefato, removendo apenas o worker legado vazio;
+- validação do manifesto, index, service worker, ícones, CanvasKit local e ausência de worker legado no artefato gerado.
 
 React e Flutter permanecem nos gates durante a Fase C. A remoção dos gates Node ocorrerá somente na Fase D, junto da remoção validada do frontend antigo e do target de rollback.
 
@@ -101,7 +102,7 @@ Para recriar o ambiente virtual dos gates:
 python infra/scripts/run-quality.py --recreate
 ```
 
-O script executa Python, React transitório e Flutter nessa ordem. O build Flutter é seguido pela validação de `apps/app/build/web`.
+O script executa Python, React transitório e Flutter nessa ordem. O build Flutter é seguido pela finalização e pela validação de `apps/app/build/web`.
 
 Gate de containers:
 
@@ -125,18 +126,21 @@ No Windows, o gate de aplicação pode ser executado pelo mesmo script Python. O
 
 ## Build Flutter Web
 
-O comando canônico é:
+O pipeline canônico é:
 
 ```bash
 cd apps/app
-flutter build web --release --no-web-resources-cdn
+flutter build web --release --no-web-resources-cdn --pwa-strategy=none
+python ../../infra/scripts/finalize-flutter-web-build.py --build-dir build/web
 cd ../..
 python infra/scripts/check-flutter-web-contract.py
 ```
 
-O flag sem CDN é obrigatório para que CanvasKit/WASM e demais recursos Web necessários sejam empacotados localmente. O validator examina o `index.html` e o bootstrap gerado para bloquear origins remotas conhecidas.
+`--no-web-resources-cdn` obriga o empacotamento local do CanvasKit/WASM. `--pwa-strategy=none` desativa a política automática do SDK porque o projeto mantém `apps/app/web/sw.js` explicitamente.
 
-O build Docker usa o mesmo comando e valida a revisão exata do SDK antes da compilação.
+Algumas versões do SDK ainda produzem um `flutter_service_worker.js` vazio mesmo com a estratégia desativada. O finalizador remove somente esse arquivo vazio; qualquer conteúdo não vazio bloqueia o build. O validator exige `"useLocalCanvasKit": true`, os arquivos locais do engine e a ausência do worker legado no artefato final.
+
+O build Docker usa o mesmo pipeline e valida a revisão exata do SDK antes da compilação.
 
 ## Lockfiles dos clientes
 
@@ -184,10 +188,12 @@ São bloqueados:
 - armazenamento de respostas não bem-sucedidas ou não `basic`;
 - ausência de limpeza dos caches antigos Flutter e React;
 - ausência de `skipWaiting` ou `clients.claim`;
+- espera indefinida pelo primeiro controle do worker;
 - `flutter_service_worker.js` legado;
 - divergência entre `web/sw.js` e o `sw.js` gerado;
 - manifesto ou ícones incompletos;
-- origins de CDN conhecidos no bootstrap servido.
+- CanvasKit remoto ou arquivos locais do engine ausentes;
+- origins remotas conhecidas em arquivos controlados pelo projeto.
 
 ## Política de dependências
 
@@ -213,6 +219,7 @@ Falhas Flutter devem ser classificadas por etapa:
 - análise estática;
 - teste;
 - compilação Web;
+- finalização do artefato;
 - contrato do artefato Web/PWA;
 - build da imagem;
 - Caddy e headers;
@@ -238,7 +245,9 @@ Esses logs devem continuar sanitizados. Não adicione dados reais a testes ou me
 - saída de máquina do Flutter é validada;
 - ausência de Flutter produz mensagem acionável;
 - divergência de versão bloqueia o gate;
-- o contrato source do Flutter Web/PWA é válido.
+- o contrato source do Flutter Web/PWA é válido;
+- o finalizador remove apenas worker legado vazio;
+- configuração remota do engine é rejeitada.
 
 Falhas intencionais permanecem confinadas aos diretórios temporários dos testes e nunca são commitadas no repositório real.
 
