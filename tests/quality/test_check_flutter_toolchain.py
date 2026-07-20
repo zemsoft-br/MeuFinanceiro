@@ -18,7 +18,9 @@ PINNED_REVISION = "ee80f08bbf97172ec030b8751ceab557177a34a6"
 
 
 def load_module() -> ModuleType:
-    spec = importlib.util.spec_from_file_location("check_flutter_toolchain", SCRIPT_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "check_flutter_toolchain", SCRIPT_PATH
+    )
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
