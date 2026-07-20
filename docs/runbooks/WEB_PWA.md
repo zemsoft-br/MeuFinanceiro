@@ -34,8 +34,11 @@ O estágio Flutter:
 1. lê `.flutter-version` e `.flutter-revision`;
 2. clona a versão e confirma a revisão exata;
 3. resolve `pubspec.lock` com `--enforce-lockfile`;
-4. gera `flutter build web --release --no-web-resources-cdn`;
-5. copia somente `build/web` para o runtime final.
+4. gera `flutter build web --release --no-web-resources-cdn --pwa-strategy=none`;
+5. executa o finalizador estrito do artefato;
+6. copia somente `build/web` para o runtime final.
+
+O finalizador remove `flutter_service_worker.js` apenas quando o SDK gerar esse arquivo vazio. Conteúdo não vazio bloqueia o build, evitando apagar silenciosamente uma política de cache inesperada.
 
 O runtime final usa Caddy, executa como UID/GID `65534`, escuta em `5173`, remove a capability de bind privilegiado e não inclui SDK Flutter, Git ou fontes do projeto.
 
@@ -103,9 +106,9 @@ O validator `infra/scripts/check-flutter-web-contract.py` examina o manifesto ve
 `index.html` contém apenas metadados e a referência a `app_bootstrap.js`. O carregador versionado:
 
 - registra `sw.js` com `updateViaCache: 'none'`;
-- em uma instalação nova, aguarda readiness e aquisição de controle por tempo limitado;
+- em uma instalação nova, aguarda readiness e aquisição de controle por no máximo três segundos;
 - em uma carga já controlada, solicita atualização em segundo plano sem bloquear a aplicação;
-- carrega `flutter_bootstrap.js` somente após preparar o worker;
+- carrega `flutter_bootstrap.js` depois de preparar o worker ou atingir o limite;
 - continua inicializando Flutter quando o navegador não suporta service worker ou quando o registro falha.
 
 `app_bootstrap.js` participa do precache mínimo para que o HTML offline consiga iniciar o shell. O arquivo recebe `no-store` no servidor e é atualizado por rede primeiro quando online.
@@ -155,9 +158,9 @@ Contratos:
 - ativação remove versões antigas do namespace Flutter;
 - ativação também remove caches legados `meufinanceiro-shell-*` do React;
 - `clients.claim` ocorre dentro da ativação;
-- `flutter_service_worker.js` legado é proibido no artefato.
+- `flutter_service_worker.js` legado é proibido no artefato final.
 
-O validator exige que `app_bootstrap.js` e `sw.js` gerados sejam idênticos aos arquivos versionados.
+O validator exige que `app_bootstrap.js` e `sw.js` gerados sejam idênticos aos arquivos versionados. Também exige configuração efetiva de CanvasKit local e presença de `canvaskit.js` e `canvaskit.wasm`; strings de fallback inativas dentro do loader do SDK não são tratadas como dependência remota por si só.
 
 ## Headers do runtime estático
 
@@ -196,7 +199,8 @@ Contrato do build:
 
 ```bash
 cd apps/app
-flutter build web --release --no-web-resources-cdn
+flutter build web --release --no-web-resources-cdn --pwa-strategy=none
+python ../../infra/scripts/finalize-flutter-web-build.py --build-dir build/web
 cd ../..
 python infra/scripts/check-flutter-web-contract.py
 ```
@@ -246,7 +250,7 @@ A Fase D somente poderá iniciar quando:
 
 - as três rotas Flutter estiverem validadas pelo Compose;
 - PWA e cache estiverem validados;
-- `Quality` e `Container Quality` passarem no HEAD final;
+- `Quality` e `Container Quality`, ou a suíte local equivalente documentada quando o Actions estiver indisponível, passarem no HEAD final;
 - rollback estiver documentado e executável durante a janela de validação;
 - nenhum caminho do runtime padrão usar React;
 - houver revisão independente sem achados bloqueantes.
