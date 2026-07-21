@@ -33,11 +33,35 @@ PYTHON_PATHS = (
 )
 
 
+def prepare_subprocess_command(
+    command: list[str],
+    *,
+    platform: str | None = None,
+    resolver: Callable[[str], str | None] = shutil.which,
+    comspec: str | None = None,
+) -> list[str]:
+    """Resolve PATH commands and invoke Windows batch shims through cmd.exe."""
+    if not command:
+        raise ValueError("command must not be empty")
+
+    executable = command[0]
+    resolved = executable if Path(executable).is_absolute() else resolver(executable)
+    prepared = [resolved or executable, *command[1:]]
+
+    current_platform = platform or os.name
+    suffix = Path(prepared[0]).suffix.lower()
+    if current_platform != "nt" or suffix not in {".bat", ".cmd"}:
+        return prepared
+
+    shell = comspec or os.environ.get("COMSPEC") or "cmd.exe"
+    return [shell, "/d", "/s", "/c", subprocess.list2cmdline(prepared)]
+
+
 def run(
     command: list[str], *, cwd: Path = ROOT, env: dict[str, str] | None = None
 ) -> None:
     print(f"+ {' '.join(command)}", flush=True)
-    subprocess.run(command, cwd=cwd, env=env, check=True)
+    subprocess.run(prepare_subprocess_command(command), cwd=cwd, env=env, check=True)
 
 
 def validate_python_version(version: tuple[int, int] | None = None) -> None:
