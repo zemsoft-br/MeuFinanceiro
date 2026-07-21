@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Reject obvious secrets, private keys, and real financial files in Git."""
+"""Reject secrets, real financial files, and forbidden legacy frontend artifacts."""
 
 from __future__ import annotations
 
@@ -25,6 +25,14 @@ SECRET_PATTERNS = {
     "AWS access key": re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
     "Slack token": re.compile(r"\bxox(?:a|b|p|r|s)-[A-Za-z0-9-]{20,}\b"),
 }
+FORBIDDEN_PATH_PREFIXES = ("apps/web/",)
+FORBIDDEN_TRACKED_PATHS = {
+    "infra/scripts/check-node-licenses.mjs",
+    "tests/quality/check-node-licenses.test.mjs",
+}
+FORBIDDEN_RUNTIME_TOKENS = ("WEB_RUNTIME_TARGET", "react-runtime")
+RUNTIME_CONTRACT_ROOTS = {".github", "infra", "tests"}
+RUNTIME_CONTRACT_FILES = {"compose.yaml", ".env.example"}
 
 
 def tracked_files(repo: Path) -> list[Path]:
@@ -38,15 +46,29 @@ def tracked_files(repo: Path) -> list[Path]:
     return [repo / item.decode() for item in result.stdout.split(b"\0") if item]
 
 
+def is_runtime_contract(relative: Path) -> bool:
+    relative_posix = relative.as_posix()
+    return (
+        relative_posix in RUNTIME_CONTRACT_FILES
+        or (relative.parts and relative.parts[0] in RUNTIME_CONTRACT_ROOTS)
+    )
+
+
 def validate(repo: Path) -> list[str]:
     failures: list[str] = []
 
     for path in tracked_files(repo):
         relative = path.relative_to(repo)
+        relative_posix = relative.as_posix()
         lowered_name = path.name.lower()
         suffix = path.suffix.lower()
 
-        if lowered_name in SENSITIVE_NAMES and relative.as_posix() != ".env.example":
+        if relative_posix in FORBIDDEN_TRACKED_PATHS or relative_posix.startswith(
+            FORBIDDEN_PATH_PREFIXES
+        ):
+            failures.append(f"legacy React frontend artifact tracked: {relative}")
+            continue
+        if lowered_name in SENSITIVE_NAMES and relative_posix != ".env.example":
             failures.append(f"sensitive filename tracked: {relative}")
             continue
         if suffix in SENSITIVE_SUFFIXES:
@@ -62,6 +84,13 @@ def validate(repo: Path) -> list[str]:
         for description, pattern in SECRET_PATTERNS.items():
             if pattern.search(text):
                 failures.append(f"{description} detected in {relative}")
+
+        if is_runtime_contract(relative):
+            for token in FORBIDDEN_RUNTIME_TOKENS:
+                if token in text:
+                    failures.append(
+                        f"legacy React runtime token {token!r} detected in {relative}"
+                    )
 
     return failures
 
