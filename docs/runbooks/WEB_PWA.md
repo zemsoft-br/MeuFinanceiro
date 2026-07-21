@@ -1,10 +1,6 @@
-# Runtime Flutter Web/PWA e transição do shell React
+# Runtime Flutter Web/PWA
 
-Este runbook descreve o runtime Web/PWA do MeuFinanceiro e os contratos operacionais da migração Flutter.
-
-> **Estado da Fase C:** o serviço `web` usa Flutter por padrão. `apps/web` permanece somente como rollback transitório até a Fase D. Nenhuma funcionalidade financeira nova deve ser implementada no shell React.
-
-A sequência completa está em [FLUTTER_CLIENT_MIGRATION.md](FLUTTER_CLIENT_MIGRATION.md).
+Este runbook descreve o único runtime Web/PWA do MeuFinanceiro. O cliente canônico fica em `apps/app`; não existe frontend React, target de rollback ou runtime Node na aplicação.
 
 ## Endereços locais
 
@@ -22,14 +18,9 @@ As três rotas são contratos de deep link e fallback SPA.
 
 ## Build e runtime
 
-O serviço `web` usa `infra/web/Dockerfile`, com targets independentes:
+O serviço `web` usa `infra/web/Dockerfile` e sempre produz Flutter Web.
 
-```text
-flutter-runtime   target padrão
-react-runtime     rollback transitório
-```
-
-O estágio Flutter:
+O estágio de build:
 
 1. lê `.flutter-version` e `.flutter-revision`;
 2. clona a versão e confirma a revisão exata;
@@ -42,32 +33,7 @@ O finalizador remove `flutter_service_worker.js` apenas quando o SDK gerar esse 
 
 O runtime final usa Caddy, executa como UID/GID `65534`, escuta em `5173`, remove a capability de bind privilegiado e não inclui SDK Flutter, Git ou fontes do projeto.
 
-O Caddy externo continua sendo a única entrada publicada e encaminha o caminho exato `/api` e `/api/*` diretamente para FastAPI. O Caddy interno do serviço `web` recusa essas mesmas fronteiras, servindo apenas o shell estático.
-
-## Rollback React
-
-O `.env` padrão contém:
-
-```text
-WEB_RUNTIME_TARGET=flutter-runtime
-```
-
-Para rollback temporário:
-
-```text
-WEB_RUNTIME_TARGET=react-runtime
-```
-
-Depois reconstrua o serviço:
-
-```bash
-docker compose build web
-docker compose up --detach --wait web caddy
-```
-
-Os scripts `dev-up.sh` e `dev-up.ps1` aceitam somente esses dois targets e validam qual runtime foi efetivamente servido. O rollback deve ser uma decisão operacional explícita. Flutter e React não podem responder simultaneamente pelo alias `web`. Retornar a Flutter usa o mesmo procedimento com `flutter-runtime`.
-
-A Fase D removerá `apps/web`, Node, Vite e esse target somente após a Fase C estar integrada e validada.
+O Caddy externo é a única entrada publicada e encaminha o caminho exato `/api` e `/api/*` diretamente para FastAPI. O Caddy interno do serviço `web` recusa essas mesmas fronteiras, servindo apenas o shell estático.
 
 ## Instalação
 
@@ -155,8 +121,7 @@ Contratos:
 - leituras de fallback consultam somente o namespace de cache do MeuFinanceiro;
 - instalação armazena somente os arquivos mínimos do shell;
 - `skipWaiting` ocorre somente depois de um precache bem-sucedido;
-- ativação remove versões antigas do namespace Flutter;
-- ativação também remove caches legados `meufinanceiro-shell-*` do React;
+- ativação remove versões antigas do namespace Flutter e caches de implementações anteriores;
 - `clients.claim` ocorre dentro da ativação;
 - `flutter_service_worker.js` legado é proibido no artefato final.
 
@@ -192,6 +157,7 @@ Contrato source e sintaxe:
 ```bash
 node --check apps/app/web/app_bootstrap.js
 node --check apps/app/web/sw.js
+node --test tests/quality/flutter-service-worker.test.mjs
 python infra/scripts/check-flutter-web-contract.py --source-only
 ```
 
@@ -226,7 +192,7 @@ O smoke comprova:
 - health do Worker e idempotência da fila;
 - funcionamento após restart.
 
-`Container Quality` também extrai `/srv` diretamente da imagem e executa o validator sobre o artefato que será servido. O target React é construído, iniciado isoladamente e validado quanto a fallback e usuário não-root.
+`Container Quality` também extrai `/srv` diretamente da imagem e executa o validator sobre o artefato que será servido.
 
 ## Diagnóstico no navegador
 
@@ -236,21 +202,10 @@ No DevTools:
 2. verifique **Manifest** e os ícones;
 3. confirme que `sw.js` é o worker ativo;
 4. em **Cache Storage**, confirme somente o namespace esperado;
-5. confirme que caches `meufinanceiro-shell-*` antigos foram removidos após ativação;
+5. confirme que caches antigos foram removidos após ativação;
 6. confirme que não existem entradas distintas para cada rota navegada;
 7. em **Network**, confirme que requisições `/api` e `/api/` não têm origem `ServiceWorker`;
 8. confirme os headers de `index.html`, `app_bootstrap.js`, `sw.js`, `main.dart.js`, CanvasKit/WASM e assets;
 9. simule offline somente depois de uma carga online completa.
 
 Para remover o estado local de teste, use **Clear site data**. Isso não remove o PostgreSQL do Docker Compose.
-
-## Critério para remover o React
-
-A Fase D somente poderá iniciar quando:
-
-- as três rotas Flutter estiverem validadas pelo Compose;
-- PWA e cache estiverem validados;
-- `Quality` e `Container Quality`, ou a suíte local equivalente documentada quando o Actions estiver indisponível, passarem no HEAD final;
-- rollback estiver documentado e executável durante a janela de validação;
-- nenhum caminho do runtime padrão usar React;
-- houver revisão independente sem achados bloqueantes.
