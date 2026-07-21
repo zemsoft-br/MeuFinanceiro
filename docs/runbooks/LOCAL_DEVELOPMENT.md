@@ -24,12 +24,11 @@ O script:
 
 1. valida Docker, Compose e Python;
 2. cria `.env` com senhas administrativas e de runtime independentes;
-3. define `WEB_RUNTIME_TARGET=flutter-runtime` quando o target ainda não existe;
-4. cria e valida `.secrets/keyring.json` sem imprimir o material;
-5. constrói os serviços, incluindo o build Flutter Web pinado;
-6. aguarda PostgreSQL, bootstrap da role e migração Alembic;
-7. inicia API, Worker, Web e Caddy;
-8. executa smoke de runtime Flutter, PWA, health, idempotência e processamento da fila.
+3. cria e valida `.secrets/keyring.json` sem imprimir o material;
+4. constrói os serviços, incluindo o build Flutter Web pinado;
+5. aguarda PostgreSQL, bootstrap da role e migração Alembic;
+6. inicia API, Worker, Web e Caddy;
+7. executa smoke de Flutter Web, PWA, health, idempotência e processamento da fila.
 
 ## Inicialização em Windows PowerShell
 
@@ -68,28 +67,7 @@ Altere `APP_HTTP_PORT` em `.env` para usar outra porta. O health do Worker perma
 
 `db-bootstrap` e `migrate` encerram com código zero após concluir. O PostgreSQL não publica porta no host. Use `docker compose exec postgres psql` quando precisar de acesso administrativo local.
 
-## Target do frontend
-
-O target padrão é:
-
-```text
-WEB_RUNTIME_TARGET=flutter-runtime
-```
-
-Durante a Fase C, o shell React permanece disponível somente para rollback controlado:
-
-```text
-WEB_RUNTIME_TARGET=react-runtime
-```
-
-Após alterar `.env`, reconstrua e reinicie o serviço:
-
-```bash
-docker compose build web
-docker compose up --detach --wait web caddy
-```
-
-Retorne para `flutter-runtime` pelo mesmo procedimento. Os dois targets nunca devem responder simultaneamente pelo alias `web`. O rollback não altera banco, API ou Worker.
+O frontend não possui seleção de runtime. `apps/app` é a única fonte do cliente e `infra/web/Dockerfile` sempre produz o artefato Flutter Web servido pelo serviço `web`.
 
 ## Comandos operacionais
 
@@ -100,7 +78,7 @@ docker compose ps --all
 # Logs sanitizados
 docker compose logs --tail=200
 
-# Reconstruir apenas o runtime Web
+# Reconstruir apenas o Flutter Web
 docker compose build web
 docker compose up --detach --wait web caddy
 
