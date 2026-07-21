@@ -63,19 +63,11 @@ jobs:
             apps/worker/pyproject.toml
             infra/scripts/run-quality.py
 
-      - name: Set up Node.js
+      - name: Set up Node.js for PWA contract tests
         uses: actions/setup-node@v6
         with:
           node-version: '24.18.0'
           package-manager-cache: false
-
-      - name: Cache npm downloads
-        uses: actions/cache@v5
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os }}-${{ hashFiles('apps/web/package.json', 'apps/web/package-lock.json') }}
-          restore-keys: |
-            npm-${{ runner.os }}-
 
       - name: Cache Flutter SDK
         uses: actions/cache@v5
@@ -132,10 +124,8 @@ jobs:
           git fetch --no-tags origin "$BASE_SHA"
           python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
 
-      - name: Require frontend lockfiles
-        run: |
-          test -f apps/web/package-lock.json
-          test -f apps/app/pubspec.lock
+      - name: Require Flutter lockfile
+        run: test -f apps/app/pubspec.lock
 
       - name: Validate repository safety
         run: python infra/scripts/check-repository-safety.py
@@ -177,33 +167,6 @@ jobs:
 
       - name: Audit Python dependencies
         run: .quality-venv/bin/python -m pip_audit --local
-
-      - name: Install React dependencies
-        working-directory: apps/web
-        run: npm ci --no-audit --no-fund
-
-      - name: Lint React frontend
-        working-directory: apps/web
-        run: npm run lint
-
-      - name: Type-check React frontend
-        working-directory: apps/web
-        run: npm run typecheck
-
-      - name: Test React frontend
-        working-directory: apps/web
-        run: npm test
-
-      - name: Build React frontend
-        working-directory: apps/web
-        run: npm run build
-
-      - name: Audit React dependencies
-        working-directory: apps/web
-        run: npm audit --audit-level=high
-
-      - name: Check React licenses
-        run: node infra/scripts/check-node-licenses.mjs apps/web
 
       - name: Check Flutter Web JavaScript syntax
         run: |
