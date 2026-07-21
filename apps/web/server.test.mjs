@@ -14,7 +14,7 @@ import {
 } from './server.mjs'
 
 test('static path resolution remains inside the distribution root', () => {
-  const root = '/tmp/meufinanceiro-dist'
+  const root = join(tmpdir(), 'meufinanceiro-dist')
   assert.equal(resolveRequestPath(root, '/assets/app.js'), join(root, 'assets/app.js'))
   assert.equal(resolveRequestPath(root, '/../secret'), null)
   assert.equal(resolveRequestPath(root, '/%2e%2e/secret'), null)
