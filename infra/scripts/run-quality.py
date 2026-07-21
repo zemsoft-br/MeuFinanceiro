@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 import venv
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -17,6 +17,7 @@ VENV_DIR = ROOT / ".quality-venv"
 SUPPORTED_PYTHON_MIN = (3, 13)
 SUPPORTED_PYTHON_MAX = (3, 14)
 TEST_DATABASE_ENV_VARS = ("TEST_DATABASE_URL", "TEST_APP_DATABASE_USER")
+REQUIRED_COMMANDS = ("node", "npm", "flutter", "dart")
 TOOLS = (
     "mypy==2.3.0",
     "pip-audit==2.10.1",
@@ -53,24 +54,51 @@ def validate_python_version(version: tuple[int, int] | None = None) -> None:
     )
 
 
+def validate_required_commands(
+    resolver: Callable[[str], str | None] = shutil.which,
+) -> None:
+    """Fail before the long suite when a frontend toolchain is unavailable."""
+    missing = [command for command in REQUIRED_COMMANDS if resolver(command) is None]
+    if not missing:
+        return
+
+    raise RuntimeError(
+        "Missing required command(s): "
+        + ", ".join(missing)
+        + ". Install Node.js 24.18.0 and Flutter 3.44.6, then ensure their "
+        "executables are available on PATH."
+    )
+
+
 def build_python_test_environment(
     use_test_database_env: bool,
+    allow_skipped_postgres_tests: bool,
     source: Mapping[str, str] | None = None,
 ) -> dict[str, str]:
-    """Prevent unrelated project database settings from reaching pytest by default."""
+    """Require an explicit dedicated database for a complete local quality run."""
     environment = dict(source if source is not None else os.environ)
 
-    if not use_test_database_env:
-        for name in TEST_DATABASE_ENV_VARS:
-            environment.pop(name, None)
+    if use_test_database_env:
+        missing = [name for name in TEST_DATABASE_ENV_VARS if not environment.get(name)]
+        if missing:
+            raise RuntimeError(
+                "--use-test-database-env requires explicit values for "
+                + ", ".join(missing)
+            )
         return environment
 
-    missing = [name for name in TEST_DATABASE_ENV_VARS if not environment.get(name)]
-    if missing:
-        raise RuntimeError(
-            "--use-test-database-env requires explicit values for " + ", ".join(missing)
-        )
-    return environment
+    for name in TEST_DATABASE_ENV_VARS:
+        environment.pop(name, None)
+
+    if allow_skipped_postgres_tests:
+        return environment
+
+    raise RuntimeError(
+        "A complete local quality run requires a dedicated PostgreSQL test database. "
+        "Set TEST_DATABASE_URL and TEST_APP_DATABASE_USER, then pass "
+        "--use-test-database-env. Use --allow-skipped-postgres-tests only for a "
+        "partial diagnostic run; skipped PostgreSQL tests do not approve a PR."
+    )
 
 
 def venv_python() -> Path:
@@ -210,11 +238,23 @@ def main() -> int:
             "TEST_APP_DATABASE_USER values from the current environment"
         ),
     )
+    parser.add_argument(
+        "--allow-skipped-postgres-tests",
+        action="store_true",
+        help=(
+            "Allow a partial diagnostic run without PostgreSQL integration tests; "
+            "this mode cannot approve a pull request"
+        ),
+    )
     args = parser.parse_args()
 
     try:
         validate_python_version()
-        test_env = build_python_test_environment(args.use_test_database_env)
+        validate_required_commands()
+        test_env = build_python_test_environment(
+            args.use_test_database_env,
+            args.allow_skipped_postgres_tests,
+        )
     except RuntimeError as exc:
         print(f"Quality runner configuration error: {exc}", file=sys.stderr)
         return 2
