@@ -38,13 +38,9 @@ PostgreSQL + Worker
 
 A distribuição principal é Docker Compose. As imagens escolhidas possuem variantes oficiais para `amd64` e `arm64`.
 
-### Transição do frontend
+`apps/app` é o único cliente do projeto. O serviço `web` do Compose compila o Flutter Web e serve o artefato estático por Caddy. Não existe frontend React, target de rollback ou runtime Node na aplicação.
 
-A PR #21 integrou um shell React executável para validar navegação, acessibilidade, PWA, cache e runtime estático. O ADR-0008 substituiu React por Flutter como cliente canônico.
-
-`apps/app` contém o cliente Flutter. O serviço `web` do Compose usa o target `flutter-runtime` por padrão e serve o build Flutter Web estático. `apps/web` permanece temporariamente apenas como rollback explícito por meio do target `react-runtime`; nenhuma funcionalidade financeira nova deve ser implementada nele.
-
-A remoção de React, Vite, Node e seus gates ocorrerá somente em uma PR própria, depois da validação completa do runtime Flutter e do smoke de containers.
+Node.js permanece apenas como ferramenta de desenvolvimento para validar a sintaxe e os invariantes do JavaScript próprio do PWA. Nenhuma dependência npm é necessária para construir ou executar o frontend.
 
 ## Início rápido
 
@@ -62,14 +58,6 @@ Windows PowerShell:
 
 Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação Flutter fica disponível em `http://127.0.0.1:8080`.
 
-O runtime padrão é declarado em `.env`:
-
-```text
-WEB_RUNTIME_TARGET=flutter-runtime
-```
-
-Durante a migração, o rollback React pode ser selecionado explicitamente com `WEB_RUNTIME_TARGET=react-runtime` e reconstrução do serviço `web`. Esse mecanismo não inicia dois runtimes simultaneamente.
-
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
 ## Quality gates locais
@@ -80,7 +68,7 @@ A suíte obrigatória pode ser executada antes de marcar uma Pull Request como p
 python infra/scripts/run-quality.py
 ```
 
-Ela valida segurança do repositório, Python, o rollback React transitório, o cliente Flutter, o artefato Web/PWA gerado, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+Ela valida segurança do repositório, Python, o cliente Flutter, o artefato Web/PWA gerado, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
 
 A execução local requer a versão exata registrada em `.flutter-version` e `.flutter-revision`. Os gates Flutter incluem lockfile, formatação, análise, testes, build Web sem recursos remotos e validação do contrato PWA/cache.
 
@@ -90,7 +78,6 @@ A execução local requer a versão exata registrada em `.flutter-version` e `.f
 apps/
   api/       FastAPI e OpenAPI
   app/       cliente Flutter canônico e fontes Web/PWA
-  web/       shell React transitório disponível somente para rollback
   worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
@@ -98,14 +85,14 @@ packages/
   contracts/ contratos compartilhados futuros
 infra/
   caddy/     entrada HTTP local e proxy da API
-  web/       build multi-target e runtime estático do cliente
+  web/       build Flutter Web e runtime estático Caddy
   scripts/   inicialização, diagnóstico e quality gates
 tests/
   quality/   provas dos validadores do repositório
   smoke/     validação ponta a ponta do Compose
 ```
 
-O Flutter deve reproduzir os contratos já validados pelo shell existente sem copiar regras financeiras para o cliente. A identidade visual incorporará as referências do Google Stitch sob contratos versionados do repositório.
+O Flutter deve implementar os contratos versionados do produto sem copiar regras financeiras para o cliente. A identidade visual incorporará as referências do Google Stitch sob contratos versionados do repositório.
 
 ## Documentação
 
@@ -119,7 +106,7 @@ O Flutter deve reproduzir os contratos já validados pelo shell existente sem co
 - [Inventário das referências Stitch](docs/design/STITCH_SCREEN_INVENTORY.csv)
 - [Manifesto da exportação Stitch](docs/design/STITCH_SOURCE_ARCHIVE.md)
 - [Referências visuais do Stitch](docs/design/stitch/references/README.md)
-- [Migração do cliente para Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
+- [Cliente Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
 - [Runtime Web/PWA](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
@@ -164,6 +151,6 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 ## Próximos marcos
 
 1. validar o runtime Flutter Web/PWA no Compose e concluir a issue #36;
-2. remover o shell React após paridade e smoke aprovados;
-3. concluir modo demonstração, instalação, backup e spike Pluggy;
-4. implementar identidade, residência e núcleo financeiro.
+2. concluir modo demonstração, instalação, backup e spike Pluggy;
+3. implementar identidade, residência e núcleo financeiro;
+4. evoluir a mesma base Flutter para Android, iOS e desktop quando esses alvos entrarem no roadmap.
