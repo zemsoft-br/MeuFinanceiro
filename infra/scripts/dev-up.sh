@@ -35,7 +35,6 @@ POSTGRES_PASSWORD=$ADMIN_PASSWORD
 APP_DATABASE_USER=meufinanceiro_app
 APP_DATABASE_PASSWORD=$APP_PASSWORD
 APP_HTTP_PORT=8080
-WEB_RUNTIME_TARGET=flutter-runtime
 APP_KEYRING_FILE_HOST=.secrets/keyring.json
 ENV
   echo "Configuração local criada em .env."
@@ -46,24 +45,11 @@ else
   if ! grep -q '^APP_DATABASE_PASSWORD=' "$ENV_FILE"; then
     printf 'APP_DATABASE_PASSWORD=%s\n' "$(generate_password)" >> "$ENV_FILE"
   fi
-  if ! grep -q '^WEB_RUNTIME_TARGET=' "$ENV_FILE"; then
-    printf 'WEB_RUNTIME_TARGET=flutter-runtime\n' >> "$ENV_FILE"
-  fi
   if ! grep -q '^APP_KEYRING_FILE_HOST=' "$ENV_FILE"; then
     printf 'APP_KEYRING_FILE_HOST=.secrets/keyring.json\n' >> "$ENV_FILE"
   fi
 fi
 chmod 600 "$ENV_FILE"
-
-WEB_RUNTIME_TARGET=$(awk -F= '$1 == "WEB_RUNTIME_TARGET" {print $2}' "$ENV_FILE" | tail -n 1)
-WEB_RUNTIME_TARGET="${WEB_RUNTIME_TARGET:-flutter-runtime}"
-case "$WEB_RUNTIME_TARGET" in
-  flutter-runtime | react-runtime) ;;
-  *)
-    printf 'WEB_RUNTIME_TARGET deve ser flutter-runtime ou react-runtime.\n' >&2
-    exit 1
-    ;;
-esac
 
 if [ ! -f "$KEYRING_FILE" ]; then
   python3 "$ROOT_DIR/infra/scripts/manage-secrets.py" init --path "$KEYRING_FILE"
@@ -76,6 +62,5 @@ docker compose up --build --detach --wait
 
 APP_HTTP_PORT=$(awk -F= '$1 == "APP_HTTP_PORT" {print $2}' "$ENV_FILE" | tail -n 1)
 APP_HTTP_PORT="${APP_HTTP_PORT:-8080}" \
-  WEB_RUNTIME_TARGET="$WEB_RUNTIME_TARGET" \
   "$ROOT_DIR/tests/smoke/compose-smoke.sh"
-echo "MeuFinanceiro ($WEB_RUNTIME_TARGET) disponível em http://127.0.0.1:${APP_HTTP_PORT:-8080}"
+echo "MeuFinanceiro Flutter disponível em http://127.0.0.1:${APP_HTTP_PORT:-8080}"
