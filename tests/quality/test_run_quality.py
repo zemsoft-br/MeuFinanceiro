@@ -33,6 +33,37 @@ def test_unsupported_python_versions_are_rejected(version: tuple[int, int]) -> N
         module.validate_python_version(version)
 
 
+def test_windows_command_shims_are_invoked_through_comspec() -> None:
+    module = load_module()
+
+    prepared = module.prepare_subprocess_command(
+        ["npm", "ci", "--no-audit"],
+        platform="nt",
+        resolver=lambda _command: r"C:\Program Files\nodejs\npm.cmd",
+        comspec=r"C:\Windows\System32\cmd.exe",
+    )
+
+    assert prepared[:4] == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+    ]
+    assert prepared[4] == '"C:\\Program Files\\nodejs\\npm.cmd" ci --no-audit'
+
+
+def test_native_command_uses_resolved_executable_directly() -> None:
+    module = load_module()
+
+    prepared = module.prepare_subprocess_command(
+        ["node", "--version"],
+        platform="posix",
+        resolver=lambda _command: "/usr/bin/node",
+    )
+
+    assert prepared == ["/usr/bin/node", "--version"]
+
+
 def test_required_commands_are_accepted_when_all_resolve() -> None:
     module = load_module()
 
