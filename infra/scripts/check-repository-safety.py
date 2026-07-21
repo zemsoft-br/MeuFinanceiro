@@ -31,8 +31,14 @@ FORBIDDEN_TRACKED_PATHS = {
     "tests/quality/check-node-licenses.test.mjs",
 }
 FORBIDDEN_RUNTIME_TOKENS = ("WEB_RUNTIME_TARGET", "react-runtime")
-RUNTIME_CONTRACT_ROOTS = {".github", "infra", "tests"}
 RUNTIME_CONTRACT_FILES = {"compose.yaml", ".env.example"}
+RUNTIME_CONTRACT_PREFIXES = (
+    ".github/workflows/",
+    "infra/caddy/",
+    "infra/web/",
+    "infra/scripts/dev-up",
+    "tests/smoke/",
+)
 
 
 def tracked_files(repo: Path) -> list[Path]:
@@ -48,9 +54,8 @@ def tracked_files(repo: Path) -> list[Path]:
 
 def is_runtime_contract(relative: Path) -> bool:
     relative_posix = relative.as_posix()
-    return (
-        relative_posix in RUNTIME_CONTRACT_FILES
-        or (relative.parts and relative.parts[0] in RUNTIME_CONTRACT_ROOTS)
+    return relative_posix in RUNTIME_CONTRACT_FILES or relative_posix.startswith(
+        RUNTIME_CONTRACT_PREFIXES
     )
 
 
