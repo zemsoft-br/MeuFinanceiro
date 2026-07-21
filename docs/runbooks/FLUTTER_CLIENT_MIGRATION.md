@@ -3,43 +3,34 @@
 - Issue principal: #24
 - Fase A — scaffold e gates: #27 / PR #33
 - Fase B — paridade do shell: #34 / PR #35
-- Fase C — runtime Web/PWA: #36 / PR #37
+- Fase C — runtime Web/PWA e remoção do frontend anterior: #36 / PR #37
 - Decisão: ADR-0008
-- Estado: Fases A e B integradas; Fase C implementada e revisada, pendente de validação local completa e autorização de merge
+- Estado: implementação concluída na branch; validação local completa e autorização de merge permanecem pendentes
 
 ## 1. Objetivo
 
-Substituir o shell React integrado pela PR #21 por uma única base Flutter para Web/PWA e futuros alvos Android, iOS e desktop, sem alterar FastAPI, PostgreSQL, worker, OpenAPI ou regras de domínio.
+Consolidar o MeuFinanceiro em uma única base Flutter para Web/PWA e futuros alvos Android, iOS e desktop, sem alterar FastAPI, PostgreSQL, worker, OpenAPI ou regras de domínio.
 
-A migração preserva os contratos executáveis já validados e evita dois clientes funcionais permanentes.
+A coexistência temporária com React foi encerrada antecipadamente durante a PR #37. Não existe mais frontend paralelo nem mecanismo de rollback por tecnologia.
 
 ## 2. Estado atual
 
-Em `develop`, após as PRs #33 e #35:
+`apps/app` é o único cliente do repositório:
 
-- `apps/app` contém o cliente Flutter Web;
 - Flutter 3.44.6 e sua revisão oficial estão fixados;
 - Riverpod e GoRouter compõem o cliente;
 - `pubspec.lock` está versionado;
-- rotas `/`, `/componentes` e `/sistema` estão portadas;
+- rotas `/`, `/componentes` e `/sistema` estão implementadas;
 - navegação desktop/mobile, foco, semântica e responsividade possuem testes;
-- tema, componentes, estados comuns e health check foram portados;
-- o workflow `Quality` valida Python, React transitório e Flutter;
-- o Compose ainda serve React até a integração da Fase C.
+- tema, componentes, estados comuns e health check estão em Flutter;
+- o Compose sempre compila e serve Flutter Web;
+- o runtime estático usa Caddy não-root;
+- manifesto, bootstrap e service worker são mantidos pelo projeto;
+- cache, headers, deep links e artefato gerado possuem validadores;
+- `apps/web`, React, Vite, TypeScript, npm lockfile e runtime Node foram removidos;
+- Node.js permanece somente para testes do JavaScript próprio do PWA.
 
-Na PR #37, a Fase C:
-
-- produz o build Flutter Web em Docker;
-- usa Flutter como target padrão do serviço `web`;
-- mantém `react-runtime` como rollback explícito;
-- adiciona runtime estático Caddy não-root;
-- registra manifesto e service worker próprios;
-- valida cache, headers, deep links e artefato gerado;
-- adiciona suíte local equivalente aos gates de `Quality` e `Container Quality`.
-
-A remoção definitiva do React continua bloqueada até a Fase C ser integrada e validada localmente no HEAD final.
-
-## 3. Estrutura alvo
+## 3. Estrutura canônica
 
 ```text
 apps/
@@ -63,12 +54,10 @@ apps/
   worker/
 infra/
   caddy/       entrada HTTP e proxy de API
-  web/         build multi-target e runtime estático
+  web/         build Flutter e runtime estático
 ```
 
-`apps/app` representa o cliente multiplataforma. Android, iOS e desktop serão gerados somente quando entrarem em escopo. O serviço Docker continua chamado `web`, pois serve o build Web gerado.
-
-Enquanto a Fase D não for concluída, `apps/web` permanece no repositório apenas como rollback transitório.
+O serviço Docker continua chamado `web`, pois serve o build Web gerado. O nome não representa uma segunda tecnologia de cliente.
 
 ## 4. Padrões do cliente
 
@@ -144,7 +133,7 @@ Contratos:
 - requisições `/api` e `/api/` não são respondidas pelo cache do shell;
 - navegação e executáveis usam rede primeiro;
 - atualização online não mantém JavaScript ou WASM antigo indefinidamente;
-- ativação remove caches antigos Flutter e o cache legado React;
+- ativação remove caches antigos conhecidos;
 - somente respostas same-origin, `GET`, bem-sucedidas e `basic` podem ser armazenadas;
 - espera pela primeira ativação do worker é limitada a três segundos;
 - headers de bootstrap e executáveis são conservadores;
@@ -154,7 +143,7 @@ Contratos:
 
 O contrato é validado no source, no build local e no `/srv` extraído da imagem Docker.
 
-## 6. Decomposição em PRs
+## 6. Fases executadas
 
 ### Fase A — Scaffold Flutter e quality gates
 
@@ -165,9 +154,6 @@ Issue #27 / PR #33:
 - [x] versionar lockfile;
 - [x] configurar format, analyze, testes e build Web;
 - [x] documentar licenças diretas;
-- [x] manter React nos gates;
-- [x] não alterar o runtime servido;
-- [x] concluir revisão independente e Quality;
 - [x] integrar em `develop`.
 
 ### Fase B — Paridade do shell
@@ -181,37 +167,30 @@ Issue #34 / PR #35:
 - [x] validar acessibilidade e responsividade;
 - [x] integrar em `develop`.
 
-### Fase C — Runtime Web/PWA
+### Fase C — Runtime Web/PWA e consolidação Flutter
 
 Issue #36 / PR #37:
 
 - [x] definir build Flutter Web Docker multi-stage;
 - [x] definir runtime estático não-root;
-- [x] configurar Flutter como target padrão e React como rollback;
 - [x] criar manifesto e service worker próprios;
 - [x] definir cache seguro e headers;
 - [x] atualizar smoke e gatilhos de containers;
-- [x] concluir revisão independente estática;
-- [x] corrigir os achados identificados na revisão e nas execuções parciais do CI;
-- [ ] executar `python infra/scripts/run-quality.py --recreate` localmente no HEAD final;
+- [x] remover `apps/web` e dependências React/Vite/npm;
+- [x] remover seleção e target de rollback;
+- [x] remover gates e inventários exclusivos do frontend antigo;
+- [x] adicionar bloqueio contra reintrodução do frontend legado;
+- [x] atualizar dependências, README e runbooks;
+- [ ] executar a suíte local completa no HEAD final;
 - [ ] executar o gate local completo de containers no HEAD final;
 - [ ] registrar os resultados locais na PR;
 - [ ] obter autorização explícita para merge.
 
-### Fase D — Remoção do React
+Não haverá uma Fase D separada para remoção do React: essa limpeza foi incorporada à Fase C por decisão do mantenedor.
 
-Somente após as Fases A–C aprovadas:
+## 7. Gates de paridade preservados
 
-- remover `apps/web` React/Vite;
-- remover Node do runtime e quality gates, salvo ferramenta ainda justificada;
-- remover scripts e auditorias exclusivas do frontend antigo;
-- remover o target de rollback;
-- atualizar dependências, README e runbooks;
-- confirmar que nenhum caminho do runtime usa React.
-
-## 7. Gates de paridade
-
-Antes de remover React, validar:
+A consolidação mantém:
 
 - três rotas existentes;
 - fallback SPA e deep links;
@@ -232,34 +211,9 @@ Antes de remover React, validar:
 - ausência de CDN obrigatória;
 - build reproduzível;
 - container não privilegiado;
-- restart e encerramento gracioso;
-- rollback React construível durante a janela da Fase C.
+- restart e encerramento gracioso.
 
-## 8. Documentos afetados
-
-Durante a migração, manter alinhados:
-
-- `README.md`;
-- `docs/ARCHITECTURE.md`;
-- `docs/DEPENDENCIES.md`;
-- `docs/ROADMAP.md`;
-- `docs/runbooks/WEB_PWA.md`;
-- `docs/runbooks/QUALITY_GATES.md`;
-- `docs/runbooks/LOCAL_DEVELOPMENT.md`;
-- `apps/app/README.md`;
-- `apps/web/README.md` enquanto existir;
-- workflows de Quality e Container Quality;
-- scripts de segurança e licenças;
-- Compose e Caddy.
-
-Até a remoção final, os documentos distinguem:
-
-- arquitetura canônica Flutter;
-- runtime padrão Flutter;
-- shell React ainda versionado apenas para rollback;
-- Fase D ainda pendente.
-
-## 9. Fora do escopo da migração do shell
+## 8. Fora do escopo
 
 - autenticação;
 - dados financeiros offline;
@@ -269,6 +223,6 @@ Até a remoção final, os documentos distinguem:
 - mudança do backend;
 - implementação das telas financeiras do Stitch.
 
-## 10. Conclusão
+## 9. Conclusão
 
-Nenhuma nova funcionalidade financeira deve ser implementada em React. Após a validação local e integração da Fase C, o próximo passo é remover o shell antigo em uma PR isolada, sem misturar essa limpeza com módulos de negócio.
+Toda funcionalidade de interface será implementada em Flutter. Qualquer proposta de um segundo frontend exige novo ADR e justificativa arquitetural explícita.
