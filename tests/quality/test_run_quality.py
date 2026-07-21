@@ -33,7 +33,22 @@ def test_unsupported_python_versions_are_rejected(version: tuple[int, int]) -> N
         module.validate_python_version(version)
 
 
-def test_database_environment_is_removed_by_default() -> None:
+def test_required_commands_are_accepted_when_all_resolve() -> None:
+    module = load_module()
+
+    module.validate_required_commands(lambda command: f"/tools/{command}")
+
+
+def test_missing_required_commands_are_reported_together() -> None:
+    module = load_module()
+
+    with pytest.raises(RuntimeError, match="node, npm"):
+        module.validate_required_commands(
+            lambda command: None if command in {"node", "npm"} else f"/tools/{command}"
+        )
+
+
+def test_complete_run_requires_explicit_database_environment() -> None:
     module = load_module()
     source = {
         "PATH": "safe-path",
@@ -41,7 +56,21 @@ def test_database_environment_is_removed_by_default() -> None:
         "TEST_APP_DATABASE_USER": "another_user",
     }
 
-    environment = module.build_python_test_environment(False, source)
+    with pytest.raises(RuntimeError, match="dedicated PostgreSQL test database"):
+        module.build_python_test_environment(False, False, source)
+
+    assert source["TEST_DATABASE_URL"] == "postgresql://another-project"
+
+
+def test_partial_diagnostic_removes_inherited_database_environment() -> None:
+    module = load_module()
+    source = {
+        "PATH": "safe-path",
+        "TEST_DATABASE_URL": "postgresql://another-project",
+        "TEST_APP_DATABASE_USER": "another_user",
+    }
+
+    environment = module.build_python_test_environment(False, True, source)
 
     assert environment == {"PATH": "safe-path"}
     assert source["TEST_DATABASE_URL"] == "postgresql://another-project"
@@ -53,6 +82,7 @@ def test_explicit_database_environment_requires_both_values() -> None:
     with pytest.raises(RuntimeError, match="TEST_APP_DATABASE_USER"):
         module.build_python_test_environment(
             True,
+            False,
             {"TEST_DATABASE_URL": "postgresql://meufinanceiro-test"},
         )
 
@@ -64,6 +94,6 @@ def test_explicit_database_environment_is_preserved() -> None:
         "TEST_APP_DATABASE_USER": "meufinanceiro_app",
     }
 
-    environment = module.build_python_test_environment(True, source)
+    environment = module.build_python_test_environment(True, False, source)
 
     assert environment == source
