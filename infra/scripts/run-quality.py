@@ -79,7 +79,9 @@ def build_python_test_environment(
     environment = dict(source if source is not None else os.environ)
 
     if use_test_database_env:
-        missing = [name for name in TEST_DATABASE_ENV_VARS if not environment.get(name)]
+        missing = [
+            name for name in TEST_DATABASE_ENV_VARS if not environment.get(name)
+        ]
         if missing:
             raise RuntimeError(
                 "--use-test-database-env requires explicit values for "
