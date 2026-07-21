@@ -37,9 +37,9 @@ def test_windows_command_shims_are_invoked_through_comspec() -> None:
     module = load_module()
 
     prepared = module.prepare_subprocess_command(
-        ["npm", "ci", "--no-audit"],
+        ["flutter", "analyze"],
         platform="nt",
-        resolver=lambda _command: r"C:\Program Files\nodejs\npm.cmd",
+        resolver=lambda _command: r"C:\DevPrograms\flutter\bin\flutter.bat",
         comspec=r"C:\Windows\System32\cmd.exe",
     )
 
@@ -49,7 +49,7 @@ def test_windows_command_shims_are_invoked_through_comspec() -> None:
         "/s",
         "/c",
     ]
-    assert prepared[4] == '"C:\\Program Files\\nodejs\\npm.cmd" ci --no-audit'
+    assert prepared[4] == r"C:\DevPrograms\flutter\bin\flutter.bat analyze"
 
 
 def test_native_command_uses_resolved_executable_directly() -> None:
@@ -73,9 +73,9 @@ def test_required_commands_are_accepted_when_all_resolve() -> None:
 def test_missing_required_commands_are_reported_together() -> None:
     module = load_module()
 
-    with pytest.raises(RuntimeError, match="node, npm"):
+    with pytest.raises(RuntimeError, match="node, flutter"):
         module.validate_required_commands(
-            lambda command: None if command in {"node", "npm"} else f"/tools/{command}"
+            lambda command: None if command in {"node", "flutter"} else f"/tools/{command}"
         )
 
 
