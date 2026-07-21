@@ -1,176 +1,103 @@
 # Arquitetura Inicial — MeuFinanceiro
 
-## 1. Objetivos arquiteturais
+## 1. Direção arquitetural
 
-A arquitetura deve priorizar:
+O MeuFinanceiro é um gestor financeiro pessoal e familiar, autohospedado e voltado ao Brasil. A arquitetura prioriza instalação local, soberania dos dados, segurança, testes determinísticos e evolução por contratos explícitos.
 
-- instalação local simples;
-- domínio financeiro independente de provedores externos;
-- colaboração paralela com baixo acoplamento;
-- segurança adequada para dados financeiros;
-- testes determinísticos;
-- compatibilidade `amd64` e `arm64`;
-- uma única base de cliente para Web/PWA e futuros alvos Android, iOS e desktop;
-- evolução sem duplicar regras entre plataformas.
+Flutter é a única tecnologia de cliente. `apps/app` atende Web/PWA e será reutilizado por Android, iOS e desktop quando esses alvos entrarem no roadmap. Um segundo frontend exige novo ADR.
 
-## 2. Stack-base
+## 2. Stack canônica
 
-| Camada | Tecnologia inicial |
+| Camada | Tecnologia |
 |---|---|
-| Interface | Flutter + Dart; Web/PWA como primeiro alvo operacional |
-| API | FastAPI + Python |
-| Persistência | PostgreSQL |
+| Cliente | Flutter + Dart |
+| Estado | Riverpod |
+| Rotas | GoRouter |
+| API | FastAPI + Python 3.13 |
+| Contrato HTTP | OpenAPI |
+| Persistência | PostgreSQL 18 |
 | Migrações | Alembic |
-| Worker | Processo Python separado, com fila persistida no PostgreSQL |
-| Proxy | Caddy |
-| Empacotamento | Docker Compose |
-| Contrato | OpenAPI |
-| Testes | Pytest, `flutter_test`, testes de integração e smoke do Compose |
+| Worker | Python com fila PostgreSQL-backed |
+| Entrada HTTP | Caddy |
+| Runtime Web | Flutter Web estático em Caddy não-root |
+| Distribuição | Docker Compose |
 
-Redis não é obrigatório na fundação. Ele somente será introduzido mediante necessidade comprovada.
-
-A PR #21 integrou um shell React transitório. O ADR-0008 define Flutter como cliente canônico e a issue #24 controla a migração. Nenhuma nova funcionalidade financeira deve ser criada no frontend React.
+Node.js é usado somente para testar a sintaxe e os invariantes do JavaScript próprio do PWA. Não existe React, Vite, manifesto npm do frontend ou runtime Node na aplicação.
 
 ## 3. Topologia local
 
 ```text
-Cliente Flutter Web/PWA
-       |
-       v
-     Caddy
-       |
-       +--------> Artefato Flutter Web estático
-       |
-       +--------> FastAPI
-                    |
-                    +--> PostgreSQL
-                    +--> Armazenamento de anexos
-                    +--> Adaptadores externos
-                    |
-                    +--> Worker PostgreSQL-backed
+Navegador / PWA Flutter
+          |
+          v
+     Caddy externo
+       /       \
+      v         v
+Flutter Web   FastAPI
+  estático       |
+                 +--> PostgreSQL
+                 +--> Worker e fila
+                 +--> anexos
+                 +--> adaptadores externos
 ```
 
-Serviços iniciais esperados no Docker Compose:
+Serviços do Compose:
 
-- `web`, servindo o build Flutter Web após a migração;
-- `api`;
-- `worker`;
-- `postgres`;
-- `caddy`.
-
-O nome do serviço `web` descreve o artefato servido e não obriga o uso de React.
+- `caddy`: única porta publicada e proxy de `/api`;
+- `web`: build Flutter servido por Caddy interno;
+- `api`: casos de uso e contrato HTTP;
+- `worker`: tarefas assíncronas;
+- `db-bootstrap`: role de aplicação;
+- `migrate`: migrações Alembic;
+- `postgres`: fonte local de verdade.
 
 ## 4. Organização do repositório
 
-Estrutura alvo:
-
 ```text
-MeuFinanceiro/
-├── apps/
-│   ├── api/
-│   ├── app/        Flutter multiplataforma
-│   └── worker/
-├── packages/
-│   ├── contracts/
-│   └── shared-app/ componentes e contratos compartilhados futuros
-├── infra/
-│   ├── docker/
-│   └── scripts/
-├── docs/
-│   ├── adr/
-│   └── runbooks/
-├── tests/
-├── .github/
-├── compose.yaml
-└── README.md
+apps/
+  api/        FastAPI
+  app/        cliente Flutter
+  worker/     consumidor da fila
+packages/
+  contracts/
+  persistence/
+  security/
+infra/
+  caddy/
+  web/
+  scripts/
+docs/
+tests/
+compose.yaml
 ```
 
-Durante a migração:
+A árvore `apps/web` é proibida pelo quality gate.
 
-- `apps/web` permanece como shell React transitório da PR #21;
-- `apps/app` será criado pela issue #24;
-- o React só será removido após paridade, testes e smoke do runtime Flutter;
-- a coexistência não autoriza dois clientes funcionais permanentes.
+## 5. Backend e domínio
 
-A estrutura final deve ser validada pela migração técnica antes de iniciar funcionalidades financeiras.
+O backend segue ports/adapters. Cada módulo pode conter entidades, value objects, casos de uso, portas, adaptadores, rotas e testes.
 
-## 5. Arquitetura de backend
+Módulos previstos:
 
-O backend seguirá separação por domínio e ports/adapters.
+- identidade e residência;
+- contas e livro financeiro;
+- orçamentos e recorrências;
+- cartões e faturas;
+- importações e conciliação;
+- projeções;
+- empréstimos;
+- patrimônio e investimentos;
+- notificações.
 
-```text
-apps/api/app/
-├── core/
-│   ├── config/
-│   ├── security/
-│   ├── database/
-│   └── observability/
-├── modules/
-│   ├── households/
-│   ├── identities/
-│   ├── accounts/
-│   ├── ledger/
-│   ├── budgets/
-│   ├── cards/
-│   ├── imports/
-│   ├── reconciliation/
-│   ├── forecasts/
-│   ├── loans/
-│   ├── investments/
-│   └── notifications/
-├── integrations/
-│   ├── banking/
-│   ├── importers/
-│   └── notifications/
-└── main.py
-```
-
-Cada módulo deve conter, conforme necessário:
-
-- entidades e value objects;
-- casos de uso;
-- portas de persistência e integração;
-- adaptadores de infraestrutura;
-- rotas e schemas de API;
-- testes unitários e de integração.
-
-Regras financeiras não devem ficar em rotas, widgets Flutter, providers, caches locais ou adaptadores da Pluggy.
+Regras financeiras não ficam em rotas, widgets Flutter, providers, service worker ou adaptadores externos.
 
 ## 6. Fonte de verdade
 
-O modelo local normalizado no backend é a fonte de verdade.
+O modelo normalizado no backend é a fonte principal de verdade. Arquivos e provedores externos são fontes de observação: podem criar candidatos, propor conciliações e atualizar metadados, mas não sobrescrevem silenciosamente decisões do usuário.
 
-Provedores e arquivos são fontes de observação. Seus registros podem:
+Persistência financeira no dispositivo exige decisão própria sobre autoridade, sincronização, criptografia, conflitos, expiração e revogação.
 
-- criar candidatos a movimentação;
-- atualizar dados de origem;
-- propor conciliações;
-- confirmar projeções;
-- gerar críticas.
-
-Eles não podem sobrescrever silenciosamente decisões do usuário.
-
-O cliente Flutter pode manter estado de interface e caches explicitamente autorizados. Persistência local de dados financeiros não se torna autoridade e exige decisão própria sobre sincronização, criptografia, expiração, revogação e conflitos.
-
-## 7. Identidade e residência
-
-Entidades mínimas:
-
-```text
-User
-Household
-HouseholdMembership
-PermissionRole
-ResourceVisibility
-```
-
-Todo recurso financeiro deve pertencer a uma residência. Recursos pessoais também possuem proprietário explícito.
-
-Filtros de autorização devem existir na camada de caso de uso e persistência, não apenas no cliente.
-
-## 8. Livro financeiro
-
-O núcleo não deve representar tudo como uma única tabela sem semântica.
+## 7. Livro financeiro
 
 Conceitos iniciais:
 
@@ -187,237 +114,105 @@ Attachment
 AuditEvent
 ```
 
-### 8.1 Imutabilidade e correções
+Contratos:
 
-- Dados importados de origem devem ser preservados.
-- Correções financeiras relevantes devem ser rastreáveis.
-- Exclusões destrutivas devem ser evitadas em favor de cancelamento, reversão ou arquivamento.
-- Lotes importados precisam ser reversíveis.
-- Alterações automáticas devem registrar regra e confiança.
+- dinheiro não usa `float`;
+- arredondamento é explícito;
+- competência, vencimento, liquidação e importação são distintos;
+- correções relevantes são rastreáveis;
+- lotes importados são reversíveis;
+- transferências não duplicam receita ou despesa.
 
-### 8.2 Dinheiro
+## 8. Identidade e autorização
 
-- Valores monetários não usam `float`.
-- Persistência usa tipos decimais ou inteiros em unidade mínima conforme decisão formal.
-- Arredondamentos devem ser explícitos e testados.
-- Moeda inicial é BRL, mas o cartão pode registrar moeda original e conversão.
-- Serialização para Dart não pode degradar precisão monetária.
+Todo recurso financeiro pertence a uma residência. Recursos pessoais também possuem proprietário explícito. A autorização é aplicada nos casos de uso e na persistência; controles visuais não constituem proteção.
 
-### 8.3 Tempo
+## 9. Importações e integrações
 
-- Datas financeiras sem horário devem ser tipos de data.
-- Instantes de auditoria e integração devem ser UTC.
-- Apresentação usa o fuso configurado da residência.
-- Competência, vencimento, liquidação e importação são conceitos distintos.
-- Testes do cliente e backend usam relógio controlável quando a regra depender do tempo.
-
-## 9. Importadores
-
-Todos os importadores implementam um contrato comum:
+Importadores seguem o fluxo:
 
 ```text
-probe(input) -> ImporterMatch
-parse(input, options) -> ImportPreview
-validate(preview) -> CriticismReport
-commit(preview, decisions) -> ImportBatch
-rollback(batch) -> RollbackResult
+probe -> parse -> preview -> validate -> commit -> rollback
 ```
 
-Adaptadores previstos:
+OFX, CSV, PDF, OCR e QIF entram por adaptadores. Pluggy e outros provedores permanecem opcionais. Indisponibilidade externa não impede uso manual.
 
-- OFX;
-- CSV;
-- PDF por instituição/layout;
-- PDF genérico;
-- OCR experimental;
-- QIF.
+## 10. Worker
 
-Nenhum importador deve persistir diretamente sem passar pelo fluxo de pré-visualização e validação.
+A fila persistente registra estado, tentativas, agendamento, lease, chave de idempotência e erro sanitizado. Handlers devem ser idempotentes ou possuir compensação explícita.
 
-## 10. Integrações Open Finance
-
-Contrato conceitual:
-
-```text
-BankingProvider
-├── authenticate/configure
-├── list_connections
-├── sync_accounts
-├── sync_transactions
-├── sync_credit_cards
-├── sync_investments
-├── sync_loans
-└── disconnect
-```
-
-O primeiro adaptador será Pluggy, condicionado a uma prova de conceito do Conector 200.
-
-Credenciais e tokens:
-
-- criptografados em repouso;
-- nunca registrados em logs;
-- nunca enviados ao cliente sem necessidade;
-- removíveis sem apagar obrigatoriamente o histórico.
-
-## 11. Worker e tarefas
-
-Tarefas previstas:
-
-- sincronizações bancárias;
-- geração de recorrências;
-- projeções;
-- notificações;
-- reprocessamento de regras;
-- importações demoradas;
-- manutenção de anexos e backups.
-
-A fila inicial será persistida no PostgreSQL com:
-
-- estado;
-- tentativas;
-- agendamento;
-- lock com expiração;
-- idempotency key;
-- erro sanitizado;
-- correlação com usuário e residência.
-
-## 12. Segurança
-
-### 12.1 Requisitos mínimos
-
-- autenticação obrigatória;
-- sessões revogáveis;
-- 2FA planejado para acesso remoto;
-- proteção contra brute force;
-- CORS e hosts restritos;
-- PostgreSQL sem porta pública por padrão;
-- segredos gerados no instalador;
-- criptografia de credenciais, tokens, anexos e backups;
-- bloqueio por inatividade;
-- auditoria de ações sensíveis;
-- logs sem valores ou descrições financeiras por padrão.
-
-### 12.2 Criptografia
-
-Nem todos os campos financeiros serão criptografados individualmente, pois isso inviabilizaria consultas e relatórios eficientes.
-
-Proteção recomendada:
-
-- criptografia do disco do host;
-- chaves fora do banco;
-- criptografia de segredos e dados pessoais selecionados;
-- anexos criptografados;
-- backups criptografados;
-- TLS no acesso remoto.
-
-Persistência local no cliente, quando adotada, deverá definir proteção equivalente por plataforma e não poderá assumir que armazenamento local comum é seguro.
-
-## 13. Anexos
-
-O backend controla anexos por uma porta de armazenamento.
-
-Implementação inicial:
-
-- filesystem local dedicado;
-- nomes físicos não derivados do nome original;
-- metadados no PostgreSQL;
-- hash de integridade;
-- criptografia;
-- limites de tamanho e tipo;
-- quarentena durante processamento.
-
-S3 compatível pode ser adicionado posteriormente sem alterar o domínio.
-
-## 14. API pública
-
-- API REST versionada.
-- OpenAPI como contrato executável.
-- Erros estruturados com código estável.
-- Paginação e filtros padronizados.
-- Idempotência em mutações financeiras críticas.
-- Webhooks de saída somente após definição de assinatura e segurança.
-- DTOs Dart devem ser gerados ou mantidos sob contrato testável, sem duplicar semântica financeira.
-
-## 15. Cliente Flutter
+## 11. Cliente Flutter
 
 Princípios:
 
-- uma única base para Web/PWA e futuros Android, iOS e desktop;
-- `go_router` para rotas e deep links;
-- Riverpod para estado e injeção de dependências;
-- organização por feature, com `core`, `routing`, `theme` e adaptadores de plataforma;
-- Material 3 adaptado ao Design System do MeuFinanceiro;
-- acessibilidade WCAG AA nos fluxos Web principais;
-- componentes compartilhados;
-- formulários com validação consistente;
-- estados de erro e carregamento explícitos;
+- organização por feature;
+- GoRouter para rotas e deep links;
+- Riverpod para estado e composição;
+- Material 3 adaptado ao Design System;
+- acessibilidade e responsividade testadas;
+- estados de loading, vazio, erro e indisponibilidade explícitos;
 - nenhuma regra financeira exclusiva do cliente;
-- suporte a instalação PWA conforme limitações do navegador;
-- assets e fontes empacotados, sem CDN obrigatória;
-- abstrações de persistência e plataforma testáveis.
+- assets e fontes locais.
 
-O Flutter Web é o primeiro alvo operacional. Android, iOS e desktop usarão a mesma base quando entrarem no roadmap, sem criar outro domínio.
+## 12. Web/PWA
 
-### 15.1 PWA e cache
+O pipeline canônico é:
 
-- cache de shell não pode armazenar respostas `/api/` indiscriminadamente;
-- `index.html`, service worker, `version.json`, `main.dart.js` e WASM exigem política explícita de revalidação;
-- somente assets realmente imutáveis recebem cache longo;
-- atualização de versão deve ser testada;
-- o backend local permanece autoridade sobre dados financeiros.
+```text
+Flutter fixado
+  -> pubspec.lock
+  -> build Web release sem CDN
+  -> finalização estrita
+  -> validação PWA/cache
+  -> imagem Caddy não-root
+```
 
-### 15.2 Qualidade
+O service worker:
 
-O cliente deverá passar por:
+- não intercepta `/api` nem `/api/*`;
+- armazena somente shell e assets seguros;
+- aceita apenas respostas `GET`, same-origin, bem-sucedidas e `basic`;
+- usa rede primeiro para navegação e executáveis;
+- limita fallback SPA a rotas sem extensão;
+- remove caches antigos conhecidos;
+- não substitui o backend como autoridade.
 
-- `dart format`;
-- `flutter analyze`;
-- testes unitários;
-- testes de widget;
-- build Web release;
-- auditoria de dependências e licenças;
-- smoke Docker/Caddy;
-- inspeção desktop e mobile;
-- testes de teclado, foco, semântica, contraste e overflow.
+## 13. Segurança e operação
 
-## 16. Observabilidade e telemetria
+- segredos são únicos por instalação e não são versionados;
+- PostgreSQL não publica porta por padrão;
+- keyring fica fora do banco;
+- containers executam sem privilégios desnecessários;
+- logs evitam conteúdo financeiro e material sensível;
+- acesso remoto requer TLS e controles adicionais;
+- backups incluem banco, anexos, configuração e keyring, com restauração testada.
 
-Observabilidade local:
+## 14. Quality gates
 
-- logs estruturados;
-- request/correlation ID;
-- métricas de saúde;
-- página de diagnóstico;
-- exportação sanitizada de suporte.
+A suíte obrigatória cobre:
 
-Telemetria externa:
+- DCO e segurança do repositório;
+- rejeição do frontend legado;
+- Ruff, mypy e Pytest;
+- PostgreSQL descartável para testes de persistência;
+- auditoria e licenças Python;
+- testes do JavaScript próprio do PWA;
+- toolchain Flutter fixada;
+- formatação, análise, testes e build Flutter;
+- validação do artefato Web;
+- Compose, health, fila, usuário não-root e restart.
 
-- desativada por padrão;
-- opt-in explícito;
-- sem dados financeiros, pessoais ou bancários;
-- separada da verificação de atualização.
+Quando GitHub Actions estiver indisponível, o merge permanece bloqueado até execução local equivalente registrada na PR.
 
-## 17. Backup e restauração
+## 15. Evolução
 
-O contrato de backup deve incluir:
+Mudanças em autoridade dos dados, modelo monetário, autenticação, persistência local, criptografia, segundo cliente, cache financeiro, providers ou distribuição exigem issue e, quando arquiteturais, ADR.
 
-- PostgreSQL;
-- anexos;
-- configuração necessária;
-- versão do aplicativo e schema;
-- manifesto de integridade;
-- criptografia antes de armazenamento externo.
+Detalhes complementares estão em:
 
-A restauração deve ser testada automaticamente em CI quando possível e documentada em runbook.
-
-Dados locais do cliente, quando existirem, devem ser tratados como cache reconstruível ou possuir estratégia explícita de inclusão, migração e invalidação. Eles não substituem o backup do backend.
-
-## 18. Estratégia de evolução
-
-- ADR obrigatório para decisões estruturais.
-- Módulos novos entram por issue aprovada.
-- Mudanças de contrato exigem migração e compatibilidade documentadas.
-- Provedores externos entram por adaptadores.
-- Dependências novas precisam justificar custo operacional, segurança e manutenção.
-- Nenhuma funcionalidade financeira nova será implementada no shell React transitório.
-- A remoção do React ocorrerá somente após paridade Flutter, quality gates e smoke aprovados.
+- `docs/adr/0008-flutter-multiplatform-client.md`;
+- `docs/architecture/FINANCIAL_INVARIANTS.md`;
+- `docs/architecture/INFORMATION_ARCHITECTURE.md`;
+- `docs/runbooks/WEB_PWA.md`;
+- `docs/runbooks/QUALITY_GATES.md`;
+- `docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md`.
