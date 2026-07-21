@@ -31,3 +31,39 @@ def test_unsupported_python_versions_are_rejected(version: tuple[int, int]) -> N
 
     with pytest.raises(RuntimeError, match="Python 3.13.x is required"):
         module.validate_python_version(version)
+
+
+def test_database_environment_is_removed_by_default() -> None:
+    module = load_module()
+    source = {
+        "PATH": "safe-path",
+        "TEST_DATABASE_URL": "postgresql://another-project",
+        "TEST_APP_DATABASE_USER": "another_user",
+    }
+
+    environment = module.build_python_test_environment(False, source)
+
+    assert environment == {"PATH": "safe-path"}
+    assert source["TEST_DATABASE_URL"] == "postgresql://another-project"
+
+
+def test_explicit_database_environment_requires_both_values() -> None:
+    module = load_module()
+
+    with pytest.raises(RuntimeError, match="TEST_APP_DATABASE_USER"):
+        module.build_python_test_environment(
+            True,
+            {"TEST_DATABASE_URL": "postgresql://meufinanceiro-test"},
+        )
+
+
+def test_explicit_database_environment_is_preserved() -> None:
+    module = load_module()
+    source = {
+        "TEST_DATABASE_URL": "postgresql://meufinanceiro-test",
+        "TEST_APP_DATABASE_USER": "meufinanceiro_app",
+    }
+
+    environment = module.build_python_test_environment(True, source)
+
+    assert environment == source
