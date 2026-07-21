@@ -62,15 +62,17 @@ Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para 
 
 ## Quality gates locais
 
-A suíte obrigatória pode ser executada antes de marcar uma Pull Request como pronta:
+A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
 
 ```bash
-python infra/scripts/run-quality.py
+export TEST_DATABASE_URL='postgresql+psycopg://postgres:<senha>@127.0.0.1:<porta>/meufinanceiro_test'
+export TEST_APP_DATABASE_USER='postgres'
+python infra/scripts/run-quality.py --use-test-database-env
 ```
 
-Ela valida segurança do repositório, Python, o cliente Flutter, o artefato Web/PWA gerado, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+No Windows, use `py -3.13` no lugar de `python`. O [runbook de quality gates](docs/runbooks/QUALITY_GATES.md) contém o fluxo completo e o gate Docker Compose.
 
-A execução local requer a versão exata registrada em `.flutter-version` e `.flutter-revision`. Os gates Flutter incluem lockfile, formatação, análise, testes, build Web sem recursos remotos e validação do contrato PWA/cache.
+A suíte valida segurança do repositório, Python, o cliente Flutter, o artefato Web/PWA gerado, dependências e licenças documentadas. A execução local requer a versão exata registrada em `.flutter-version` e `.flutter-revision`.
 
 ## Estrutura do monorepo
 
