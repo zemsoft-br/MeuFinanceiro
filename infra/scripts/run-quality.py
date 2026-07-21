@@ -17,7 +17,7 @@ VENV_DIR = ROOT / ".quality-venv"
 SUPPORTED_PYTHON_MIN = (3, 13)
 SUPPORTED_PYTHON_MAX = (3, 14)
 TEST_DATABASE_ENV_VARS = ("TEST_DATABASE_URL", "TEST_APP_DATABASE_USER")
-REQUIRED_COMMANDS = ("node", "npm", "flutter", "dart")
+REQUIRED_COMMANDS = ("node", "flutter", "dart")
 TOOLS = (
     "mypy==2.3.0",
     "pip-audit==2.10.1",
@@ -81,7 +81,7 @@ def validate_python_version(version: tuple[int, int] | None = None) -> None:
 def validate_required_commands(
     resolver: Callable[[str], str | None] = shutil.which,
 ) -> None:
-    """Fail before the long suite when a frontend toolchain is unavailable."""
+    """Fail before the long suite when a required client toolchain is unavailable."""
     missing = [command for command in REQUIRED_COMMANDS if resolver(command) is None]
     if not missing:
         return
@@ -90,7 +90,7 @@ def validate_required_commands(
         "Missing required command(s): "
         + ", ".join(missing)
         + ". Install Node.js 24.18.0 and Flutter 3.44.6, then ensure their "
-        "executables are available on PATH."
+        "executables are available on PATH. Node.js is used only for PWA JavaScript tests."
     )
 
 
@@ -191,22 +191,6 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
     run([str(python), "-m", "pip_audit", "--local"])
 
 
-def run_react_quality() -> None:
-    web = ROOT / "apps" / "web"
-    if not (web / "package-lock.json").exists():
-        raise RuntimeError(
-            "apps/web/package-lock.json is required; generate and commit it first"
-        )
-
-    run(["npm", "ci", "--no-audit", "--no-fund"], cwd=web)
-    run(["npm", "run", "lint"], cwd=web)
-    run(["npm", "run", "typecheck"], cwd=web)
-    run(["npm", "test"], cwd=web)
-    run(["npm", "run", "build"], cwd=web)
-    run(["npm", "audit", "--audit-level=high"], cwd=web)
-    run(["node", "infra/scripts/check-node-licenses.mjs", "apps/web"])
-
-
 def run_flutter_quality() -> None:
     app = ROOT / "apps" / "app"
     lockfile = app / "pubspec.lock"
@@ -287,7 +271,6 @@ def main() -> int:
     python = ensure_python_environment(args.recreate)
 
     run_python_quality(python, test_env=test_env)
-    run_react_quality()
     run_flutter_quality()
 
     print("All mandatory quality gates passed.")
