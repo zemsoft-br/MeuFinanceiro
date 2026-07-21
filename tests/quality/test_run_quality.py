@@ -75,7 +75,9 @@ def test_missing_required_commands_are_reported_together() -> None:
 
     with pytest.raises(RuntimeError, match="node, flutter"):
         module.validate_required_commands(
-            lambda command: None if command in {"node", "flutter"} else f"/tools/{command}"
+            lambda command: (
+                None if command in {"node", "flutter"} else f"/tools/{command}"
+            )
         )
 
 
