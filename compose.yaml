@@ -39,7 +39,6 @@ services:
     build:
       context: .
       dockerfile: infra/web/Dockerfile
-      target: ${WEB_RUNTIME_TARGET:-flutter-runtime}
     image: meufinanceiro-web:local
     init: true
     environment:
