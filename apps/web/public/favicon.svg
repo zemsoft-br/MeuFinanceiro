@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MeuFinanceiro">
-  <rect width="64" height="64" rx="18" fill="#123b2d"/>
-  <path d="M17 43V21h7l8 12 8-12h7v22h-7V32l-8 11-8-11v11z" fill="#fff"/>
-  <circle cx="49" cy="15" r="5" fill="#c58a2b"/>
-</svg>

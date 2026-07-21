@@ -36,33 +36,7 @@ COPY apps/app/ ./
 RUN flutter build web --release --no-web-resources-cdn --pwa-strategy=none \
     && python3 /tmp/finalize-flutter-web-build.py --build-dir build/web
 
-FROM node:24.18.0-alpine AS react-build
-
-ENV NPM_CONFIG_UPDATE_NOTIFIER=false
-
-WORKDIR /src/apps/web
-COPY apps/web/package.json apps/web/package-lock.json ./
-RUN npm ci --include=dev --no-audit --no-fund
-
-COPY apps/web/ ./
-RUN npm run build
-
-FROM node:24.18.0-alpine AS react-runtime
-
-ENV NODE_ENV=production \
-    PORT=5173
-
-RUN mkdir -p /app && chown node:node /app
-WORKDIR /app
-USER node
-
-COPY --from=react-build --chown=node:node /src/apps/web/dist ./dist
-COPY --chown=node:node apps/web/server.mjs ./
-
-EXPOSE 5173
-CMD ["node", "server.mjs"]
-
-FROM caddy:2.11.3-alpine AS flutter-runtime
+FROM caddy:2.11.3-alpine
 
 ENV XDG_CONFIG_HOME=/tmp/caddy-config \
     XDG_DATA_HOME=/tmp/caddy-data
