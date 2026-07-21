@@ -12,7 +12,7 @@ export function npmQueryInvocation({
   if (platform === 'win32') {
     return {
       command: comSpec || 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm.cmd query "*" --json'],
+      args: ['/d', '/s', '/c', 'npm.cmd query * --json'],
     }
   }
 
