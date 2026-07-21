@@ -7,7 +7,7 @@
     "dev": "vite",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc -b --pretty false",
-    "test": "node --experimental-strip-types --test src/*.test.ts server.test.mjs",
+    "test": "node --experimental-strip-types --test src/*.test.ts server.test.mjs ../../tests/quality/check-node-licenses.test.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview"
   },
