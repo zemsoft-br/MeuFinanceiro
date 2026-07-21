@@ -13,7 +13,7 @@ test('uses npm directly on POSIX platforms', () => {
   })
 })
 
-test('uses cmd and npm.cmd on Windows', () => {
+test('uses cmd and npm.cmd on Windows without quoting the selector', () => {
   assert.deepEqual(
     npmQueryInvocation({
       platform: 'win32',
@@ -21,7 +21,7 @@ test('uses cmd and npm.cmd on Windows', () => {
     }),
     {
       command: 'C:\\Windows\\System32\\cmd.exe',
-      args: ['/d', '/s', '/c', 'npm.cmd query "*" --json'],
+      args: ['/d', '/s', '/c', 'npm.cmd query * --json'],
     },
   )
 })
@@ -41,7 +41,7 @@ test('passes the selected command and working directory to spawn', () => {
   assert.deepEqual(calls, [
     {
       command: 'cmd.exe',
-      args: ['/d', '/s', '/c', 'npm.cmd query "*" --json'],
+      args: ['/d', '/s', '/c', 'npm.cmd query * --json'],
       options: { cwd: 'apps/web', encoding: 'utf8' },
     },
   ])
