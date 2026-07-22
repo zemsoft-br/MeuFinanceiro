@@ -1,6 +1,20 @@
 """Shared PostgreSQL persistence primitives for MeuFinanceiro."""
 
 from meufinanceiro_persistence.database import Database
+from meufinanceiro_persistence.demo import (
+    DEMO_CONTRACT_CHECKSUM,
+    DEMO_CURRENCY,
+    DEMO_FIXTURE_ID,
+    DEMO_FIXTURE_VERSION,
+    DEMO_REFERENCE_DATE,
+    DEMO_SCOPE,
+    DEMO_TIMEZONE,
+    DemoFixtureConflictError,
+    DemoFixtureStatus,
+    DemoFixtureStore,
+    DemoModeDisabledError,
+    unloaded_demo_status,
+)
 from meufinanceiro_persistence.health import (
     PersistenceHealth,
     inspect_persistence_health,
@@ -13,11 +27,23 @@ from meufinanceiro_persistence.queue import (
 )
 
 __all__ = [
+    "DEMO_CONTRACT_CHECKSUM",
+    "DEMO_CURRENCY",
+    "DEMO_FIXTURE_ID",
+    "DEMO_FIXTURE_VERSION",
+    "DEMO_REFERENCE_DATE",
+    "DEMO_SCOPE",
+    "DEMO_TIMEZONE",
     "Database",
+    "DemoFixtureConflictError",
+    "DemoFixtureStatus",
+    "DemoFixtureStore",
+    "DemoModeDisabledError",
     "LostLeaseError",
     "PersistenceHealth",
     "TaskQueue",
     "TaskRecord",
     "TaskStatus",
     "inspect_persistence_health",
+    "unloaded_demo_status",
 ]
