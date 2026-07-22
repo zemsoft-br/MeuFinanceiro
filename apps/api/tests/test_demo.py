@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -21,18 +20,13 @@ def keyring_path(tmp_path: Path) -> Path:
     return keyring
 
 
-def _client(settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as client:
-        yield client
-
-
 def test_demo_status_is_disabled_by_default(keyring_path: Path) -> None:
     settings = Settings(
         database_url="sqlite+pysqlite:///:memory:",
         app_keyring_file=keyring_path,
     )
 
-    with next(_client(settings)) as client:
+    with TestClient(create_app(settings)) as client:
         response = client.get("/api/v1/demo/status")
 
     assert response.status_code == 200
@@ -80,7 +74,7 @@ def test_demo_status_reports_loaded_fixture(
         app_demo_mode=True,
     )
 
-    with next(_client(settings)) as client:
+    with TestClient(create_app(settings)) as client:
         response = client.get("/api/v1/demo/status")
 
     assert response.status_code == 200
@@ -95,7 +89,7 @@ def test_openapi_exposes_only_read_only_demo_operation(keyring_path: Path) -> No
         app_keyring_file=keyring_path,
     )
 
-    with next(_client(settings)) as client:
+    with TestClient(create_app(settings)) as client:
         document = client.get("/api/v1/openapi.json").json()
 
     operations = document["paths"]["/api/v1/demo/status"]
