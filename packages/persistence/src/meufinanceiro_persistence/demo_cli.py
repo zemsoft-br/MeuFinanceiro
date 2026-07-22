@@ -10,7 +10,10 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from meufinanceiro_persistence.database import Database
-from meufinanceiro_persistence.demo import DemoFixtureStore, DemoModeDisabledError
+from meufinanceiro_persistence.demo import (
+    DemoFixtureStore,
+    DemoModeDisabledError,
+)
 
 
 class DemoCliSettings(BaseSettings):
