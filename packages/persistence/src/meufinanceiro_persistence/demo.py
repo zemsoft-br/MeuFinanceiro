@@ -8,6 +8,7 @@ from typing import Final
 
 from sqlalchemy import Engine, delete, select
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.engine import RowMapping
 
 from meufinanceiro_persistence.schema import demo_fixture
 
@@ -85,7 +86,6 @@ class DemoFixtureStore:
 
     def load(self) -> DemoFixtureStatus:
         self._require_enabled()
-        loaded_at = datetime.now(timezone.utc)
         statement = (
             postgresql_insert(demo_fixture)
             .values(
@@ -96,7 +96,7 @@ class DemoFixtureStore:
                 currency=DEMO_CURRENCY,
                 scope=DEMO_SCOPE,
                 contract_checksum=DEMO_CONTRACT_CHECKSUM,
-                loaded_at=loaded_at,
+                loaded_at=datetime.now(timezone.utc),
             )
             .on_conflict_do_nothing(index_elements=[demo_fixture.c.fixture_id])
         )
@@ -119,19 +119,18 @@ class DemoFixtureStore:
             )
         return bool(result.rowcount)
 
-    def _validated_status(self, row: object) -> DemoFixtureStatus:
-        mapping = row
+    def _validated_status(self, row: RowMapping) -> DemoFixtureStatus:
         status = DemoFixtureStatus(
             enabled=True,
             loaded=True,
-            fixture_id=mapping["fixture_id"],  # type: ignore[index]
-            fixture_version=mapping["fixture_version"],  # type: ignore[index]
-            reference_date=mapping["reference_date"],  # type: ignore[index]
-            timezone=mapping["timezone"],  # type: ignore[index]
-            currency=mapping["currency"],  # type: ignore[index]
-            scope=mapping["scope"],  # type: ignore[index]
-            contract_checksum=mapping["contract_checksum"],  # type: ignore[index]
-            loaded_at=mapping["loaded_at"],  # type: ignore[index]
+            fixture_id=row["fixture_id"],
+            fixture_version=row["fixture_version"],
+            reference_date=row["reference_date"],
+            timezone=row["timezone"],
+            currency=row["currency"],
+            scope=row["scope"],
+            contract_checksum=row["contract_checksum"],
+            loaded_at=row["loaded_at"],
         )
         expected = unloaded_demo_status(enabled=True)
         comparable = (
