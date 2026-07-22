@@ -69,7 +69,14 @@ ENV
   fi
 }
 
-compose() {
+compose_base() {
+  docker compose \
+    --project-name "$PROJECT_NAME" \
+    --env-file "$ENV_FILE" \
+    "$@"
+}
+
+compose_demo() {
   docker compose \
     --project-name "$PROJECT_NAME" \
     --env-file "$ENV_FILE" \
@@ -77,12 +84,18 @@ compose() {
     "$@"
 }
 
+run_fixture_command() {
+  compose_demo run --rm --no-deps demo-fixture \
+    python -m meufinanceiro_persistence.demo_cli "$1"
+}
+
 ensure_configuration
 cd "$ROOT_DIR"
 
 case "$ACTION" in
   up)
-    compose up --build --detach --wait --wait-timeout 180
+    compose_base up --build --detach --wait --wait-timeout 180
+    run_fixture_command load
     PORT=$(awk -F= '$1 == "APP_HTTP_PORT" {print $2}' "$ENV_FILE" | tail -n 1)
     python3 - "$PORT" <<'PY'
 import json
@@ -108,14 +121,13 @@ PY
     echo "MeuFinanceiro demo disponível em http://127.0.0.1:${PORT}"
     ;;
   load|status|reset)
-    compose run --rm demo-fixture \
-      python -m meufinanceiro_persistence.demo_cli "$ACTION"
+    run_fixture_command "$ACTION"
     ;;
   down)
-    compose down --remove-orphans --timeout 40
+    compose_demo down --remove-orphans --timeout 40
     ;;
   purge)
-    compose down --volumes --remove-orphans --timeout 40
+    compose_demo down --volumes --remove-orphans --timeout 40
     rm -rf "$STATE_DIR"
     ;;
 esac
