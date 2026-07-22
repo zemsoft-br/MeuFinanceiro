@@ -63,7 +63,7 @@ Set-PrivateAcl -Path $StateDir -IsDirectory $true
 Set-PrivateAcl -Path $SecretsDir -IsDirectory $true
 
 if (-not (Test-Path $EnvFile)) {
-    @"
+    $envContent = @"
 POSTGRES_DB=meufinanceiro_demo
 POSTGRES_USER=meufinanceiro_demo_admin
 POSTGRES_PASSWORD=$(New-RandomPassword)
@@ -72,7 +72,12 @@ APP_DATABASE_PASSWORD=$(New-RandomPassword)
 APP_HTTP_PORT=8081
 APP_DEMO_MODE=true
 APP_KEYRING_FILE_HOST=.demo/secrets/keyring.json
-"@ | Set-Content -Path $EnvFile -Encoding utf8
+"@
+    [System.IO.File]::WriteAllText(
+        $EnvFile,
+        $envContent,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
 }
 Set-PrivateAcl -Path $EnvFile -IsDirectory $false
 
