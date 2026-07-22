@@ -27,6 +27,8 @@ on:
       - infra/scripts/check-flutter-web-contract.py
       - infra/scripts/finalize-flutter-web-build.py
       - infra/scripts/manage-secrets.py
+      - infra/scripts/demo-up.sh
+      - infra/scripts/demo-up.ps1
       - tests/smoke/**
       - .github/workflows/container-quality.yml
   workflow_dispatch:
@@ -43,7 +45,7 @@ jobs:
     name: Docker Compose integration
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 65
 
     steps:
       - name: Checkout pull request head
@@ -139,12 +141,34 @@ jobs:
           docker compose up --detach --wait --wait-timeout 120
           bash tests/smoke/compose-smoke.sh
 
+      - name: Validate isolated demo environment
+        shell: bash
+        run: |
+          bash infra/scripts/demo-up.sh up
+          DEMO_ENV_FILE="$PWD/.demo/.env" \
+            DEMO_PROJECT_NAME=meufinanceiro-demo \
+            bash tests/smoke/demo-compose-smoke.sh
+          bash tests/smoke/compose-smoke.sh
+
       - name: Capture diagnostics on failure
         if: failure()
         run: |
           docker compose ps --all
           docker compose logs --no-color --tail 200
+          docker compose \
+            --project-name meufinanceiro-demo \
+            --env-file .demo/.env \
+            --profile demo \
+            ps --all || true
+          docker compose \
+            --project-name meufinanceiro-demo \
+            --env-file .demo/.env \
+            --profile demo \
+            logs --no-color --tail 200 || true
 
-      - name: Stop stack gracefully
+      - name: Stop stacks gracefully
         if: always()
-        run: docker compose down --volumes --remove-orphans --timeout 40
+        shell: bash
+        run: |
+          bash infra/scripts/demo-up.sh purge || true
+          docker compose down --volumes --remove-orphans --timeout 40
