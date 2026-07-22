@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 
@@ -43,3 +45,25 @@ def test_non_empty_legacy_worker_is_rejected(tmp_path: Path) -> None:
         module.remove_empty_legacy_worker(tmp_path)
 
     assert worker.exists()
+
+
+def test_copied_script_accepts_explicit_build_directory(tmp_path: Path) -> None:
+    copied_script = tmp_path / "finalize-flutter-web-build.py"
+    copied_script.write_text(SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+    build_dir = tmp_path / "build" / "web"
+    build_dir.mkdir(parents=True)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(copied_script),
+            "--build-dir",
+            str(build_dir),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "no legacy worker present" in result.stdout

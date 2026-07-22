@@ -7,13 +7,23 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_BUILD_DIR = ROOT / "apps" / "app" / "build" / "web"
 LEGACY_WORKER_NAME = "flutter_service_worker.js"
 
 
 class FlutterWebFinalizationError(RuntimeError):
     """Raised when a generated artifact cannot be finalized safely."""
+
+
+def default_build_dir(script_path: Path = Path(__file__)) -> Path:
+    """Resolve the repository build directory when running from the source tree."""
+    resolved = script_path.resolve()
+    try:
+        root = resolved.parents[2]
+    except IndexError as exc:
+        raise FlutterWebFinalizationError(
+            "cannot infer the repository root; pass --build-dir explicitly"
+        ) from exc
+    return root / "apps" / "app" / "build" / "web"
 
 
 def remove_empty_legacy_worker(build_dir: Path) -> bool:
@@ -39,11 +49,15 @@ def main() -> int:
     parser.add_argument(
         "--build-dir",
         type=Path,
-        default=DEFAULT_BUILD_DIR,
-        help="Flutter Web release directory.",
+        help="Flutter Web release directory. Defaults to the repository build output.",
     )
     args = parser.parse_args()
-    build_dir = args.build_dir.resolve()
+
+    try:
+        build_dir = (args.build_dir or default_build_dir()).resolve()
+    except FlutterWebFinalizationError as exc:
+        print(f"Flutter Web finalization failed: {exc}", file=sys.stderr)
+        return 1
 
     if not build_dir.is_dir():
         print(
