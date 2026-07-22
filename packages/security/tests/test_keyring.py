@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import meufinanceiro_security.keyring as keyring_module
 from meufinanceiro_security.errors import KeyringError
 from meufinanceiro_security.keyring import (
     KEY_SIZE_BYTES,
@@ -101,3 +103,42 @@ def test_keyring_rejects_missing_active_key() -> None:
             active_key_id="k_abcdefghijkl",
             keys={"k_mnopqrstuvwx": b"x" * 32},
         )
+
+
+def test_group_writable_keyring_is_rejected_on_writable_mount(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(keyring_module.os, "ST_RDONLY", 1, raising=False)
+    monkeypatch.setattr(
+        keyring_module.os,
+        "statvfs",
+        lambda _path: SimpleNamespace(f_flag=0),
+        raising=False,
+    )
+
+    with pytest.raises(KeyringError, match="writable by group or others"):
+        keyring_module._validate_keyring_file_permissions(  # noqa: SLF001
+            tmp_path / "keyring.json",
+            0o666,
+            platform="posix",
+        )
+
+
+def test_group_writable_keyring_is_accepted_on_read_only_mount(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(keyring_module.os, "ST_RDONLY", 1, raising=False)
+    monkeypatch.setattr(
+        keyring_module.os,
+        "statvfs",
+        lambda _path: SimpleNamespace(f_flag=1),
+        raising=False,
+    )
+
+    keyring_module._validate_keyring_file_permissions(  # noqa: SLF001
+        tmp_path / "keyring.json",
+        0o666,
+        platform="posix",
+    )

@@ -1,124 +1,91 @@
 # Sequência de implementação após a fundação
 
-- Issue: #22
-- Alinhamento: `docs/ROADMAP.md`
-- Objetivo: decompor o material visual em trabalho técnico pequeno e dependente
+- Issue de alinhamento: #22
+- Roadmap: `docs/ROADMAP.md`
+- Cliente canônico: Flutter em `apps/app`
 
-## 1. Estado atual
+## 1. Estado da fundação
 
-Integrado em `develop`:
+Concluído ou em validação final:
 
-- visão e arquitetura;
-- governança;
-- licença e DCO;
+- visão, arquitetura e governança;
+- licença, DCO e política de segurança;
 - monorepo e Docker Compose;
-- quality gates;
-- configuração e criptografia;
+- configuração, keyring e criptografia;
 - persistência, migrações e fila PostgreSQL;
-- shell Web/PWA React transitório da PR #21;
-- ADR-0008, que define Flutter como cliente canônico.
+- Flutter Web/PWA como único cliente;
+- rotas `/`, `/componentes` e `/sistema`;
+- tema, componentes, navegação responsiva e health check;
+- runtime Web estático não-root;
+- manifesto, service worker e cache auditado;
+- remoção de React, Vite, npm e do target de rollback;
+- quality gate que bloqueia a reintrodução do frontend legado.
 
-Ainda não existe funcionalidade financeira.
+Ainda não existe funcionalidade financeira produtiva. A PR #37 precisa concluir a suíte local e o gate de containers antes da integração.
 
-O shell React é referência executável e rollback temporário. Nenhuma funcionalidade financeira nova deve ser implementada nele.
-
-## 2. Gate imediato — migração Flutter
-
-Concluir a issue #24 antes da Fase 1:
-
-1. scaffold Flutter em `apps/app`;
-2. quality gates de Dart e Flutter;
-3. paridade das rotas `/`, `/componentes` e `/sistema`;
-4. tema, componentes-base e navegação responsiva;
-5. health check operacional, degradado, indisponível e timeout;
-6. PWA e cache seguro sem respostas `/api/`;
-7. build Web reproduzível em Docker;
-8. smoke por Caddy/Compose;
-9. validação de acessibilidade, desktop e mobile;
-10. remoção do React somente após paridade aprovada.
-
-Enquanto esse gate estiver aberto, trabalho de backend independente pode avançar apenas quando não depender de contratos do cliente e não iniciar funcionalidades financeiras de Fase 1.
-
-## 3. Demais gates antes da Fase 1
+## 2. Gates antes da Fase 1
 
 Concluir:
 
-1. issue #9 de modo demonstração refinada com `DEMO_DATA_CONTRACT.md`;
-2. issue #10 de instalação, atualização e backup;
-3. issue #11 de spike Pluggy sem contaminar o domínio;
-4. issue #2 de configuração administrativa do repositório;
-5. decisões de dinheiro, IDs, autorização e imutabilidade.
+1. validação final da issue #36;
+2. modo demonstração conforme `DEMO_DATA_CONTRACT.md`;
+3. instalação, atualização, backup e restauração;
+4. spike Pluggy sem contaminar o domínio;
+5. configuração administrativa do repositório;
+6. decisões de dinheiro, IDs, autorização e imutabilidade.
 
-## 4. Próximas decisões estruturais
+Trabalho de backend independente pode avançar quando não depender de contratos ainda abertos e não antecipar uma decisão estrutural.
 
-Abrir issues independentes para:
+## 3. Decisões estruturais imediatas
 
-### 4.1 Dinheiro e arredondamento
+### 3.1 Dinheiro e arredondamento
 
 Definir:
 
 - `numeric` versus unidade mínima;
-- escala;
-- moeda;
+- escala e moeda;
 - conversão;
 - arredondamento;
 - serialização OpenAPI e Dart.
 
-### 4.2 Identidade, residência e autorização
+### 3.2 Identidade, residência e autorização
 
 Definir:
 
-- usuário local;
-- associação;
-- papéis;
-- escopos;
-- proprietário;
-- filtros no caso de uso;
+- usuário local e sessão;
+- residência e associação;
+- papéis e escopos;
+- proprietário de recurso;
+- filtros nos casos de uso;
 - eventual RLS;
-- sessão e revogação.
+- revogação.
 
-### 4.3 Livro financeiro
+### 3.3 Livro financeiro
 
 Definir:
 
-- agregados;
-- estados;
+- agregados e estados;
 - imutabilidade;
 - saldo de abertura;
-- reversão;
-- liquidação;
-- transferências;
-- rateios;
+- reversão e liquidação;
+- transferências e rateios;
 - auditoria.
 
-### 4.4 Anexos
+### 3.4 Anexos
 
 Definir:
 
 - porta de armazenamento;
-- criptografia;
-- hash;
-- metadados;
-- quarentena;
+- criptografia e hash;
+- metadados e quarentena;
 - autorização;
-- backup.
+- backup e restauração.
 
-### 4.5 Persistência local do cliente
+### 3.5 Persistência local do cliente
 
-Não implementar por inferência a partir do termo local-first.
+Não implementar por inferência do termo local-first. SQLite, WASM ou cache financeiro no Flutter exige issue e ADR específicos para autoridade, sincronização, criptografia, expiração, revogação, migrações e conflitos.
 
-Qualquer SQLite, WASM ou cache financeiro no Flutter exige issue e ADR específicos para:
-
-- autoridade dos dados;
-- sincronização;
-- criptografia;
-- expiração;
-- revogação;
-- migrações;
-- conflitos;
-- comportamento por plataforma.
-
-## 5. Fase 1 — Identidade, residência e núcleo financeiro
+## 4. Fase 1 — Identidade, residência e núcleo financeiro
 
 Ordem recomendada:
 
@@ -133,13 +100,11 @@ Ordem recomendada:
 9. rateios;
 10. anexos;
 11. auditoria financeira;
-12. Dashboard inicial.
+12. dashboard inicial.
 
-Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter quando isso reduzir risco.
+Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter quando isso reduzir risco. Interface começa após contrato de API e autorização estar estável ou mockado por contrato versionado.
 
-Uma PR de interface só começa após o contrato de API e autorização relevante estar estável ou explicitamente mockado por contrato versionado.
-
-## 6. Fase 2 — Planejamento
+## 5. Fase 2 — Planejamento
 
 Após o livro estável:
 
@@ -148,12 +113,11 @@ Após o livro estável:
 3. orçamentos;
 4. recorrências;
 5. assinaturas assistidas;
-6. metas;
-7. projetos;
-8. fluxo de caixa;
-9. cenários.
+6. metas e projetos;
+7. fluxo de caixa;
+8. cenários.
 
-## 7. Fase 3 — Importações
+## 6. Fase 3 — Importações
 
 1. contrato comum;
 2. observação externa;
@@ -167,7 +131,7 @@ Após o livro estável:
 
 Pluggy só entra depois desse pipeline.
 
-## 8. Fase 4 — Cartões e projeções
+## 7. Fase 4 — Cartões e projeções
 
 1. cartões;
 2. compras;
@@ -178,44 +142,39 @@ Pluggy só entra depois desse pipeline.
 7. calendário;
 8. alertas internos.
 
-A ordem pode ser ajustada para cartões antes de planejamento, desde que o modelo de compra e liquidação esteja decidido.
+A ordem pode ser ajustada desde que compra, liquidação e dupla contabilização estejam resolvidas.
 
-## 9. Fases posteriores
+## 8. Fases posteriores
 
 Seguir `docs/ROADMAP.md`:
 
-- Pluggy;
+- Pluggy e Open Finance;
 - empréstimos;
-- patrimônio;
-- investimentos;
-- documentos e automações avançadas;
+- patrimônio e investimentos;
+- documentos e automações;
 - distribuição e maturidade;
-- ativação progressiva dos alvos Flutter Android, iOS e desktop a partir da mesma base.
+- Android, iOS e desktop a partir da mesma base Flutter.
 
 Os protótipos não antecipam dependências técnicas.
 
-## 10. Estrutura de issues
+## 9. Estrutura de issues
 
 Cada issue deve conter:
 
-- problema;
-- resultado observável;
-- escopo incluído;
-- escopo excluído;
-- dependências;
-- decisões vigentes;
+- problema e resultado observável;
+- escopo incluído e excluído;
+- dependências e decisões vigentes;
 - modelo de dados afetado;
 - autorização;
-- idempotência;
-- auditoria;
-- migração;
+- idempotência e concorrência;
+- auditoria e migração;
 - testes;
 - estados de interface;
 - referência Stitch;
 - riscos;
 - alvos Flutter afetados.
 
-## 11. Tamanho de PR
+## 10. Tamanho de PR
 
 Preferir uma finalidade por PR.
 
@@ -226,57 +185,48 @@ Exemplos aceitáveis:
 - implementar autorização de leitura pessoal;
 - criar transferência atômica;
 - adicionar componente Flutter de seletor de conta;
-- implementar uma rota e seus estados sem criar domínio paralelo.
+- implementar uma rota e seus estados sem domínio paralelo.
 
 Evitar:
 
-- “implementar módulo financeiro completo”;
-- schema, importador, relatórios e interface na mesma PR;
+- implementar módulo financeiro completo em uma PR;
+- combinar schema, importador, relatórios e interface;
 - migrações conflitantes paralelas;
-- adoção de biblioteca sem ADR quando estrutural;
-- manter implementação equivalente em React e Flutter;
+- adotar biblioteca estrutural sem ADR;
+- introduzir outra tecnologia de cliente;
 - copiar HTML do Stitch para widgets sem reconstrução semântica.
 
-## 12. Gates financeiros
+## 11. Gates financeiros
 
 Toda PR de domínio precisa provar:
 
-- ausência de `float`;
-- arredondamento;
-- datas;
+- ausência de `float` para dinheiro;
+- arredondamento e datas corretos;
 - autorização;
 - auditoria;
-- concorrência;
-- idempotência;
+- concorrência e idempotência;
 - reversão;
 - ausência de dupla contabilização;
 - migração simétrica ou plano explícito.
 
-## 13. Gates do cliente Flutter
+## 12. Gates do cliente Flutter
 
 Toda experiência precisa provar:
 
-- `dart format`;
-- `flutter analyze`;
-- testes unitários e de widget pertinentes;
-- semântica acessível;
-- teclado e foco no Web;
-- contraste;
-- escalonamento de texto;
-- loading;
-- vazio;
-- erro;
-- permissão;
-- API indisponível;
-- deep link e navegação reversa;
+- `dart format` e `flutter analyze`;
+- testes unitários e de widget;
+- semântica acessível, teclado e foco no Web;
+- contraste e escalonamento de texto;
+- loading, vazio, erro, permissão e API indisponível;
+- deep links e navegação reversa;
 - desktop e mobile;
 - ausência de overflow;
-- nenhuma dependência obrigatória de CDN;
+- nenhuma CDN obrigatória;
 - nenhuma regra financeira exclusiva do cliente;
-- build Web release quando houver mudança executável;
-- smoke do runtime quando houver impacto no artefato servido.
+- build Web release quando aplicável;
+- smoke quando houver impacto no runtime servido.
 
-## 14. Uso do Stitch em issues
+## 13. Uso do Stitch
 
 A issue deve citar:
 

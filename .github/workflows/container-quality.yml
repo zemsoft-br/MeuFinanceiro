@@ -11,15 +11,21 @@ on:
       - synchronize
       - ready_for_review
     paths:
+      - .flutter-version
+      - .flutter-revision
       - compose.yaml
       - '**/Dockerfile'
       - packages/security/**
       - packages/persistence/**
       - apps/api/pyproject.toml
       - apps/worker/pyproject.toml
-      - apps/web/package.json
-      - apps/web/package-lock.json
+      - apps/app/pubspec.yaml
+      - apps/app/pubspec.lock
+      - apps/app/web/**
       - infra/caddy/**
+      - infra/web/**
+      - infra/scripts/check-flutter-web-contract.py
+      - infra/scripts/finalize-flutter-web-build.py
       - infra/scripts/manage-secrets.py
       - tests/smoke/**
       - .github/workflows/container-quality.yml
@@ -37,7 +43,7 @@ jobs:
     name: Docker Compose integration
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 55
 
     steps:
       - name: Checkout pull request head
@@ -73,8 +79,23 @@ jobs:
       - name: Build Worker image
         run: docker compose build --pull worker
 
-      - name: Build Web image
+      - name: Build Flutter Web image
         run: docker compose build --pull web
+
+      - name: Validate generated Flutter Web artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_dir="$RUNNER_TEMP/meufinanceiro-flutter-web"
+          rm -rf "$build_dir"
+          mkdir -p "$build_dir"
+          container_id="$(docker create meufinanceiro-web:local)"
+          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container_id:/srv/." "$build_dir"
+          docker rm "$container_id" >/dev/null
+          trap - EXIT
+          python3 infra/scripts/check-flutter-web-contract.py \
+            --build-dir "$build_dir"
 
       - name: Build Caddy image
         run: docker compose build --pull caddy

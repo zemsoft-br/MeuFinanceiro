@@ -25,22 +25,22 @@ O sistema não executará, agendará ou iniciará transações financeiras.
 ## Arquitetura
 
 ```text
-Flutter — Web/PWA e futuros clientes multiplataforma
-        |
-      Caddy
-        |
-      FastAPI
-        |
- PostgreSQL + Worker
+Flutter Web/PWA
+       |
+   Web estático
+       |
+     Caddy
+       |
+    FastAPI
+       |
+PostgreSQL + Worker
 ```
 
 A distribuição principal é Docker Compose. As imagens escolhidas possuem variantes oficiais para `amd64` e `arm64`.
 
-### Transição do frontend
+`apps/app` é o único cliente do projeto. O serviço `web` do Compose compila o Flutter Web e serve o artefato estático por Caddy. Não existe frontend React, target de rollback ou runtime Node na aplicação.
 
-A PR #21 integrou um shell React executável para validar navegação, acessibilidade, PWA, cache e runtime estático. O ADR-0008 substitui React por Flutter como cliente canônico.
-
-`apps/app` contém o scaffold Flutter e seus gates de compilação. O shell React permanece temporariamente como runtime servido e caminho de rollback durante a migração da issue #24. Nenhuma nova funcionalidade financeira deve ser implementada nele.
+Node.js permanece apenas como ferramenta de desenvolvimento para validar a sintaxe e os invariantes do JavaScript próprio do PWA. Nenhuma dependência npm é necessária para construir ou executar o frontend.
 
 ## Início rápido
 
@@ -56,45 +56,45 @@ Windows PowerShell:
 ./infra/scripts/dev-up.ps1
 ```
 
-Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação fica disponível em `http://127.0.0.1:8080`.
-
-Enquanto a migração Flutter não estiver concluída, esse endereço ainda serve o shell React transitório integrado pela PR #21. O build Flutter desta fase não participa do Compose.
+Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação Flutter fica disponível em `http://127.0.0.1:8080`.
 
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
 ## Quality gates locais
 
-A suíte obrigatória pode ser executada antes de marcar uma Pull Request como pronta:
+A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
 
 ```bash
-python infra/scripts/run-quality.py
+export TEST_DATABASE_URL='postgresql+psycopg://postgres:<senha>@127.0.0.1:<porta>/meufinanceiro_test'
+export TEST_APP_DATABASE_USER='postgres'
+python infra/scripts/run-quality.py --use-test-database-env
 ```
 
-Ela valida segurança do repositório, Python, o shell React transitório, o cliente Flutter, dependências e licenças documentadas. Testes de persistência usam PostgreSQL real quando `TEST_DATABASE_URL` está definido; o gate de containers valida a integração completa. Consulte o [runbook de quality gates](docs/runbooks/QUALITY_GATES.md).
+No Windows, use `py -3.13` no lugar de `python`. O [runbook de quality gates](docs/runbooks/QUALITY_GATES.md) contém o fluxo completo e o gate Docker Compose.
 
-A execução local requer a versão exata registrada em `.flutter-version`. Os gates Flutter incluem lockfile, formatação, análise, testes e build Web release.
+A suíte valida segurança do repositório, Python, o cliente Flutter, o artefato Web/PWA gerado, dependências e licenças documentadas. A execução local requer a versão exata registrada em `.flutter-version` e `.flutter-revision`.
 
 ## Estrutura do monorepo
 
 ```text
 apps/
   api/       FastAPI e OpenAPI
-  app/       cliente Flutter canônico; scaffold Web e gates já versionados
-  web/       shell React transitório da PR #21; será removido após paridade Flutter
+  app/       cliente Flutter canônico e fontes Web/PWA
   worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
   persistence/ SQLAlchemy, Alembic, health e fila PostgreSQL
   contracts/ contratos compartilhados futuros
 infra/
-  caddy/     entrada HTTP local
+  caddy/     entrada HTTP local e proxy da API
+  web/       build Flutter Web e runtime estático Caddy
   scripts/   inicialização, diagnóstico e quality gates
 tests/
   quality/   provas dos validadores do repositório
   smoke/     validação ponta a ponta do Compose
 ```
 
-O Flutter deve reproduzir os contratos já validados pelo shell existente sem copiar regras financeiras para o cliente. A identidade visual incorporará as referências do Google Stitch sob contratos versionados do repositório.
+O Flutter deve implementar os contratos versionados do produto sem copiar regras financeiras para o cliente. A identidade visual incorporará as referências do Google Stitch sob contratos versionados do repositório.
 
 ## Documentação
 
@@ -108,9 +108,9 @@ O Flutter deve reproduzir os contratos já validados pelo shell existente sem co
 - [Inventário das referências Stitch](docs/design/STITCH_SCREEN_INVENTORY.csv)
 - [Manifesto da exportação Stitch](docs/design/STITCH_SOURCE_ARCHIVE.md)
 - [Referências visuais do Stitch](docs/design/stitch/references/README.md)
-- [Migração do cliente para Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
+- [Cliente Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
-- [Shell Web/PWA atual](docs/runbooks/WEB_PWA.md)
+- [Runtime Web/PWA](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
 - [Quality gates e CI](docs/runbooks/QUALITY_GATES.md)
@@ -152,8 +152,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. portar o shell responsivo e as rotas existentes para Flutter;
-2. servir o build Flutter Web pelo Compose com política PWA auditada;
-3. remover o shell React após paridade e smoke aprovados;
-4. concluir modo demonstração, instalação, backup e spike Pluggy;
-5. implementar identidade, residência e núcleo financeiro.
+1. validar o runtime Flutter Web/PWA no Compose e concluir a issue #36;
+2. concluir modo demonstração, instalação, backup e spike Pluggy;
+3. implementar identidade, residência e núcleo financeiro;
+4. evoluir a mesma base Flutter para Android, iOS e desktop quando esses alvos entrarem no roadmap.

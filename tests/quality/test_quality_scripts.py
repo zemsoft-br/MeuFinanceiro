@@ -61,3 +61,28 @@ def test_repository_safety_rejects_private_key(tmp_path: Path) -> None:
 
     assert result.returncode == 1
     assert "sensitive or financial file tracked" in result.stderr
+
+
+def test_repository_safety_rejects_legacy_web_tree(tmp_path: Path) -> None:
+    initialize_repository(tmp_path)
+    legacy = tmp_path / "apps" / "web" / "package.json"
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text('{"name":"legacy"}\n', encoding="utf-8")
+    run("git", "add", "apps/web/package.json", cwd=tmp_path)
+
+    result = run(sys.executable, str(SAFETY_SCRIPT), str(tmp_path))
+
+    assert result.returncode == 1
+    assert "legacy React frontend artifact tracked" in result.stderr
+
+
+def test_repository_safety_rejects_legacy_runtime_token(tmp_path: Path) -> None:
+    initialize_repository(tmp_path)
+    compose = tmp_path / "compose.yaml"
+    compose.write_text("target: react-runtime\n", encoding="utf-8")
+    run("git", "add", "compose.yaml", cwd=tmp_path)
+
+    result = run(sys.executable, str(SAFETY_SCRIPT), str(tmp_path))
+
+    assert result.returncode == 1
+    assert "legacy React runtime token" in result.stderr

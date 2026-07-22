@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -61,11 +62,24 @@ def load_locked_versions(path: Path = LOCKFILE) -> dict[str, str]:
         raise FlutterLicenseError(f"Flutter lockfile not found: {path}") from exc
 
 
-def pub_cache_root() -> Path:
-    configured = os.environ.get("PUB_CACHE")
+def pub_cache_root(
+    source: Mapping[str, str] | None = None,
+    *,
+    platform: str | None = None,
+    home: Path | None = None,
+) -> Path:
+    environment = source if source is not None else os.environ
+    configured = environment.get("PUB_CACHE")
     if configured:
         return Path(configured).expanduser().resolve()
-    return (Path.home() / ".pub-cache").resolve()
+
+    current_platform = platform or os.name
+    if current_platform == "nt":
+        local_app_data = environment.get("LOCALAPPDATA")
+        if local_app_data:
+            return (Path(local_app_data).expanduser() / "Pub" / "Cache").resolve()
+
+    return ((home or Path.home()) / ".pub-cache").resolve()
 
 
 def find_package_license(cache: Path, package: str, version: str) -> Path:

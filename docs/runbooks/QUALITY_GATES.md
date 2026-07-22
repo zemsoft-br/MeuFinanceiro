@@ -10,12 +10,12 @@ Os workflows principais escutam eventos de Pull Request, mas os jobs somente exe
 
 1. abrir a PR como draft;
 2. desenvolver e fazer pushes sem executar automaticamente a suíte principal;
-3. executar os gates localmente;
+3. executar os gates locais possíveis;
 4. marcar a PR como pronta para revisão;
 5. o GitHub Actions executar `Quality` e, quando aplicável, `Container Quality`;
 6. novos pushes em PR pronta iniciarem nova execução e cancelarem a anterior do mesmo workflow.
 
-Ambos os workflows também expõem `workflow_dispatch` para diagnóstico ou validação manual.
+Ambos os workflows também expõem `workflow_dispatch`. Quando o GitHub Actions estiver indisponível por cota ou incidente externo, a PR permanece bloqueada para merge até que a suíte equivalente seja executada localmente e os resultados sejam registrados.
 
 ## Gates obrigatórios
 
@@ -25,50 +25,56 @@ Executa:
 
 - DCO para todos os commits da PR;
 - detecção de nomes de arquivos sensíveis, arquivos financeiros reais e padrões óbvios de segredo;
+- rejeição estrutural de `apps/web`, `react-runtime`, `WEB_RUNTIME_TARGET` e validadores legados do frontend React;
 - Ruff lint e formatação do Python;
 - mypy em modo estrito para API e Worker;
 - testes da API, Worker, persistência, segurança e validadores de qualidade;
-- inventário e política preliminar de licenças Python;
+- inventário e política de licenças Python;
 - `pip-audit`;
-- instalação reprodutível do shell React transitório por `npm ci`;
-- ESLint, TypeScript, testes e build Vite;
-- `npm audit` com bloqueio em severidade alta ou crítica;
-- inventário e política preliminar de licenças Node;
-- validação da versão Flutter fixada em `.flutter-version`;
+- validação da versão e revisão Flutter fixadas;
 - resolução Flutter com `pubspec.lock` obrigatório e `--enforce-lockfile`;
+- verificação de sintaxe do JavaScript próprio do PWA com Node.js;
+- testes Node dos invariantes do service worker;
 - verificação de formatação Dart;
 - `flutter analyze`;
 - testes Flutter;
-- build Web Flutter em modo release.
+- build Web Flutter release com `--no-web-resources-cdn` e `--pwa-strategy=none`;
+- finalização estrita do artefato, removendo apenas o worker legado vazio;
+- validação do manifesto, index, service worker, ícones, CanvasKit local e ausência de worker legado no artefato gerado.
 
-React e Flutter permanecem nos gates enquanto o shell React for o runtime ativo. A remoção dos gates Node ocorrerá somente junto da remoção validada do frontend antigo.
+Node.js é ferramenta de teste dos arquivos JavaScript mantidos pelo projeto. Não existe manifesto npm, dependência React, build Vite ou runtime Node no frontend.
 
 ### Container Quality
 
-Executa somente quando arquivos de containers, Compose, dependências do runtime ou smoke tests são alterados:
+Executa quando arquivos de containers, Compose, runtime Flutter, PWA ou smoke tests são alterados:
 
 - validação do contrato Compose;
 - build das imagens com atualização das bases;
+- build da imagem Flutter Web;
+- extração de `/srv` e validação do artefato realmente servido;
 - inicialização com espera por health checks;
-- smoke test Web → Caddy → API → PostgreSQL;
+- smoke Web → Caddy → API → PostgreSQL;
+- validação das rotas Flutter e do manifesto;
+- validação textual da exclusão de `/api/` no service worker;
+- validação dos headers de cache;
+- `404` para asset inexistente;
+- execução não-root do serviço Web;
 - restart completo e novo smoke test;
 - captura de estado e logs em falha;
 - encerramento gracioso com remoção do ambiente descartável.
-
-O scaffold Flutter ainda não é servido pelo Compose. Alterar apenas `apps/app` e os gates Flutter não comprova runtime de container e não substitui a futura PR de Docker/PWA.
 
 O PostgreSQL utilizado é descartável e não possui dados reais.
 
 ## Execução local
 
-Pré-requisitos:
+Pré-requisitos da suíte completa:
 
 - Python 3.13;
-- Node.js 24 e npm, enquanto React permanecer;
-- Flutter na versão exata de `.flutter-version`;
+- Node.js 24 para testes do PWA;
+- Flutter na versão e revisão exatas do repositório;
 - Dart fornecido por essa instalação Flutter;
 - Git;
-- Docker Compose somente para o gate de containers.
+- Docker Compose para o gate de containers.
 
 Valide a toolchain Flutter isoladamente:
 
@@ -76,47 +82,67 @@ Valide a toolchain Flutter isoladamente:
 python infra/scripts/check-flutter-toolchain.py
 ```
 
-Suíte principal:
+Valide apenas o contrato PWA versionado, sem build:
 
 ```bash
-python infra/scripts/run-quality.py
+python infra/scripts/check-flutter-web-contract.py --source-only
 ```
 
-Para recriar o ambiente virtual dos gates:
+A suíte principal completa exige PostgreSQL descartável explícito:
 
 ```bash
-python infra/scripts/run-quality.py --recreate
+export TEST_DATABASE_URL='postgresql+psycopg://postgres:<senha>@127.0.0.1:<porta>/meufinanceiro_test'
+export TEST_APP_DATABASE_USER='postgres'
+python infra/scripts/run-quality.py --use-test-database-env
 ```
 
-O script executa Python, React transitório e Flutter nessa ordem. Quando Flutter não estiver no `PATH`, estiver em versão diferente ou o lockfile não existir, a execução falha com uma mensagem explícita antes dos comandos do cliente.
+Para recriar o ambiente virtual:
+
+```bash
+python infra/scripts/run-quality.py --recreate --use-test-database-env
+```
+
+`--allow-skipped-postgres-tests` serve apenas para diagnóstico parcial e nunca aprova uma PR.
 
 Gate de containers:
 
 ```bash
 cp .env.example .env
-# Substitua POSTGRES_PASSWORD por valor local aleatório.
+# Substitua as senhas por valores locais aleatórios.
 docker compose config --quiet
 docker compose build --pull
+
 docker compose up --detach --wait --wait-timeout 180
 bash tests/smoke/compose-smoke.sh
+
 docker compose restart
 docker compose up --detach --wait --wait-timeout 120
 bash tests/smoke/compose-smoke.sh
-docker compose down --volumes --remove-orphans --timeout 30
+
+docker compose down --volumes --remove-orphans --timeout 40
 ```
 
-No Windows, o gate de aplicação pode ser executado pelo mesmo script Python. O smoke test pode ser executado por WSL ou por ambiente Unix equivalente enquanto não houver uma versão PowerShell específica.
+No Windows, a suíte pode ser executada com `py -3.13`. O smoke Bash pode ser executado por WSL ou Git Bash. `dev-up.ps1` mantém um smoke básico nativo.
 
-## Lockfiles dos clientes
+## Build Flutter Web
 
-São obrigatórios:
+O pipeline canônico é:
 
-- `apps/web/package-lock.json` para o shell React transitório;
-- `apps/app/pubspec.lock` para o cliente Flutter.
+```bash
+cd apps/app
+flutter build web --release --no-web-resources-cdn --pwa-strategy=none
+python ../../infra/scripts/finalize-flutter-web-build.py --build-dir build/web
+cd ../..
+python infra/scripts/check-flutter-web-contract.py
+```
 
-O workflow não gera lockfile ausente. A ausência falha deliberadamente e exige geração e revisão no mesmo Pull Request que altera o manifesto.
+`--no-web-resources-cdn` obriga o empacotamento local do CanvasKit/WASM. `--pwa-strategy=none` desativa a política automática do SDK porque o projeto mantém `apps/app/web/sw.js` explicitamente.
 
-Para Flutter:
+Algumas versões do SDK ainda produzem um `flutter_service_worker.js` vazio. O finalizador remove somente esse arquivo vazio; qualquer conteúdo não vazio bloqueia o build. O validator exige CanvasKit local e a ausência do worker legado no artefato final.
+
+## Lockfile do cliente
+
+`apps/app/pubspec.lock` é obrigatório. O workflow não gera lockfile ausente.
 
 ```bash
 cd apps/app
@@ -126,24 +152,27 @@ flutter pub get --enforce-lockfile
 
 O primeiro comando atualiza o lockfile de forma consciente. O segundo comprova que a resolução é reproduzível sem modificá-lo.
 
-## Instalação Flutter no GitHub Actions
+## Contrato do service worker
 
-O workflow:
+O validator examina tanto os arquivos versionados quanto o artefato gerado. São bloqueados:
 
-1. lê `.flutter-version`;
-2. restaura um cache separado por sistema, arquitetura e versão;
-3. quando necessário, clona a tag correspondente do repositório oficial Flutter;
-4. adiciona o SDK ao `PATH`;
-5. desativa analytics no SDK do runner;
-6. prepara somente os artefatos Web necessários;
-7. executa `check-flutter-toolchain.py` antes dos gates do cliente.
-
-A versão não é escolhida por um action de terceiros nem por canal móvel. Atualizações exigem PR explícita, revisão do changelog, novo lockfile e execução completa dos gates.
+- ausência de exclusão explícita de `/api/`;
+- interceptação antes da verificação de API;
+- ausência de filtro por método ou origem;
+- armazenamento de respostas não bem-sucedidas ou não `basic`;
+- ausência de limpeza dos caches antigos conhecidos;
+- ausência de `skipWaiting` ou `clients.claim`;
+- espera indefinida pelo primeiro controle do worker;
+- `flutter_service_worker.js` legado;
+- divergência entre `web/sw.js` e o `sw.js` gerado;
+- manifesto ou ícones incompletos;
+- CanvasKit remoto ou arquivos locais do engine ausentes;
+- origins remotas conhecidas em arquivos controlados pelo projeto.
 
 ## Política de dependências
 
 - versões diretas permanecem fixadas;
-- lockfiles são obrigatórios quando suportados pelo ecossistema;
+- lockfiles são obrigatórios quando suportados;
 - atualizações devem ocorrer em PR própria ou em mudança que justifique explicitamente o acoplamento;
 - `docs/DEPENDENCIES.md` deve ser atualizado quando uma dependência direta for adicionada, removida ou alterada;
 - auditorias de segurança não autorizam atualização automática sem revisão;
@@ -163,7 +192,12 @@ Falhas Flutter devem ser classificadas por etapa:
 - formatação;
 - análise estática;
 - teste;
-- compilação Web.
+- compilação Web;
+- finalização do artefato;
+- contrato do artefato Web/PWA;
+- build da imagem;
+- Caddy e headers;
+- smoke ou restart.
 
 No gate de containers, uma falha captura:
 
@@ -172,8 +206,6 @@ docker compose ps --all
 docker compose logs --no-color --tail 200
 ```
 
-Esses logs devem continuar sanitizados. Não adicione dados reais a testes ou mensagens de erro.
-
 ## Provas de bloqueio
 
 `tests/quality/` comprova, entre outros contratos:
@@ -181,18 +213,17 @@ Esses logs devem continuar sanitizados. Não adicione dados reais a testes ou me
 - um commit com DCO é aceito;
 - um commit sem `Signed-off-by` é rejeitado;
 - um arquivo `.pem` rastreado é rejeitado;
+- a árvore legada `apps/web` é rejeitada;
+- tokens de runtime React são rejeitados em configuração operacional;
 - versão Flutter válida é lida;
-- saída de máquina do Flutter é validada;
-- ausência de Flutter produz mensagem acionável;
-- divergência de versão bloqueia o gate.
-
-Falhas intencionais permanecem confinadas aos diretórios temporários dos testes e nunca são commitadas no repositório real.
+- ausência ou divergência de Flutter produz mensagem acionável;
+- o contrato source do Flutter Web/PWA é válido;
+- o finalizador remove apenas worker legado vazio;
+- configuração remota do engine é rejeitada.
 
 ## Checks esperados para rulesets
 
 Após estabilização, os rulesets de `develop` e `main` devem exigir:
 
 - `Mandatory quality gates`;
-- `Docker Compose integration` apenas quando o workflow for aplicável.
-
-A obrigatoriedade deve ser configurada somente depois que os nomes e triggers forem confirmados em uma PR real para evitar bloqueio administrativo do repositório.
+- `Docker Compose integration` quando o workflow for aplicável.

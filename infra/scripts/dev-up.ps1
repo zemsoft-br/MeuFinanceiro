@@ -98,9 +98,18 @@ try {
         try {
             $api = Invoke-WebRequest -UseBasicParsing "$baseUrl/api/v1/health/ready"
             $web = Invoke-WebRequest -UseBasicParsing "$baseUrl/"
+            $bootstrap = Invoke-WebRequest -UseBasicParsing "$baseUrl/app_bootstrap.js"
             docker compose exec -T worker python -c `
                 "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)" | Out-Null
-            if ($api.StatusCode -eq 200 -and $web.StatusCode -eq 200) {
+
+            if (
+                $api.StatusCode -eq 200 -and
+                $web.StatusCode -eq 200 -and
+                $web.Content -match 'app_bootstrap\.js' -and
+                $bootstrap.StatusCode -eq 200 -and
+                $bootstrap.Content -match "register\('sw\.js'" -and
+                $bootstrap.Content -match "flutter_bootstrap\.js"
+            ) {
                 $healthy = $true
                 break
             }
@@ -108,7 +117,7 @@ try {
         catch { Start-Sleep -Seconds 2 }
     }
     if (-not $healthy) {
-        throw "Smoke test falhou após 60 tentativas."
+        throw "Smoke test do Flutter Web falhou após 60 tentativas."
     }
 
     $idempotencyKey = "smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"
@@ -124,7 +133,7 @@ try {
         $task = (docker compose exec -T api python -m meufinanceiro_persistence.cli `
             get --task-id $first.id | ConvertFrom-Json)
         if ($task.status -eq "succeeded") {
-            Write-Host "MeuFinanceiro disponível em $baseUrl"
+            Write-Host "MeuFinanceiro Flutter disponível em $baseUrl"
             exit 0
         }
         Start-Sleep -Seconds 1

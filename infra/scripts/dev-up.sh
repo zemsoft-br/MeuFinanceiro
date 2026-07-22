@@ -61,5 +61,6 @@ cd "$ROOT_DIR"
 docker compose up --build --detach --wait
 
 APP_HTTP_PORT=$(awk -F= '$1 == "APP_HTTP_PORT" {print $2}' "$ENV_FILE" | tail -n 1)
-APP_HTTP_PORT="${APP_HTTP_PORT:-8080}" "$ROOT_DIR/tests/smoke/compose-smoke.sh"
-echo "MeuFinanceiro disponível em http://127.0.0.1:${APP_HTTP_PORT:-8080}"
+APP_HTTP_PORT="${APP_HTTP_PORT:-8080}" \
+  "$ROOT_DIR/tests/smoke/compose-smoke.sh"
+echo "MeuFinanceiro Flutter disponível em http://127.0.0.1:${APP_HTTP_PORT:-8080}"

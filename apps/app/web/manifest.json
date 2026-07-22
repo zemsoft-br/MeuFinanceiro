@@ -1,12 +1,15 @@
 {
   "name": "MeuFinanceiro",
   "short_name": "MeuFinanceiro",
-  "start_url": ".",
-  "display": "standalone",
-  "background_color": "#0175C2",
-  "theme_color": "#0175C2",
   "description": "Gestor financeiro pessoal e familiar autohospedado.",
-  "orientation": "portrait-primary",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F7F9F8",
+  "theme_color": "#123B2D",
+  "orientation": "any",
   "prefer_related_applications": false,
   "icons": [
     {
