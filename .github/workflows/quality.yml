@@ -41,13 +41,25 @@ jobs:
       - name: Install Ruff
         run: python -m pip install --disable-pip-version-check ruff==0.15.22
 
-      - name: Print required formatting diff
+      - name: Generate required formatting diff
         shell: bash
         run: |
           python -m ruff format \
             packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality
-          git diff --exit-code -- \
-            packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality
+          git diff -- \
+            packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality \
+            > ruff-format.diff
+
+      - name: Upload formatting diff
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-format-diff-${{ github.run_id }}
+          path: ruff-format.diff
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Require clean formatting
+        run: test ! -s ruff-format.diff
 
   quality:
     name: Mandatory quality gates
