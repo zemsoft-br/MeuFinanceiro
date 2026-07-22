@@ -157,9 +157,23 @@ jobs:
           packages/security/src packages/persistence/src apps/api/app apps/worker/worker
 
       - name: Test Python
-        run: >-
-          .quality-venv/bin/python -m pytest
-          packages/security/tests packages/persistence/tests apps/api/tests apps/worker/tests tests/quality
+        id: python_tests
+        shell: bash
+        run: |
+          set -o pipefail
+          .quality-venv/bin/python -m pytest \
+            packages/security/tests packages/persistence/tests \
+            apps/api/tests apps/worker/tests tests/quality \
+            2>&1 | tee "$RUNNER_TEMP/python-tests.log"
+
+      - name: Upload Python test diagnostics
+        if: failure() && steps.python_tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-python-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/python-tests.log
+          retention-days: 3
+          if-no-files-found: error
 
       - name: Check Python licenses
         run: .quality-venv/bin/python infra/scripts/check-python-licenses.py

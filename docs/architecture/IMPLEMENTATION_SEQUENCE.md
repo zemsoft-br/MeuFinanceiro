@@ -6,7 +6,7 @@
 
 ## 1. Estado da fundação
 
-Concluído ou em validação final:
+Concluído:
 
 - visão, arquitetura e governança;
 - licença, DCO e política de segurança;
@@ -21,18 +21,19 @@ Concluído ou em validação final:
 - remoção de React, Vite, npm e do target de rollback;
 - quality gate que bloqueia a reintrodução do frontend legado.
 
-Ainda não existe funcionalidade financeira produtiva. A PR #37 precisa concluir a suíte local e o gate de containers antes da integração.
+A migração Flutter foi integrada pela PR #37 no commit
+`26ee8715e0f50dbdfa7105b4deb7427ab05596c1`, com validação local e workflows
+`Quality` e `Container Quality` aprovados.
 
 ## 2. Gates antes da Fase 1
 
 Concluir:
 
-1. validação final da issue #36;
-2. modo demonstração conforme `DEMO_DATA_CONTRACT.md`;
-3. instalação, atualização, backup e restauração;
-4. spike Pluggy sem contaminar o domínio;
-5. configuração administrativa do repositório;
-6. decisões de dinheiro, IDs, autorização e imutabilidade.
+1. modo demonstração conforme `DEMO_DATA_CONTRACT.md`;
+2. instalação, atualização, backup e restauração;
+3. spike Pluggy sem contaminar o domínio;
+4. configuração administrativa do repositório;
+5. decisões de dinheiro, IDs, autorização e imutabilidade.
 
 Trabalho de backend independente pode avançar quando não depender de contratos ainda abertos e não antecipar uma decisão estrutural.
 

@@ -72,6 +72,7 @@ services:
     environment:
       APP_ENV: local
       APP_LOG_LEVEL: INFO
+      APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
       APP_KEYRING_FILE: /run/secrets/app_keyring
       DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
     secrets:
@@ -173,6 +174,24 @@ services:
       APP_DATABASE_USER: ${APP_DATABASE_USER:-meufinanceiro_app}
     depends_on:
       db-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - backend
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  demo-fixture:
+    profiles: ["demo"]
+    image: meufinanceiro-api:local
+    command: ["python", "-m", "meufinanceiro_persistence.demo_cli", "load"]
+    environment:
+      APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
+      DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
+    depends_on:
+      migrate:
         condition: service_completed_successfully
     networks:
       - backend

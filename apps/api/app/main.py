@@ -8,6 +8,7 @@ from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
 
+from app.api.routes.demo import router as demo_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.database import create_database
@@ -23,6 +24,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         database = create_database(resolved_settings)
         app.state.secret_cipher = SecretCipher(keyring)
         app.state.database = database
+        app.state.settings = resolved_settings
         try:
             yield
         finally:
@@ -37,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(health_router, prefix="/api/v1")
+    application.include_router(demo_router, prefix="/api/v1")
     return application
 
 

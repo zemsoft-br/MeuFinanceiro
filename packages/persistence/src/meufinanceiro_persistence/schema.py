@@ -1,10 +1,11 @@
-"""SQLAlchemy Core metadata shared by queue operations and migrations."""
+"""SQLAlchemy Core metadata shared by persistence operations and migrations."""
 
 from __future__ import annotations
 
 from sqlalchemy import (
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -79,5 +80,25 @@ demo_task_effects = Table(
         primary_key=True,
     ),
     Column("message", String(500), nullable=False),
+    schema="infra",
+)
+
+
+demo_fixture = Table(
+    "demo_fixture",
+    metadata,
+    Column("fixture_id", String(100), primary_key=True),
+    Column("fixture_version", Integer, nullable=False),
+    Column("reference_date", Date, nullable=False),
+    Column("timezone", String(64), nullable=False),
+    Column("currency", String(3), nullable=False),
+    Column("scope", String(64), nullable=False),
+    Column("contract_checksum", String(64), nullable=False),
+    Column("loaded_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("fixture_version > 0", name="ck_demo_fixture_version_positive"),
+    CheckConstraint(
+        "contract_checksum ~ '^[0-9a-f]{64}$'",
+        name="ck_demo_fixture_checksum_sha256",
+    ),
     schema="infra",
 )

@@ -60,6 +60,24 @@ Os scripts geram credenciais administrativas e de runtime independentes, criam o
 
 Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
 
+### Ambiente demonstração
+
+A fundação do modo demonstração executa em projeto, banco, volume, `.env`, keyring e porta próprios. Ela não contém dados financeiros nesta etapa.
+
+Linux, macOS ou WSL:
+
+```bash
+bash infra/scripts/demo-up.sh up
+```
+
+Windows PowerShell:
+
+```powershell
+& .\infra\scripts\demo-up.ps1 -Action up
+```
+
+O ambiente demo fica disponível em `http://127.0.0.1:8081`. Consulte o [runbook do modo demonstração](docs/runbooks/DEMO_MODE.md) para `load`, `status`, `reset`, encerramento e purga.
+
 ## Quality gates locais
 
 A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
@@ -83,12 +101,12 @@ apps/
   worker/    consumidor da fila persistente
 packages/
   security/  keyring, criptografia, senhas e redaction
-  persistence/ SQLAlchemy, Alembic, health e fila PostgreSQL
+  persistence/ SQLAlchemy, Alembic, health, fila e fixture demo
   contracts/ contratos compartilhados futuros
 infra/
   caddy/     entrada HTTP local e proxy da API
   web/       build Flutter Web e runtime estático Caddy
-  scripts/   inicialização, diagnóstico e quality gates
+  scripts/   inicialização, demonstração, diagnóstico e quality gates
 tests/
   quality/   provas dos validadores do repositório
   smoke/     validação ponta a ponta do Compose
@@ -110,6 +128,7 @@ O Flutter deve implementar os contratos versionados do produto sem copiar regras
 - [Referências visuais do Stitch](docs/design/stitch/references/README.md)
 - [Cliente Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
+- [Modo demonstração](docs/runbooks/DEMO_MODE.md)
 - [Runtime Web/PWA](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
@@ -152,7 +171,8 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. validar o runtime Flutter Web/PWA no Compose e concluir a issue #36;
-2. concluir modo demonstração, instalação, backup e spike Pluggy;
-3. implementar identidade, residência e núcleo financeiro;
-4. evoluir a mesma base Flutter para Android, iOS e desktop quando esses alvos entrarem no roadmap.
+1. concluir o runtime isolado do modo demonstração e sua identificação visual;
+2. concluir instalação, backup e restauração da fundação;
+3. concluir o spike Pluggy sem acoplar o domínio;
+4. implementar identidade, residência e núcleo financeiro;
+5. evoluir a mesma base Flutter para Android, iOS e desktop quando esses alvos entrarem no roadmap.

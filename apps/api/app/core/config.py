@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     app_name: str = "MeuFinanceiro API"
     app_env: str = "local"
     app_log_level: str = "INFO"
+    app_demo_mode: bool = False
     database_url: SecretStr
     app_keyring_file: Path = Path("/run/secrets/app_keyring")
     database_pool_size: int = 5
