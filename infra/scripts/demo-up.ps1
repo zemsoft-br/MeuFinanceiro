@@ -42,25 +42,34 @@ function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
     }
 }
 
-function Invoke-BaseCompose([string[]]$Arguments) {
-    & docker compose `
-        --project-name $ProjectName `
-        --env-file $EnvFile `
-        @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "Docker Compose falhou com exit code $LASTEXITCODE."
+function Invoke-DockerCompose([string[]]$Arguments) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = "Continue"
+        & docker compose @Arguments 2>&1 | ForEach-Object { Write-Output $_ }
+        $exitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($exitCode -ne 0) {
+        throw "Docker Compose falhou com exit code $exitCode."
     }
 }
 
+function Invoke-BaseCompose([string[]]$Arguments) {
+    Invoke-DockerCompose (@(
+        "--project-name", $ProjectName,
+        "--env-file", $EnvFile
+    ) + $Arguments)
+}
+
 function Invoke-DemoCompose([string[]]$Arguments) {
-    & docker compose `
-        --project-name $ProjectName `
-        --env-file $EnvFile `
-        --profile demo `
-        @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "Docker Compose falhou com exit code $LASTEXITCODE."
-    }
+    Invoke-DockerCompose (@(
+        "--project-name", $ProjectName,
+        "--env-file", $EnvFile,
+        "--profile", "demo"
+    ) + $Arguments)
 }
 
 function Invoke-FixtureCommand([string]$Command) {
@@ -73,7 +82,7 @@ function Invoke-FixtureCommand([string]$Command) {
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
 }
-docker compose version | Out-Null
+Invoke-DockerCompose @("version") | Out-Null
 
 New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
 Set-PrivateAcl -Path $StateDir -IsDirectory $true
