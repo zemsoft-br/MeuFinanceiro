@@ -21,7 +21,9 @@ Concluído:
 - remoção de React, Vite, npm e do target de rollback;
 - quality gate que bloqueia a reintrodução do frontend legado.
 
-A migração Flutter foi integrada pela PR #37 no commit `26ee8715e0f50dbdfa7105b4deb7427ab05596c1`, com validação local e workflows `Quality` e `Container Quality` aprovados.
+A migração Flutter foi integrada pela PR #37 no commit
+`26ee8715e0f50dbdfa7105b4deb7427ab05596c1`, com validação local e workflows
+`Quality` e `Container Quality` aprovados.
 
 ## 2. Gates antes da Fase 1
 
