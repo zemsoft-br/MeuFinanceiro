@@ -141,30 +141,37 @@ jobs:
           docker compose up --detach --wait --wait-timeout 120
           bash tests/smoke/compose-smoke.sh
 
-      - name: Validate isolated demo environment
+      - name: Start isolated demo environment
+        run: bash infra/scripts/demo-up.sh up
+
+      - name: Validate demo fixture lifecycle
         shell: bash
         run: |
-          bash infra/scripts/demo-up.sh up
           DEMO_ENV_FILE="$PWD/.demo/.env" \
             DEMO_PROJECT_NAME=meufinanceiro-demo \
             bash tests/smoke/demo-compose-smoke.sh
-          bash tests/smoke/compose-smoke.sh
+
+      - name: Revalidate common environment isolation
+        run: bash tests/smoke/compose-smoke.sh
 
       - name: Capture diagnostics on failure
         if: failure()
+        shell: bash
         run: |
           docker compose ps --all
           docker compose logs --no-color --tail 200
-          docker compose \
-            --project-name meufinanceiro-demo \
-            --env-file .demo/.env \
-            --profile demo \
-            ps --all || true
-          docker compose \
-            --project-name meufinanceiro-demo \
-            --env-file .demo/.env \
-            --profile demo \
-            logs --no-color --tail 200 || true
+          if [[ -f .demo/.env ]]; then
+            docker compose \
+              --project-name meufinanceiro-demo \
+              --env-file .demo/.env \
+              --profile demo \
+              ps --all || true
+            docker compose \
+              --project-name meufinanceiro-demo \
+              --env-file .demo/.env \
+              --profile demo \
+              logs --no-color --tail 200 || true
+          fi
 
       - name: Stop stacks gracefully
         if: always()
