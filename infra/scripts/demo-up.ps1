@@ -42,6 +42,16 @@ function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
     }
 }
 
+function Invoke-BaseCompose([string[]]$Arguments) {
+    & docker compose `
+        --project-name $ProjectName `
+        --env-file $EnvFile `
+        @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Docker Compose falhou com exit code $LASTEXITCODE."
+    }
+}
+
 function Invoke-DemoCompose([string[]]$Arguments) {
     & docker compose `
         --project-name $ProjectName `
@@ -51,6 +61,13 @@ function Invoke-DemoCompose([string[]]$Arguments) {
     if ($LASTEXITCODE -ne 0) {
         throw "Docker Compose falhou com exit code $LASTEXITCODE."
     }
+}
+
+function Invoke-FixtureCommand([string]$Command) {
+    Invoke-DemoCompose @(
+        "run", "--rm", "--no-deps", "demo-fixture",
+        "python", "-m", "meufinanceiro_persistence.demo_cli", $Command
+    )
 }
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
@@ -107,7 +124,8 @@ Push-Location $RootDir
 try {
     switch ($Action) {
         "up" {
-            Invoke-DemoCompose @("up", "--build", "--detach", "--wait", "--wait-timeout", "180")
+            Invoke-BaseCompose @("up", "--build", "--detach", "--wait", "--wait-timeout", "180")
+            Invoke-FixtureCommand "load"
             $port = 8081
             $EnvContent | ForEach-Object {
                 if ($_ -match '^APP_HTTP_PORT=(\d+)$') { $port = [int]$Matches[1] }
@@ -130,10 +148,7 @@ try {
             Write-Host "MeuFinanceiro demo disponível em http://127.0.0.1:$port"
         }
         { $_ -in @("load", "status", "reset") } {
-            Invoke-DemoCompose @(
-                "run", "--rm", "demo-fixture",
-                "python", "-m", "meufinanceiro_persistence.demo_cli", $Action
-            )
+            Invoke-FixtureCommand $Action
         }
         "down" {
             Invoke-DemoCompose @("down", "--remove-orphans", "--timeout", "40")
