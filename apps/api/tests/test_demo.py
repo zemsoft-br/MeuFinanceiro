@@ -77,10 +77,12 @@ def test_demo_status_reports_loaded_fixture(
     with TestClient(create_app(settings)) as client:
         response = client.get("/api/v1/demo/status")
 
+    payload = response.json()
     assert response.status_code == 200
-    assert response.json()["enabled"] is True
-    assert response.json()["loaded"] is True
-    assert response.json()["loaded_at"] == "2026-11-01T12:00:00Z"
+    assert payload["enabled"] is True
+    assert payload["loaded"] is True
+    serialized_loaded_at = payload["loaded_at"].replace("Z", "+00:00")
+    assert datetime.fromisoformat(serialized_loaded_at) == loaded_at
 
 
 def test_openapi_exposes_only_read_only_demo_operation(keyring_path: Path) -> None:
