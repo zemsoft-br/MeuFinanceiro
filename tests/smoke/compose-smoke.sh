@@ -35,11 +35,23 @@ flutter_runtime_ok() {
     && status_is "$BASE_URL/assets/does-not-exist.js" "404"
 }
 
+demo_mode_disabled() {
+  curl --fail --silent --show-error "$BASE_URL/api/v1/demo/status" \
+    | python3 -c '
+import json, sys
+payload = json.load(sys.stdin)
+assert payload["enabled"] is False
+assert payload["loaded"] is False
+assert payload["fixture_id"] == "residencia-ipe-v1"
+'
+}
+
 attempt=1
 while [ "$attempt" -le "$ATTEMPTS" ]; do
   if curl --fail --silent --show-error "$BASE_URL/api/v1/health/ready" | grep -q '"schema":"ok"' \
     && status_is "$BASE_URL/api" "404" \
     && flutter_runtime_ok \
+    && demo_mode_disabled \
     && docker compose exec -T web sh -c 'test "$(id -u)" -ne 0' \
     && docker compose exec -T worker python -c \
       "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)"; then
