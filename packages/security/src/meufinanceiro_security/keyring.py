@@ -146,6 +146,30 @@ def parse_keyring(raw: str) -> Keyring:
     return Keyring(version=version, active_key_id=active_key_id, keys=keys)
 
 
+def _is_read_only_mount(path: Path) -> bool:
+    statvfs = getattr(os, "statvfs", None)
+    read_only_flag = getattr(os, "ST_RDONLY", None)
+    if statvfs is None or read_only_flag is None:
+        return False
+    try:
+        return bool(statvfs(path).f_flag & read_only_flag)
+    except OSError:
+        return False
+
+
+def _validate_keyring_file_permissions(
+    path: Path,
+    mode: int,
+    *,
+    platform: str | None = None,
+) -> None:
+    if (platform or os.name) == "nt" or not mode & 0o022:
+        return
+    if _is_read_only_mount(path):
+        return
+    raise KeyringError("keyring file must not be writable by group or others")
+
+
 def load_keyring(path: str | Path) -> Keyring:
     resolved = Path(path)
     try:
@@ -158,8 +182,7 @@ def load_keyring(path: str | Path) -> Keyring:
         raise KeyringError("keyring path must reference a regular file")
     if file_stat.st_size <= 0 or file_stat.st_size > MAX_KEYRING_BYTES:
         raise KeyringError("keyring file size is invalid")
-    if os.name != "nt" and file_stat.st_mode & 0o022:
-        raise KeyringError("keyring file must not be writable by group or others")
+    _validate_keyring_file_permissions(resolved, file_stat.st_mode)
     try:
         raw = resolved.read_text(encoding="utf-8-sig")
     except OSError as exc:
