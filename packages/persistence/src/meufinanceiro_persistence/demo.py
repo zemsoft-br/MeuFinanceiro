@@ -142,7 +142,10 @@ class DemoFixtureStore:
             "scope",
             "contract_checksum",
         )
-        if any(getattr(status, field) != getattr(expected, field) for field in comparable):
+        if any(
+            getattr(status, field) != getattr(expected, field)
+            for field in comparable
+        ):
             raise DemoFixtureConflictError(
                 "persisted demo fixture metadata does not match the canonical contract"
             )
