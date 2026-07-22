@@ -75,11 +75,15 @@ class DemoFixtureStore:
             return unloaded_demo_status(enabled=False)
 
         with self._engine.connect() as connection:
-            row = connection.execute(
-                select(demo_fixture).where(
-                    demo_fixture.c.fixture_id == DEMO_FIXTURE_ID
+            row = (
+                connection.execute(
+                    select(demo_fixture).where(
+                        demo_fixture.c.fixture_id == DEMO_FIXTURE_ID
+                    )
                 )
-            ).mappings().one_or_none()
+                .mappings()
+                .one_or_none()
+            )
         if row is None:
             return unloaded_demo_status(enabled=True)
         return self._validated_status(row)
@@ -102,20 +106,22 @@ class DemoFixtureStore:
         )
         with self._engine.begin() as connection:
             connection.execute(statement)
-            row = connection.execute(
-                select(demo_fixture).where(
-                    demo_fixture.c.fixture_id == DEMO_FIXTURE_ID
+            row = (
+                connection.execute(
+                    select(demo_fixture).where(
+                        demo_fixture.c.fixture_id == DEMO_FIXTURE_ID
+                    )
                 )
-            ).mappings().one()
+                .mappings()
+                .one()
+            )
         return self._validated_status(row)
 
     def reset(self) -> bool:
         self._require_enabled()
         with self._engine.begin() as connection:
             result = connection.execute(
-                delete(demo_fixture).where(
-                    demo_fixture.c.fixture_id == DEMO_FIXTURE_ID
-                )
+                delete(demo_fixture).where(demo_fixture.c.fixture_id == DEMO_FIXTURE_ID)
             )
         return bool(result.rowcount)
 
@@ -143,8 +149,7 @@ class DemoFixtureStore:
             "contract_checksum",
         )
         if any(
-            getattr(status, field) != getattr(expected, field)
-            for field in comparable
+            getattr(status, field) != getattr(expected, field) for field in comparable
         ):
             raise DemoFixtureConflictError(
                 "persisted demo fixture metadata does not match the canonical contract"
