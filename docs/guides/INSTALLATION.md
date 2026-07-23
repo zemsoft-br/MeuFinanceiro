@@ -285,7 +285,7 @@ Para diagnóstico técnico ampliado, consulte o [runbook do ambiente local](../r
 
 ## Segurança
 
-- não versione nem compartilhe `.env`, `.secrets` ou `.demo`;
+- não versione nem compartilhe `.env`, `.secrets`, `.demo` ou `.backups`;
 - não copie senhas ou keyrings entre ambiente comum e demo;
 - não insira credenciais Pluggy ou de qualquer integração externa;
 - não altere a publicação do PostgreSQL;
@@ -293,4 +293,10 @@ Para diagnóstico técnico ampliado, consulte o [runbook do ambiente local](../r
 - não utilize dados reais, mesmo no ambiente comum;
 - faça backup validado antes de qualquer procedimento destrutivo futuro.
 
-Atualização, backup, restauração e acesso remoto serão documentados em entregas separadas da issue #10.
+## Depois da instalação
+
+Quando o ambiente comum estiver saudável, consulte o [runbook de backup e restauração verificável](../runbooks/BACKUP_AND_RESTORE.md). Ele cria um bundle coordenado de PostgreSQL, `.env` e keyring e prova a restauração em container descartável sem tocar na instalação.
+
+O bundle contém senhas e chave mestra. Ele deve permanecer em armazenamento criptografado e nunca pode ser versionado ou anexado a issues.
+
+Atualização, restauração destrutiva real, acesso remoto e validação independente por outra pessoa permanecem em entregas separadas da issue #10.
