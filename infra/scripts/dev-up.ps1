@@ -5,6 +5,53 @@ $EnvFile = Join-Path $RootDir ".env"
 $SecretsDir = Join-Path $RootDir ".secrets"
 $KeyringFile = Join-Path $SecretsDir "keyring.json"
 
+function Invoke-Docker {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Arguments,
+        [switch]$Capture,
+        [switch]$Quiet
+    )
+
+    $previousPreference = $ErrorActionPreference
+    $stderrPath = $null
+    $stderrText = ""
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($Capture) {
+            $stderrPath = [System.IO.Path]::GetTempFileName()
+            $output = @(& docker @Arguments 2> $stderrPath | ForEach-Object { "$_" })
+            $exitCode = $LASTEXITCODE
+            if (Test-Path -LiteralPath $stderrPath) {
+                $stderrText = (Get-Content -LiteralPath $stderrPath -Raw).Trim()
+            }
+        }
+        else {
+            $output = @(& docker @Arguments 2>&1 | ForEach-Object { "$_" })
+            $exitCode = $LASTEXITCODE
+        }
+    }
+    finally {
+        $ErrorActionPreference = $previousPreference
+        if ($stderrPath -and (Test-Path -LiteralPath $stderrPath)) {
+            Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    if ($exitCode -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
+            Write-Warning $stderrText
+        }
+        throw "Comando Docker falhou com código $exitCode."
+    }
+    if ($Capture) {
+        return (($output -join "`n").Trim())
+    }
+    if (-not $Quiet) {
+        $output | ForEach-Object { Write-Host $_ }
+    }
+}
+
 function New-RandomBytes([int]$Length) {
     $bytes = New-Object byte[] $Length
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -37,7 +84,7 @@ function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
 }
-docker compose version | Out-Null
+Invoke-Docker -Arguments @("compose", "version") -Quiet
 
 if (-not (Test-Path $EnvFile)) {
     $adminPassword = New-RandomPassword
@@ -90,7 +137,7 @@ Get-Content $EnvFile | ForEach-Object {
 
 Push-Location $RootDir
 try {
-    docker compose up --build --detach --wait
+    Invoke-Docker -Arguments @("compose", "up", "--build", "--detach", "--wait")
 
     $baseUrl = "http://127.0.0.1:$port"
     $healthy = $false
@@ -99,8 +146,10 @@ try {
             $api = Invoke-WebRequest -UseBasicParsing "$baseUrl/api/v1/health/ready"
             $web = Invoke-WebRequest -UseBasicParsing "$baseUrl/"
             $bootstrap = Invoke-WebRequest -UseBasicParsing "$baseUrl/app_bootstrap.js"
-            docker compose exec -T worker python -c `
-                "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)" | Out-Null
+            Invoke-Docker -Arguments @(
+                "compose", "exec", "-T", "worker", "python", "-c",
+                "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)"
+            ) -Quiet
 
             if (
                 $api.StatusCode -eq 200 -and
@@ -121,20 +170,28 @@ try {
     }
 
     $idempotencyKey = "smoke-$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())-$PID"
-    $first = (docker compose exec -T api python -m meufinanceiro_persistence.cli `
-        enqueue-demo --idempotency-key $idempotencyKey | ConvertFrom-Json)
-    $second = (docker compose exec -T api python -m meufinanceiro_persistence.cli `
-        enqueue-demo --idempotency-key $idempotencyKey | ConvertFrom-Json)
+    $first = (Invoke-Docker -Arguments @(
+        "compose", "exec", "-T", "api", "python", "-m",
+        "meufinanceiro_persistence.cli", "enqueue-demo", "--idempotency-key",
+        $idempotencyKey
+    ) -Capture | ConvertFrom-Json)
+    $second = (Invoke-Docker -Arguments @(
+        "compose", "exec", "-T", "api", "python", "-m",
+        "meufinanceiro_persistence.cli", "enqueue-demo", "--idempotency-key",
+        $idempotencyKey
+    ) -Capture | ConvertFrom-Json)
     if ($first.id -ne $second.id) {
         throw "A verificação de idempotência retornou tarefas diferentes."
     }
 
     for ($attempt = 1; $attempt -le 60; $attempt++) {
-        $task = (docker compose exec -T api python -m meufinanceiro_persistence.cli `
-            get --task-id $first.id | ConvertFrom-Json)
+        $task = (Invoke-Docker -Arguments @(
+            "compose", "exec", "-T", "api", "python", "-m",
+            "meufinanceiro_persistence.cli", "get", "--task-id", $first.id
+        ) -Capture | ConvertFrom-Json)
         if ($task.status -eq "succeeded") {
             Write-Host "MeuFinanceiro Flutter disponível em $baseUrl"
-            exit 0
+            return
         }
         Start-Sleep -Seconds 1
     }
