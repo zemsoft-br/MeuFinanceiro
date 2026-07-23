@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:meufinanceiro_app/core/demo/demo_status.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
@@ -24,6 +25,7 @@ class AppShell extends ConsumerStatefulWidget {
   static const mobileDrawerKey = Key('mobile-drawer');
   static const mobileDrawerBrandKey = Key('mobile-drawer-brand');
   static const mobileNavigationKey = Key('mobile-navigation');
+  static const demoNoticeKey = Key('demo-notice');
   static const mainContentKey = Key('main-content');
 
   @override
@@ -82,6 +84,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final health = ref.watch(apiHealthProvider);
+    final demoStatus = ref.watch(demoStatusProvider);
     final selectedDestination = AppRoutes.destinationForLocation(
       widget.currentLocation,
     );
@@ -181,6 +184,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                                   _navigate(AppRoutes.destinations.first),
                               onOpenMenu: _openDrawer,
                             ),
+                            _DemoNotice(status: demoStatus),
                             _ApiNotice(
                               health: health,
                               onRefresh: () =>
