@@ -35,6 +35,27 @@ function Invoke-Docker {
     }
 }
 
+function Select-CapturedLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Text,
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    $matches = @(
+        $Text -split "`r?`n" |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -match $Pattern }
+    )
+    if ($matches.Count -ne 1) {
+        throw "Saída Docker inválida para $Description."
+    }
+    return $matches[0]
+}
+
 function New-RandomHex([int]$ByteLength) {
     $bytes = New-Object byte[] $ByteLength
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -66,8 +87,15 @@ if ($manifest.format -ne "meufinanceiro-foundation-backup" -or $manifest.version
 if ($manifest.backup_id -notmatch '^meufinanceiro-\d{8}T\d{6}Z-[0-9a-f]{8}$') {
     throw "Identificador de backup inválido."
 }
+$createdAt = [DateTimeOffset]::MinValue
+if (-not [DateTimeOffset]::TryParse([string]$manifest.created_at, [ref]$createdAt)) {
+    throw "created_at inválido."
+}
 if ($manifest.sensitive -ne $true) {
     throw "Bundle não está marcado como sensível."
+}
+if ([string]::IsNullOrWhiteSpace([string]$manifest.database.name)) {
+    throw "Nome do banco ausente."
 }
 if ($manifest.database.dump_format -ne "postgresql-custom") {
     throw "Formato do dump incompatível."
@@ -75,7 +103,7 @@ if ($manifest.database.dump_format -ne "postgresql-custom") {
 if ($manifest.database.postgres_image -ne "postgres:18.4-alpine") {
     throw "Imagem PostgreSQL incompatível."
 }
-if ([string]::IsNullOrWhiteSpace($manifest.database.schema_revision)) {
+if ([string]::IsNullOrWhiteSpace([string]$manifest.database.schema_revision)) {
     throw "Revisão Alembic ausente."
 }
 
@@ -158,9 +186,13 @@ try {
         throw "PostgreSQL descartável não ficou pronto."
     }
 
-    $portBindings = Invoke-Docker -Arguments @(
+    $portOutput = Invoke-Docker -Arguments @(
         "inspect", "--format", "{{json .HostConfig.PortBindings}}", $containerName
     ) -Capture
+    $portBindings = Select-CapturedLine `
+        -Text $portOutput `
+        -Pattern '^(null|\{\})$' `
+        -Description "port bindings"
     if ($portBindings -ne "null" -and $portBindings -ne "{}") {
         throw "O container de verificação publicou portas inesperadamente."
     }
@@ -177,26 +209,34 @@ try {
         "/tmp/database.dump"
     ) -Quiet
 
-    $restoredRevision = (Invoke-Docker -Arguments @(
+    $revisionOutput = Invoke-Docker -Arguments @(
         "exec", $containerName, "psql",
         "--username", $restoreUser,
         "--dbname", $restoreDatabase,
         "--tuples-only",
         "--no-align",
         "--command", "SELECT version_num FROM alembic_version;"
-    ) -Capture).Trim()
+    ) -Capture
+    $restoredRevision = Select-CapturedLine `
+        -Text $revisionOutput `
+        -Pattern '^[0-9A-Za-z_]+$' `
+        -Description "revisão Alembic restaurada"
     if ($restoredRevision -ne [string]$manifest.database.schema_revision) {
         throw "A revisão Alembic restaurada não corresponde ao manifesto."
     }
 
-    $infraExists = (Invoke-Docker -Arguments @(
+    $infraOutput = Invoke-Docker -Arguments @(
         "exec", $containerName, "psql",
         "--username", $restoreUser,
         "--dbname", $restoreDatabase,
         "--tuples-only",
         "--no-align",
         "--command", "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'infra');"
-    ) -Capture).Trim()
+    ) -Capture
+    $infraExists = Select-CapturedLine `
+        -Text $infraOutput `
+        -Pattern '^[tf]$' `
+        -Description "schema infra"
     if ($infraExists -ne "t") {
         throw "O schema infra não foi restaurado."
     }
