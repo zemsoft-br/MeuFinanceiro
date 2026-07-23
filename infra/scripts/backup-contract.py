@@ -90,9 +90,7 @@ def create_manifest(args: argparse.Namespace) -> int:
             "postgres_image": POSTGRES_IMAGE,
         },
         "keyring": _keyring_metadata(file_paths["keyring.json"]),
-        "files": {
-            name: _file_metadata(path) for name, path in file_paths.items()
-        },
+        "files": {name: _file_metadata(path) for name, path in file_paths.items()},
     }
     manifest_path = bundle_dir / "manifest.json"
     manifest_path.write_text(
@@ -109,7 +107,10 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
         raise ValueError("Bundle ou manifesto inexistente")
 
     manifest = _load_json(manifest_path)
-    if manifest.get("format") != FORMAT_NAME or manifest.get("version") != FORMAT_VERSION:
+    if (
+        manifest.get("format") != FORMAT_NAME
+        or manifest.get("version") != FORMAT_VERSION
+    ):
         raise ValueError("Contrato de backup incompatível")
     backup_id = manifest.get("backup_id")
     if not isinstance(backup_id, str) or not BACKUP_ID_PATTERN.fullmatch(backup_id):
@@ -146,7 +147,9 @@ def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
             raise ValueError(f"Arquivo obrigatório ausente: {name}")
         expected_hash = metadata.get("sha256")
         expected_size = metadata.get("size_bytes")
-        if not isinstance(expected_hash, str) or not SHA256_PATTERN.fullmatch(expected_hash):
+        if not isinstance(expected_hash, str) or not SHA256_PATTERN.fullmatch(
+            expected_hash
+        ):
             raise ValueError(f"SHA-256 inválido: {name}")
         if not isinstance(expected_size, int) or expected_size < 0:
             raise ValueError(f"Tamanho inválido: {name}")
