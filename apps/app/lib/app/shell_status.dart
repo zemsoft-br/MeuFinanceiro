@@ -18,6 +18,8 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final presentation = _HealthPresentation.fromAsync(health);
+    final showMobileBrand =
+        !desktop && MediaQuery.sizeOf(context).width >= 360;
 
     return DecoratedBox(
       decoration: const BoxDecoration(
@@ -39,7 +41,7 @@ class _TopBar extends StatelessWidget {
                 tooltip: 'Abrir menu',
                 icon: const Icon(Icons.menu_rounded),
               ),
-            if (!desktop) _Brand(compact: true, onTap: onNavigateHome),
+            if (showMobileBrand) _Brand(compact: true, onTap: onNavigateHome),
             if (desktop)
               Text(
                 'Fundação do cliente',
