@@ -78,6 +78,16 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
+# Preserve a relative destination against the caller's current directory before
+# the operator changes into the repository root to run Docker Compose.
+BACKUP_ROOT="$(python3 - "$BACKUP_ROOT" <<'PY'
+import sys
+from pathlib import Path
+
+print(Path(sys.argv[1]).expanduser().resolve())
+PY
+)"
+
 if [[ ! -e "$BACKUP_ROOT" ]]; then
   mkdir -m 700 -p "$BACKUP_ROOT"
 elif [[ ! -d "$BACKUP_ROOT" ]]; then
