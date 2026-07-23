@@ -96,6 +96,7 @@ class _DemoNotice extends StatelessWidget {
       key: AppShell.demoNoticeKey,
       container: true,
       liveRegion: true,
+      excludeSemantics: true,
       label: 'Modo demonstração. Os dados exibidos são inteiramente fictícios.',
       child: DecoratedBox(
         decoration: const BoxDecoration(
