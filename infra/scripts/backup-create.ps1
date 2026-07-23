@@ -40,6 +40,27 @@ function Invoke-Docker {
     }
 }
 
+function Select-CapturedLine {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Text,
+        [Parameter(Mandatory = $true)]
+        [string]$Pattern,
+        [Parameter(Mandatory = $true)]
+        [string]$Description
+    )
+
+    $matches = @(
+        $Text -split "`r?`n" |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -match $Pattern }
+    )
+    if ($matches.Count -ne 1) {
+        throw "Saída Docker inválida para $Description."
+    }
+    return $matches[0]
+}
+
 function New-RandomHex([int]$ByteLength) {
     $bytes = New-Object byte[] $ByteLength
     $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
@@ -113,16 +134,22 @@ if ((Test-Path -LiteralPath $finalDir) -or (Test-Path -LiteralPath $tempDir)) {
 
 Push-Location $RootDir
 try {
-    $postgresContainer = Invoke-Docker -Arguments @("compose", "ps", "-q", "postgres") -Capture
-    if ([string]::IsNullOrWhiteSpace($postgresContainer)) {
-        throw "Container PostgreSQL do ambiente comum não está em execução."
-    }
-    $health = Invoke-Docker -Arguments @(
+    $postgresOutput = Invoke-Docker -Arguments @("compose", "ps", "-q", "postgres") -Capture
+    $postgresContainer = Select-CapturedLine `
+        -Text $postgresOutput `
+        -Pattern '^[0-9a-f]{12,64}$' `
+        -Description "container PostgreSQL"
+
+    $healthOutput = Invoke-Docker -Arguments @(
         "inspect",
         "--format",
         "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
         $postgresContainer
     ) -Capture
+    $health = Select-CapturedLine `
+        -Text $healthOutput `
+        -Pattern '^(healthy|unhealthy|starting|running|exited)$' `
+        -Description "health do PostgreSQL"
     if ($health -ne "healthy") {
         throw "PostgreSQL não está saudável; backup recusado."
     }
@@ -149,12 +176,13 @@ try {
     Set-PrivateAcl -Path $dumpCopy -IsDirectory $false
 
     $revisionCommand = 'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --tuples-only --no-align --command "SELECT version_num FROM alembic_version;"'
-    $schemaRevision = (Invoke-Docker -Arguments @(
+    $revisionOutput = Invoke-Docker -Arguments @(
         "compose", "exec", "-T", "postgres", "sh", "-ceu", $revisionCommand
-    ) -Capture).Trim()
-    if ([string]::IsNullOrWhiteSpace($schemaRevision)) {
-        throw "Revisão Alembic não encontrada; backup recusado."
-    }
+    ) -Capture
+    $schemaRevision = Select-CapturedLine `
+        -Text $revisionOutput `
+        -Pattern '^[0-9A-Za-z_]+$' `
+        -Description "revisão Alembic"
 
     if ((Get-Sha256 $EnvFile) -ne $envHashBefore) {
         throw ".env mudou durante o backup; bundle descartado."
