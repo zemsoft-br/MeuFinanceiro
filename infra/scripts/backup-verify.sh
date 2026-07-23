@@ -32,11 +32,11 @@ restore_database="restore_verify"
 restore_password="$(python3 -c 'import secrets; print(secrets.token_hex(24))')"
 
 cleanup() {
-  status=$?
   docker rm --force "$container_name" >/dev/null 2>&1 || true
-  exit "$status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 docker run \
   --detach \
@@ -48,17 +48,20 @@ docker run \
   --env "POSTGRES_PASSWORD=$restore_password" \
   "$postgres_image" >/dev/null
 
-for _ in $(seq 1 60); do
+ready=false
+for ((attempt = 1; attempt <= 60; attempt++)); do
   if docker exec "$container_name" pg_isready \
     --username "$restore_user" \
     --dbname "$restore_database" >/dev/null 2>&1; then
+    ready=true
     break
   fi
   sleep 1
 done
-docker exec "$container_name" pg_isready \
-  --username "$restore_user" \
-  --dbname "$restore_database" >/dev/null
+[[ "$ready" == true ]] || {
+  echo "PostgreSQL descartável não ficou pronto." >&2
+  exit 1
+}
 
 port_bindings="$(docker inspect --format '{{json .HostConfig.PortBindings}}' "$container_name")"
 [[ "$port_bindings" == "null" || "$port_bindings" == "{}" ]] || {
@@ -75,27 +78,27 @@ docker exec "$container_name" pg_restore \
   --exit-on-error \
   /tmp/database.dump
 
-restored_revision="$(
+restored_revision="$({
   docker exec "$container_name" psql \
     --username "$restore_user" \
     --dbname "$restore_database" \
     --tuples-only \
     --no-align \
-    --command 'SELECT version_num FROM alembic_version;' | tr -d '[:space:]'
-)"
+    --command 'SELECT version_num FROM alembic_version;'
+} | tr -d '[:space:]')"
 [[ "$restored_revision" == "$schema_revision" ]] || {
   echo "A revisão Alembic restaurada não corresponde ao manifesto." >&2
   exit 1
 }
 
-infra_exists="$(
+infra_exists="$({
   docker exec "$container_name" psql \
     --username "$restore_user" \
     --dbname "$restore_database" \
     --tuples-only \
     --no-align \
-    --command "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'infra');" | tr -d '[:space:]'
-)"
+    --command "SELECT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'infra');"
+} | tr -d '[:space:]')"
 [[ "$infra_exists" == "t" ]] || {
   echo "O schema infra não foi restaurado." >&2
   exit 1
