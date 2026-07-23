@@ -81,6 +81,66 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+class _DemoNotice extends StatelessWidget {
+  const _DemoNotice({required this.status});
+
+  final AsyncValue<DemoStatus> status;
+
+  @override
+  Widget build(BuildContext context) {
+    if (status.value?.enabled != true) {
+      return const SizedBox.shrink();
+    }
+
+    return Semantics(
+      key: AppShell.demoNoticeKey,
+      container: true,
+      liveRegion: true,
+      label:
+          'Modo demonstração. Os dados exibidos são inteiramente fictícios.',
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          color: AppTokens.amber50,
+          border: Border(bottom: BorderSide(color: AppTokens.amber100)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.space16,
+            vertical: AppTokens.space8,
+          ),
+          child: Wrap(
+            spacing: AppTokens.space12,
+            runSpacing: AppTokens.space4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              const ExcludeSemantics(
+                child: Icon(
+                  Icons.science_outlined,
+                  size: 20,
+                  color: AppTokens.amber700,
+                ),
+              ),
+              Text(
+                'Modo demonstração',
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: AppTokens.amber700,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                'Dados fictícios — não use informações reais.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AppTokens.neutral700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ApiNotice extends StatelessWidget {
   const _ApiNotice({required this.health, required this.onRefresh});
 
