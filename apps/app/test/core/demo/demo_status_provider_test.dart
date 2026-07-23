@@ -33,10 +33,7 @@ void main() {
     var attempts = 0;
     final transport = FakeHealthTransport.handler((uri, timeout) async {
       attempts += 1;
-      return HealthHttpResponse(
-        statusCode: 200,
-        body: _disabledPayload,
-      );
+      return HealthHttpResponse(statusCode: 200, body: _disabledPayload);
     });
     final container = ProviderContainer(
       overrides: [
@@ -44,9 +41,7 @@ void main() {
         demoStatusEndpointProvider.overrideWithValue(
           Uri.parse('http://localhost/api/v1/demo/status'),
         ),
-        demoStatusTimeoutProvider.overrideWithValue(
-          const Duration(seconds: 3),
-        ),
+        demoStatusTimeoutProvider.overrideWithValue(const Duration(seconds: 3)),
       ],
     );
     addTearDown(container.dispose);

@@ -24,9 +24,7 @@ void main() {
         ],
         child: MaterialApp(
           home: MediaQuery(
-            data: const MediaQueryData(
-              textScaler: TextScaler.linear(2),
-            ),
+            data: const MediaQueryData(textScaler: TextScaler.linear(2)),
             child: const AppShell(
               currentLocation: '/',
               child: SizedBox(height: 200),
@@ -63,10 +61,7 @@ void main() {
           ),
         ],
         child: const MaterialApp(
-          home: AppShell(
-            currentLocation: '/',
-            child: SizedBox(height: 200),
-          ),
+          home: AppShell(currentLocation: '/', child: SizedBox(height: 200)),
         ),
       ),
     );
