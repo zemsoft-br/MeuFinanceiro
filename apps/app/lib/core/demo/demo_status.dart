@@ -116,10 +116,7 @@ class DemoStatus {
     return value;
   }
 
-  static DateTime? _nullableDateTime(
-    Map<String, Object?> values,
-    String key,
-  ) {
+  static DateTime? _nullableDateTime(Map<String, Object?> values, String key) {
     final value = values[key];
     if (value == null) {
       return null;

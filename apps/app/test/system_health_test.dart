@@ -32,7 +32,9 @@ void main() {
           healthClockProvider.overrideWithValue(
             () => DateTime.utc(2026, 7, 20, 1, 2, 3),
           ),
-          demoStatusTransportProvider.overrideWithValue(disabledDemoTransport()),
+          demoStatusTransportProvider.overrideWithValue(
+            disabledDemoTransport(),
+          ),
           demoStatusEndpointProvider.overrideWithValue(
             Uri.parse('http://localhost/api/v1/demo/status'),
           ),

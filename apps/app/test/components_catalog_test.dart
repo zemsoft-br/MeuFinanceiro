@@ -24,7 +24,9 @@ void main() {
           healthTransportProvider.overrideWithValue(
             operationalHealthTransport(),
           ),
-          demoStatusTransportProvider.overrideWithValue(disabledDemoTransport()),
+          demoStatusTransportProvider.overrideWithValue(
+            disabledDemoTransport(),
+          ),
           demoStatusEndpointProvider.overrideWithValue(
             Uri.parse('http://localhost/api/v1/demo/status'),
           ),

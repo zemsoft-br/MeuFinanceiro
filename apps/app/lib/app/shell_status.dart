@@ -96,8 +96,7 @@ class _DemoNotice extends StatelessWidget {
       key: AppShell.demoNoticeKey,
       container: true,
       liveRegion: true,
-      label:
-          'Modo demonstração. Os dados exibidos são inteiramente fictícios.',
+      label: 'Modo demonstração. Os dados exibidos são inteiramente fictícios.',
       child: DecoratedBox(
         decoration: const BoxDecoration(
           color: AppTokens.amber50,
@@ -129,9 +128,9 @@ class _DemoNotice extends StatelessWidget {
               ),
               Text(
                 'Dados fictícios — não use informações reais.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppTokens.neutral700,
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
               ),
             ],
           ),

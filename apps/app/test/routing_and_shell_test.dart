@@ -146,9 +146,7 @@ void main() {
         find.text('Dados fictícios — não use informações reais.'),
         findsOneWidget,
       );
-      final semantics = tester.getSemantics(
-        find.byKey(AppShell.demoNoticeKey),
-      );
+      final semantics = tester.getSemantics(find.byKey(AppShell.demoNoticeKey));
       expect(semantics.label, contains('Modo demonstração'));
       expect(semantics.label, contains('inteiramente fictícios'));
     });

@@ -37,13 +37,16 @@ void main() {
     expect(transport.lastTimeout, timeout);
   });
 
-  test('parses the canonical disabled contract without a false positive', () async {
-    final status = await service(disabledDemoTransport()).check();
+  test(
+    'parses the canonical disabled contract without a false positive',
+    () async {
+      final status = await service(disabledDemoTransport()).check();
 
-    expect(status.enabled, isFalse);
-    expect(status.loaded, isFalse);
-    expect(status.loadedAt, isNull);
-  });
+      expect(status.enabled, isFalse);
+      expect(status.loaded, isFalse);
+      expect(status.loadedAt, isNull);
+    },
+  );
 
   test('rejects an unexpected scope', () async {
     final transport = FakeHealthTransport.response(
@@ -70,10 +73,7 @@ void main() {
   });
 
   test('rejects non-successful responses', () async {
-    final transport = FakeHealthTransport.response(
-      statusCode: 503,
-      body: '{}',
-    );
+    final transport = FakeHealthTransport.response(statusCode: 503, body: '{}');
 
     await expectLater(service(transport).check(), throwsA(isA<StateError>()));
   });
