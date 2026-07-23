@@ -100,8 +100,13 @@ $containerDump = "/tmp/$backupId.dump"
 $postgresContainer = ""
 $published = $false
 
-New-Item -ItemType Directory -Path $backupRoot -Force | Out-Null
-Set-PrivateAcl -Path $backupRoot -IsDirectory $true
+if (-not (Test-Path -LiteralPath $backupRoot)) {
+    New-Item -ItemType Directory -Path $backupRoot | Out-Null
+    Set-PrivateAcl -Path $backupRoot -IsDirectory $true
+}
+elseif (-not (Test-Path -LiteralPath $backupRoot -PathType Container)) {
+    throw "O destino de backup não é um diretório."
+}
 if ((Test-Path -LiteralPath $finalDir) -or (Test-Path -LiteralPath $tempDir)) {
     throw "Já existe um bundle com o identificador gerado."
 }
@@ -121,6 +126,9 @@ try {
     if ($health -ne "healthy") {
         throw "PostgreSQL não está saudável; backup recusado."
     }
+
+    $envHashBefore = Get-Sha256 $EnvFile
+    $keyringHashBefore = Get-Sha256 $KeyringFile
 
     New-Item -ItemType Directory -Path $tempDir | Out-Null
     Set-PrivateAcl -Path $tempDir -IsDirectory $true
@@ -146,6 +154,19 @@ try {
     ) -Capture).Trim()
     if ([string]::IsNullOrWhiteSpace($schemaRevision)) {
         throw "Revisão Alembic não encontrada; backup recusado."
+    }
+
+    if ((Get-Sha256 $EnvFile) -ne $envHashBefore) {
+        throw ".env mudou durante o backup; bundle descartado."
+    }
+    if ((Get-Sha256 $KeyringFile) -ne $keyringHashBefore) {
+        throw "Keyring mudou durante o backup; bundle descartado."
+    }
+    if ((Get-Sha256 $envCopy) -ne $envHashBefore) {
+        throw "Cópia de .env inconsistente; bundle descartado."
+    }
+    if ((Get-Sha256 $keyringCopy) -ne $keyringHashBefore) {
+        throw "Cópia do keyring inconsistente; bundle descartado."
     }
 
     $databaseName = "meufinanceiro"
@@ -180,9 +201,9 @@ try {
             key_count = $keyProperties.Count
         }
         files = [ordered]@{
-            "database.dump" = Get-FileDescriptor $dumpCopy
-            "installation.env" = Get-FileDescriptor $envCopy
-            "keyring.json" = Get-FileDescriptor $keyringCopy
+            "database.dump" = (Get-FileDescriptor $dumpCopy)
+            "installation.env" = (Get-FileDescriptor $envCopy)
+            "keyring.json" = (Get-FileDescriptor $keyringCopy)
         }
     }
     $manifestPath = Join-Path $tempDir "manifest.json"
@@ -196,7 +217,7 @@ try {
 
     foreach ($fileName in @("database.dump", "installation.env", "keyring.json")) {
         $path = Join-Path $tempDir $fileName
-        $expected = $manifest.files[$fileName].sha256
+        $expected = $manifest.files[$fileName]["sha256"]
         if ((Get-Sha256 $path) -ne $expected) {
             throw "Falha de integridade ao publicar $fileName."
         }
