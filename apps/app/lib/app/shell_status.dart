@@ -18,8 +18,7 @@ class _TopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final presentation = _HealthPresentation.fromAsync(health);
-    final showMobileBrand =
-        !desktop && MediaQuery.sizeOf(context).width >= 360;
+    final showMobileBrand = !desktop && MediaQuery.sizeOf(context).width >= 360;
 
     return DecoratedBox(
       decoration: const BoxDecoration(

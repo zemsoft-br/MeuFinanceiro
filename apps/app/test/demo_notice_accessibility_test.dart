@@ -60,10 +60,7 @@ void main() {
             ),
           ],
           child: const MaterialApp(
-            home: AppShell(
-              currentLocation: '/',
-              child: SizedBox(height: 200),
-            ),
+            home: AppShell(currentLocation: '/', child: SizedBox(height: 200)),
           ),
         ),
       );
