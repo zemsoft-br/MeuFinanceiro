@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/app/app.dart';
 import 'package:meufinanceiro_app/app/app_shell.dart';
+import 'package:meufinanceiro_app/core/demo/demo_status.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
@@ -13,6 +14,7 @@ import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
 import 'package:meufinanceiro_app/routing/app_router.dart';
 
+import 'support/fake_demo_transport.dart';
 import 'support/fake_health_transport.dart';
 
 void main() {
@@ -21,6 +23,8 @@ void main() {
     required String location,
     required Size size,
     FakeHealthTransport? transport,
+    FakeHealthTransport? demoTransport,
+    AsyncValue<DemoStatus>? demoOverride,
     bool settle = true,
   }) async {
     tester.view.physicalSize = size;
@@ -29,6 +33,7 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     final selectedTransport = transport ?? operationalHealthTransport();
+    final selectedDemoTransport = demoTransport ?? disabledDemoTransport();
 
     await tester.pumpWidget(
       ProviderScope(
@@ -39,6 +44,15 @@ void main() {
             () => DateTime.utc(2026, 7, 20, 1, 2, 3),
           ),
           healthTimeoutProvider.overrideWithValue(
+            const Duration(milliseconds: 100),
+          ),
+          if (demoOverride != null)
+            demoStatusProvider.overrideWithValue(demoOverride),
+          demoStatusTransportProvider.overrideWithValue(selectedDemoTransport),
+          demoStatusEndpointProvider.overrideWithValue(
+            Uri.parse('http://localhost/api/v1/demo/status'),
+          ),
+          demoStatusTimeoutProvider.overrideWithValue(
             const Duration(milliseconds: 100),
           ),
         ],
@@ -112,6 +126,81 @@ void main() {
         find.byKey(const Key('navigation-components')),
       );
       expect(selected.flagsCollection.isSelected, Tristate.isTrue);
+    });
+  });
+
+  group('demo identification', () {
+    testWidgets('shows an accessible global notice on a deep route', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        location: '/sistema',
+        size: const Size(1200, 900),
+        demoTransport: enabledDemoTransport(),
+      );
+
+      expect(find.byKey(AppShell.demoNoticeKey), findsOneWidget);
+      expect(find.text('Modo demonstração'), findsOneWidget);
+      expect(
+        find.text('Dados fictícios — não use informações reais.'),
+        findsOneWidget,
+      );
+      final semantics = tester.getSemantics(
+        find.byKey(AppShell.demoNoticeKey),
+      );
+      expect(semantics.label, contains('Modo demonstração'));
+      expect(semantics.label, contains('inteiramente fictícios'));
+    });
+
+    testWidgets('does not label the common environment as demo', (
+      tester,
+    ) async {
+      await pumpApp(tester, location: '/', size: const Size(1200, 900));
+
+      expect(find.byKey(AppShell.demoNoticeKey), findsNothing);
+      expect(find.text('Modo demonstração'), findsNothing);
+    });
+
+    testWidgets('does not show a false positive while loading', (tester) async {
+      await pumpApp(
+        tester,
+        location: '/',
+        size: const Size(1200, 900),
+        demoOverride: const AsyncValue<DemoStatus>.loading(),
+        settle: false,
+      );
+
+      expect(find.byKey(AppShell.demoNoticeKey), findsNothing);
+    });
+
+    testWidgets('does not show a false positive after transport failure', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        location: '/',
+        size: const Size(1200, 900),
+        demoTransport: FakeHealthTransport.failure(
+          StateError('demo unavailable'),
+        ),
+      );
+
+      expect(find.byKey(AppShell.demoNoticeKey), findsNothing);
+    });
+
+    testWidgets('does not overflow at the minimum supported mobile width', (
+      tester,
+    ) async {
+      await pumpApp(
+        tester,
+        location: '/sistema',
+        size: const Size(320, 700),
+        demoTransport: enabledDemoTransport(),
+      );
+
+      expect(find.byKey(AppShell.demoNoticeKey), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 
