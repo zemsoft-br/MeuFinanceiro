@@ -44,6 +44,10 @@ Node.js permanece apenas como ferramenta de desenvolvimento para validar a sinta
 
 ## Início rápido
 
+Para a primeira instalação, escolha entre ambiente comum e demonstração no [guia de instalação da fundação](docs/guides/INSTALLATION.md). Ele diferencia requisitos de usuário final e colaborador, parada não destrutiva, purga demo e diagnóstico inicial.
+
+Resumo do ambiente comum:
+
 Linux, macOS ou WSL:
 
 ```bash
@@ -53,12 +57,12 @@ Linux, macOS ou WSL:
 Windows PowerShell:
 
 ```powershell
-./infra/scripts/dev-up.ps1
+& .\infra\scripts\dev-up.ps1
 ```
 
 Os scripts geram credenciais administrativas e de runtime independentes, criam o keyring, aplicam as migrações, constroem os containers e executam o smoke test. A aplicação Flutter fica disponível em `http://127.0.0.1:8080`.
 
-Consulte o [runbook do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação, diagnóstico e remoção de dados.
+Consulte o [runbook técnico do ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md) para operação avançada, diagnóstico e remoção de dados.
 
 ### Ambiente demonstração
 
@@ -76,7 +80,7 @@ Windows PowerShell:
 & .\infra\scripts\demo-up.ps1 -Action up
 ```
 
-O ambiente demo fica disponível em `http://127.0.0.1:8081`. Consulte o [runbook do modo demonstração](docs/runbooks/DEMO_MODE.md) para `load`, `status`, `reset`, encerramento e purga.
+O ambiente demo fica disponível em `http://127.0.0.1:8081` e exibe identificação visual global. Consulte o [runbook do modo demonstração](docs/runbooks/DEMO_MODE.md) para `load`, `status`, `reset`, encerramento e purga.
 
 ## Quality gates locais
 
@@ -116,6 +120,7 @@ O Flutter deve implementar os contratos versionados do produto sem copiar regras
 
 ## Documentação
 
+- [Instalação da fundação e avaliação segura](docs/guides/INSTALLATION.md)
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Arquitetura de informação canônica](docs/architecture/INFORMATION_ARCHITECTURE.md)
@@ -171,8 +176,8 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. concluir o runtime isolado do modo demonstração e sua identificação visual;
-2. concluir instalação, backup e restauração da fundação;
-3. concluir o spike Pluggy sem acoplar o domínio;
-4. implementar identidade, residência e núcleo financeiro;
+1. concluir instalação, atualização, backup e restauração da fundação;
+2. concluir o spike Pluggy sem acoplar o domínio;
+3. implementar identidade, residência e núcleo financeiro;
+4. expandir a fixture demo junto de cada módulo aprovado;
 5. evoluir a mesma base Flutter para Android, iOS e desktop quando esses alvos entrarem no roadmap.
