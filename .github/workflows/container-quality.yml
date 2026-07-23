@@ -30,6 +30,11 @@ on:
       - infra/scripts/manage-secrets.py
       - infra/scripts/demo-up.sh
       - infra/scripts/demo-up.ps1
+      - infra/scripts/backup-contract.py
+      - infra/scripts/backup-create.sh
+      - infra/scripts/backup-create.ps1
+      - infra/scripts/backup-verify.sh
+      - infra/scripts/backup-verify.ps1
       - tests/smoke/**
       - .github/workflows/container-quality.yml
   workflow_dispatch:
@@ -46,7 +51,7 @@ jobs:
     name: Docker Compose integration
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 70
 
     steps:
       - name: Checkout pull request head
@@ -142,6 +147,26 @@ jobs:
           docker compose up --detach --wait --wait-timeout 120
           bash tests/smoke/compose-smoke.sh
 
+      - name: Create and verify coordinated backup
+        id: backup_verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup_root="$RUNNER_TEMP/meufinanceiro-backups"
+          bundle_path="$(
+            bash infra/scripts/backup-create.sh \
+              --acknowledge-sensitive \
+              --output-dir "$backup_root"
+          )"
+          bash infra/scripts/backup-verify.sh "$bundle_path"
+          if docker ps --all --quiet \
+            --filter name=meufinanceiro-backup-verify- | grep -q .; then
+            echo "Container temporário de restore permaneceu após a verificação." >&2
+            exit 1
+          fi
+          bash tests/smoke/compose-smoke.sh
+          rm -rf "$backup_root"
+
       - name: Start isolated demo environment
         id: demo_start
         shell: bash
@@ -197,5 +222,9 @@ jobs:
         if: always()
         shell: bash
         run: |
+          docker ps --all --quiet \
+            --filter name=meufinanceiro-backup-verify- \
+            | xargs --no-run-if-empty docker rm --force || true
+          rm -rf "$RUNNER_TEMP/meufinanceiro-backups"
           bash infra/scripts/demo-up.sh purge || true
           docker compose down --volumes --remove-orphans --timeout 40
