@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/app/app.dart';
+import 'package:meufinanceiro_app/core/demo/demo_status.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
 import 'package:meufinanceiro_app/routing/app_router.dart';
 
+import 'support/fake_demo_transport.dart';
 import 'support/fake_health_transport.dart';
 
 void main() {
@@ -21,6 +23,10 @@ void main() {
           initialLocationProvider.overrideWithValue('/componentes'),
           healthTransportProvider.overrideWithValue(
             operationalHealthTransport(),
+          ),
+          demoStatusTransportProvider.overrideWithValue(disabledDemoTransport()),
+          demoStatusEndpointProvider.overrideWithValue(
+            Uri.parse('http://localhost/api/v1/demo/status'),
           ),
         ],
         child: const MeuFinanceiroApp(),
