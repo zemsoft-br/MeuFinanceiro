@@ -137,6 +137,16 @@ def test_restore_verifiers_are_isolated_and_cleanup(script: Path) -> None:
     assert "--publish" not in content
 
 
+@pytest.mark.parametrize("script", [VERIFY_SH, VERIFY_PS1])
+def test_restore_waits_for_the_final_stable_postmaster(script: Path) -> None:
+    content = script.read_text(encoding="utf-8")
+
+    assert "pg_postmaster_start_time" in content
+    assert "stable" in content.lower()
+    assert "5" in content
+    assert content.index("pg_postmaster_start_time") < content.index("pg_restore")
+
+
 def test_sensitive_backup_directory_is_gitignored() -> None:
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
 
