@@ -1,0 +1,95 @@
+name: Flutter Test Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+    paths:
+      - apps/app/lib/**
+      - apps/app/test/**
+      - .github/workflows/flutter-test-diagnostic.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flutter-test-diagnostic-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  focused-tests:
+    name: Capture focused Flutter tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Cache Flutter SDK
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/meufinanceiro/flutter
+          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version', '.flutter-revision') }}
+
+      - name: Install pinned Flutter SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
+          EXPECTED_REVISION="$(tr -d '[:space:]' < .flutter-revision)"
+          FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION-$EXPECTED_REVISION"
+
+          if [[ -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+            if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+              rm -rf "$FLUTTER_ROOT"
+            fi
+          fi
+
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            mkdir -p "$(dirname "$FLUTTER_ROOT")"
+            git clone --depth 1 --branch "$EXPECTED_VERSION" \
+              https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+
+          ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+            echo "Flutter revision mismatch after clone" >&2
+            exit 1
+          fi
+
+          git config --global --add safe.directory "$FLUTTER_ROOT"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+
+      - name: Resolve Flutter dependencies
+        working-directory: apps/app
+        run: flutter pub get --enforce-lockfile
+
+      - name: Run focused tests
+        id: focused_tests
+        working-directory: apps/app
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test --reporter expanded \
+            test/core/demo/demo_status_provider_test.dart \
+            test/demo_notice_accessibility_test.dart \
+            2>&1 | tee "$RUNNER_TEMP/focused-flutter-tests.log"
+
+      - name: Upload focused test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focused-flutter-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/focused-flutter-tests.log
+          retention-days: 3
+          if-no-files-found: error
