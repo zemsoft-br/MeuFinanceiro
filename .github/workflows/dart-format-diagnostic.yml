@@ -15,24 +15,28 @@ on:
       - .github/workflows/dart-format-diagnostic.yml
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: dart-format-diagnostic-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  format-diagnostic:
-    name: Capture formatted Dart sources
+  apply-format:
+    name: Apply pinned Dart formatter
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/demo-visual-identity'
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
-      - name: Checkout pull request head
+      - name: Checkout feature branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
+          ref: feature/demo-visual-identity
+          fetch-depth: 0
+          persist-credentials: true
 
       - name: Cache Flutter SDK
         uses: actions/cache@v5
@@ -70,30 +74,19 @@ jobs:
           git config --global --add safe.directory "$FLUTTER_ROOT"
           echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
 
-      - name: Capture formatter output
-        working-directory: apps/app
+      - name: Apply formatter and publish generated changes
         shell: bash
         run: |
           set -euo pipefail
-          report="$RUNNER_TEMP/dart-format"
-          mkdir -p "$report/formatted"
+          dart format apps/app/lib apps/app/test
 
-          dart format lib test
-          git diff --binary -- lib test > "$report/dart-format.patch"
-          git diff --name-only --relative -- lib test > "$report/changed-files.txt"
+          if git diff --quiet -- apps/app/lib apps/app/test; then
+            echo "Dart sources already formatted."
+            exit 0
+          fi
 
-          while IFS= read -r path; do
-            [[ -z "$path" ]] && continue
-            mkdir -p "$report/formatted/$(dirname "$path")"
-            cp "$path" "$report/formatted/$path"
-          done < "$report/changed-files.txt"
-
-          test -s "$report/dart-format.patch"
-
-      - name: Upload formatting diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: dart-format-${{ github.run_id }}
-          path: ${{ runner.temp }}/dart-format
-          retention-days: 3
-          if-no-files-found: error
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/app/lib apps/app/test
+          git commit --signoff -m "style(dart): apply formatter"
+          git push origin HEAD:feature/demo-visual-identity
