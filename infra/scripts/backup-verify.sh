@@ -48,18 +48,42 @@ docker run \
   --env "POSTGRES_PASSWORD=$restore_password" \
   "$postgres_image" >/dev/null
 
+# A imagem oficial inicia um postmaster temporário durante o bootstrap e depois o
+# encerra antes de subir o servidor definitivo. Um único pg_isready pode observar
+# essa janela. Exigimos o mesmo pg_postmaster_start_time em cinco leituras
+# consecutivas antes de iniciar o restore.
 ready=false
-for ((attempt = 1; attempt <= 60; attempt++)); do
-  if docker exec "$container_name" pg_isready \
-    --username "$restore_user" \
-    --dbname "$restore_database" >/dev/null 2>&1; then
-    ready=true
-    break
+last_postmaster_start=""
+stable_checks=0
+for ((attempt = 1; attempt <= 90; attempt++)); do
+  current_postmaster_start="$({
+    docker exec "$container_name" psql \
+      --username "$restore_user" \
+      --dbname "$restore_database" \
+      --tuples-only \
+      --no-align \
+      --command 'SELECT pg_postmaster_start_time();' 2>/dev/null
+  } | tr -d '[:space:]' || true)"
+
+  if [[ -n "$current_postmaster_start" ]]; then
+    if [[ "$current_postmaster_start" == "$last_postmaster_start" ]]; then
+      stable_checks=$((stable_checks + 1))
+    else
+      last_postmaster_start="$current_postmaster_start"
+      stable_checks=1
+    fi
+    if ((stable_checks >= 5)); then
+      ready=true
+      break
+    fi
+  else
+    last_postmaster_start=""
+    stable_checks=0
   fi
   sleep 1
 done
 [[ "$ready" == true ]] || {
-  echo "PostgreSQL descartável não ficou pronto." >&2
+  echo "PostgreSQL descartável não atingiu estado estável." >&2
   exit 1
 }
 
