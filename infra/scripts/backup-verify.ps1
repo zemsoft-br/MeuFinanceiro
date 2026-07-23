@@ -167,23 +167,47 @@ try {
     ) -Quiet
     $started = $true
 
+    # A imagem oficial usa um postmaster temporário no bootstrap e o reinicia
+    # antes do servidor definitivo. Exigimos o mesmo start time em cinco
+    # leituras consecutivas para não iniciar pg_restore durante esse shutdown.
     $ready = $false
-    for ($attempt = 1; $attempt -le 60; $attempt++) {
+    $lastPostmasterStart = ""
+    $stableChecks = 0
+    for ($attempt = 1; $attempt -le 90; $attempt++) {
         try {
-            Invoke-Docker -Arguments @(
-                "exec", $containerName, "pg_isready",
+            $startOutput = Invoke-Docker -Arguments @(
+                "exec", $containerName, "psql",
                 "--username", $restoreUser,
-                "--dbname", $restoreDatabase
-            ) -Quiet
-            $ready = $true
-            break
+                "--dbname", $restoreDatabase,
+                "--tuples-only",
+                "--no-align",
+                "--command", "SELECT pg_postmaster_start_time();"
+            ) -Capture
+            $currentPostmasterStart = Select-CapturedLine `
+                -Text $startOutput `
+                -Pattern '^\d{4}-\d{2}-\d{2} .+$' `
+                -Description "início do postmaster"
+
+            if ($currentPostmasterStart -eq $lastPostmasterStart) {
+                $stableChecks++
+            }
+            else {
+                $lastPostmasterStart = $currentPostmasterStart
+                $stableChecks = 1
+            }
+            if ($stableChecks -ge 5) {
+                $ready = $true
+                break
+            }
         }
         catch {
-            Start-Sleep -Seconds 1
+            $lastPostmasterStart = ""
+            $stableChecks = 0
         }
+        Start-Sleep -Seconds 1
     }
     if (-not $ready) {
-        throw "PostgreSQL descartável não ficou pronto."
+        throw "PostgreSQL descartável não atingiu estado estável."
     }
 
     $portOutput = Invoke-Docker -Arguments @(
