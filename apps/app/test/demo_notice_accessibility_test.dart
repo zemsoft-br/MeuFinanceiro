@@ -48,31 +48,36 @@ void main() {
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    addTearDown(semantics.dispose);
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          apiHealthProvider.overrideWithValue(
-            AsyncData<ApiHealthSnapshot>(_operationalHealth),
+    try {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            apiHealthProvider.overrideWithValue(
+              AsyncData<ApiHealthSnapshot>(_operationalHealth),
+            ),
+            demoStatusProvider.overrideWithValue(
+              AsyncData<DemoStatus>(_enabledDemo),
+            ),
+          ],
+          child: const MaterialApp(
+            home: AppShell(
+              currentLocation: '/',
+              child: SizedBox(height: 200),
+            ),
           ),
-          demoStatusProvider.overrideWithValue(
-            AsyncData<DemoStatus>(_enabledDemo),
-          ),
-        ],
-        child: const MaterialApp(
-          home: AppShell(currentLocation: '/', child: SizedBox(height: 200)),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.bySemanticsLabel(
-        'Modo demonstração. Os dados exibidos são inteiramente fictícios.',
-      ),
-      findsOneWidget,
-    );
+      expect(
+        find.bySemanticsLabel(
+          'Modo demonstração. Os dados exibidos são inteiramente fictícios.',
+        ),
+        findsOneWidget,
+      );
+    } finally {
+      semantics.dispose();
+    }
   });
 }
 
