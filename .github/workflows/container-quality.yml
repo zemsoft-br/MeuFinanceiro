@@ -21,6 +21,7 @@ on:
       - apps/worker/pyproject.toml
       - apps/app/pubspec.yaml
       - apps/app/pubspec.lock
+      - apps/app/lib/**
       - apps/app/web/**
       - infra/caddy/**
       - infra/web/**

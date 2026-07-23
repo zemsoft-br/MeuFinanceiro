@@ -99,10 +99,7 @@ class _HeroContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppBadge(
-          label: 'Ambiente de demonstração',
-          tone: AppBadgeTone.info,
-        ),
+        const AppBadge(label: 'Fundação open-source', tone: AppBadgeTone.info),
         const SizedBox(height: AppTokens.space20),
         Semantics(
           header: true,

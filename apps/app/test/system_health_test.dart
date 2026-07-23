@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/app/app.dart';
+import 'package:meufinanceiro_app/core/demo/demo_status.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
 import 'package:meufinanceiro_app/routing/app_router.dart';
 
+import 'support/fake_demo_transport.dart';
 import 'support/fake_health_transport.dart';
 
 void main() {
@@ -29,6 +31,12 @@ void main() {
           healthTransportProvider.overrideWithValue(transport),
           healthClockProvider.overrideWithValue(
             () => DateTime.utc(2026, 7, 20, 1, 2, 3),
+          ),
+          demoStatusTransportProvider.overrideWithValue(
+            disabledDemoTransport(),
+          ),
+          demoStatusEndpointProvider.overrideWithValue(
+            Uri.parse('http://localhost/api/v1/demo/status'),
           ),
         ],
         child: const MeuFinanceiroApp(),
