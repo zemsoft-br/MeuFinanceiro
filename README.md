@@ -82,6 +82,17 @@ Windows PowerShell:
 
 O ambiente demo fica disponível em `http://127.0.0.1:8081` e exibe identificação visual global. Consulte o [runbook do modo demonstração](docs/runbooks/DEMO_MODE.md) para `load`, `status`, `reset`, encerramento e purga.
 
+### Backup coordenado
+
+O ambiente comum pode gerar um bundle com dump PostgreSQL, `.env`, keyring e manifesto de integridade. O bundle contém senhas e chave mestra e deve permanecer em armazenamento criptografado.
+
+```bash
+bash infra/scripts/backup-create.sh --acknowledge-sensitive
+bash infra/scripts/backup-verify.sh .backups/<identificador-do-backup>
+```
+
+No Windows, use `backup-create.ps1` e `backup-verify.ps1`. Consulte o [runbook de backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md) antes de executar. A verificação restaura em PostgreSQL descartável e não altera a instalação comum.
+
 ## Quality gates locais
 
 A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
@@ -110,7 +121,7 @@ packages/
 infra/
   caddy/     entrada HTTP local e proxy da API
   web/       build Flutter Web e runtime estático Caddy
-  scripts/   inicialização, demonstração, diagnóstico e quality gates
+  scripts/   inicialização, demonstração, backup, diagnóstico e quality gates
 tests/
   quality/   provas dos validadores do repositório
   smoke/     validação ponta a ponta do Compose
@@ -134,6 +145,7 @@ O Flutter deve implementar os contratos versionados do produto sem copiar regras
 - [Cliente Flutter](docs/runbooks/FLUTTER_CLIENT_MIGRATION.md)
 - [Ambiente local](docs/runbooks/LOCAL_DEVELOPMENT.md)
 - [Modo demonstração](docs/runbooks/DEMO_MODE.md)
+- [Backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md)
 - [Runtime Web/PWA](docs/runbooks/WEB_PWA.md)
 - [Persistência e fila de tarefas](docs/runbooks/PERSISTENCE_AND_TASK_QUEUE.md)
 - [Gerenciamento do keyring](docs/runbooks/KEY_MANAGEMENT.md)
@@ -176,7 +188,7 @@ A decisão está registrada no [ADR-0004](docs/adr/0004-project-license-and-trad
 
 ## Próximos marcos
 
-1. concluir instalação, atualização, backup e restauração da fundação;
+1. concluir atualização e validação operacional da fundação;
 2. concluir o spike Pluggy sem acoplar o domínio;
 3. implementar identidade, residência e núcleo financeiro;
 4. expandir a fixture demo junto de cada módulo aprovado;
