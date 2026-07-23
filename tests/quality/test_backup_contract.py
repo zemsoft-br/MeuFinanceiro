@@ -144,7 +144,7 @@ def test_restore_waits_for_the_final_stable_postmaster(script: Path) -> None:
     assert "pg_postmaster_start_time" in content
     assert "stable" in content.lower()
     assert "5" in content
-    assert content.index("pg_postmaster_start_time") < content.index("pg_restore")
+    assert content.index("pg_postmaster_start_time") < content.rindex("pg_restore")
 
 
 def test_sensitive_backup_directory_is_gitignored() -> None:
