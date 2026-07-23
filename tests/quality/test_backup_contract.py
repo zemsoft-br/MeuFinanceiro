@@ -17,7 +17,9 @@ VERIFY_PS1 = ROOT / "infra" / "scripts" / "backup-verify.ps1"
 BACKUP_ID = "meufinanceiro-20260723T120000Z-0123abcd"
 
 
-def _run_contract(*arguments: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def _run_contract(
+    *arguments: str, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(CONTRACT), *arguments],
         cwd=ROOT,
@@ -31,8 +33,7 @@ def _create_dummy_bundle(bundle: Path) -> None:
     bundle.mkdir()
     (bundle / "database.dump").write_bytes(b"PGDMP\x01\x0f\x00dummy")
     (bundle / "installation.env").write_text(
-        "POSTGRES_DB=meufinanceiro\n"
-        "POSTGRES_PASSWORD=do-not-leak-password\n",
+        "POSTGRES_DB=meufinanceiro\nPOSTGRES_PASSWORD=do-not-leak-password\n",
         encoding="utf-8",
     )
     (bundle / "keyring.json").write_text(
