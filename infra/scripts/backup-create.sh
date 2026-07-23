@@ -17,6 +17,20 @@ Armazene-o somente em destino criptografado e nunca o anexe a issues ou artifact
 EOF
 }
 
+sha256_file() {
+  python3 - "$1" <<'PY'
+import hashlib
+import sys
+
+path = sys.argv[1]
+digest = hashlib.sha256()
+with open(path, "rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --acknowledge-sensitive)
@@ -64,8 +78,12 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
-mkdir -p "$BACKUP_ROOT"
-chmod 700 "$BACKUP_ROOT" 2>/dev/null || true
+if [[ ! -e "$BACKUP_ROOT" ]]; then
+  mkdir -m 700 -p "$BACKUP_ROOT"
+elif [[ ! -d "$BACKUP_ROOT" ]]; then
+  echo "O destino de backup não é um diretório." >&2
+  exit 1
+fi
 
 backup_id="meufinanceiro-$(date -u +%Y%m%dT%H%M%SZ)-$(python3 -c 'import secrets; print(secrets.token_hex(4))')"
 final_dir="$BACKUP_ROOT/$backup_id"
@@ -75,16 +93,16 @@ postgres_container=""
 published=false
 
 cleanup() {
-  status=$?
   if [[ -n "$postgres_container" ]]; then
     docker compose exec -T postgres rm -f "$container_dump" >/dev/null 2>&1 || true
   fi
   if [[ "$published" != true ]]; then
     rm -rf "$temp_dir"
   fi
-  exit "$status"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 [[ ! -e "$final_dir" && ! -e "$temp_dir" ]] || {
   echo "Já existe um bundle com o identificador gerado." >&2
@@ -102,6 +120,9 @@ health="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{
   echo "PostgreSQL não está saudável; backup recusado." >&2
   exit 1
 }
+
+env_hash_before="$(sha256_file "$ENV_FILE")"
+keyring_hash_before="$(sha256_file "$KEYRING_FILE")"
 
 mkdir "$temp_dir"
 chmod 700 "$temp_dir" 2>/dev/null || true
@@ -125,7 +146,7 @@ docker cp "$postgres_container:$container_dump" "$temp_dir/database.dump" >/dev/
 docker compose exec -T postgres rm -f "$container_dump" >/dev/null
 chmod 600 "$temp_dir/database.dump" 2>/dev/null || true
 
-schema_revision="$(
+schema_revision="$({
   docker compose exec -T postgres sh -ceu '
     psql \
       --username "$POSTGRES_USER" \
@@ -133,12 +154,29 @@ schema_revision="$(
       --tuples-only \
       --no-align \
       --command "SELECT version_num FROM alembic_version;"
-  ' | tr -d '[:space:]'
-)"
+  '
+} | tr -d '[:space:]')"
 [[ -n "$schema_revision" ]] || {
   echo "Revisão Alembic não encontrada; backup recusado." >&2
   exit 1
 }
+
+if [[ "$(sha256_file "$ENV_FILE")" != "$env_hash_before" ]]; then
+  echo ".env mudou durante o backup; bundle descartado." >&2
+  exit 1
+fi
+if [[ "$(sha256_file "$KEYRING_FILE")" != "$keyring_hash_before" ]]; then
+  echo "Keyring mudou durante o backup; bundle descartado." >&2
+  exit 1
+fi
+if [[ "$(sha256_file "$temp_dir/installation.env")" != "$env_hash_before" ]]; then
+  echo "Cópia de .env inconsistente; bundle descartado." >&2
+  exit 1
+fi
+if [[ "$(sha256_file "$temp_dir/keyring.json")" != "$keyring_hash_before" ]]; then
+  echo "Cópia do keyring inconsistente; bundle descartado." >&2
+  exit 1
+fi
 
 database_name="$(awk -F= '$1 == "POSTGRES_DB" {print substr($0, index($0, "=") + 1)}' "$ENV_FILE" | tail -n 1)"
 database_name="${database_name:-meufinanceiro}"
