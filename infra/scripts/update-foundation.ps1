@@ -78,14 +78,23 @@ function Get-Hash([string]$Path) {
     return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
 }
 
-function Get-VolumeFingerprint {
-    $description = Invoke-Native -Command "docker" -Arguments @(
-        "volume", "inspect", "meufinanceiro_postgres_data",
-        "--format", "{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}"
+function Get-VolumeFingerprint([string]$ProjectDirectory) {
+    $containerId = Invoke-Compose $ProjectDirectory @("ps", "-q", "postgres") -Capture
+    if ([string]::IsNullOrWhiteSpace($containerId)) {
+        throw "Container PostgreSQL da instalação não encontrado."
+    }
+    $volumeName = Invoke-Native -Command "docker" -Arguments @(
+        "inspect", "--format",
+        '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}',
+        $containerId
     ) -Capture
-    if ([string]::IsNullOrWhiteSpace($description)) {
+    if ([string]::IsNullOrWhiteSpace($volumeName)) {
         throw "Volume PostgreSQL da instalação não encontrado."
     }
+    $description = Invoke-Native -Command "docker" -Arguments @(
+        "volume", "inspect", $volumeName,
+        "--format", "{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}"
+    ) -Capture
     $bytes = [Text.Encoding]::UTF8.GetBytes($description)
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
@@ -234,7 +243,7 @@ function Invoke-ControlledRollback {
             Invoke-Smoke $RootDir
             if ((Get-Hash $EnvFile) -ne $script:EnvHash) { throw ".env alterado." }
             if ((Get-Hash $KeyringFile) -ne $script:KeyringHash) { throw "Keyring alterado." }
-            if ((Get-VolumeFingerprint) -ne $VolumeFingerprint) { throw "Volume PostgreSQL alterado." }
+            if ((Get-VolumeFingerprint $RootDir) -ne $VolumeFingerprint) { throw "Volume PostgreSQL alterado." }
             Write-State "ROLLED_BACK" "target_failed_schema_unchanged"
             $rollbackError = [System.Exception]::new(
                 "A atualização falhou e o commit anterior foi restaurado com schema inalterado."
@@ -307,7 +316,7 @@ try {
 
     $script:EnvHash = Get-Hash $EnvFile
     $script:KeyringHash = Get-Hash $KeyringFile
-    try { $VolumeFingerprint = Get-VolumeFingerprint }
+    try { $VolumeFingerprint = Get-VolumeFingerprint $RootDir }
     catch { Write-State "FAILED_PRECHECK" "volume_missing"; throw }
 
     try { $SourceSchema = Get-SchemaRevision $RootDir }
@@ -351,7 +360,7 @@ try {
         $CurrentSchema = Get-SchemaRevision $TargetWorktree
         if ((Get-Hash $EnvFile) -ne $EnvHash) { throw ".env alterado durante a atualização." }
         if ((Get-Hash $KeyringFile) -ne $KeyringHash) { throw "Keyring alterado durante a atualização." }
-        if ((Get-VolumeFingerprint) -ne $VolumeFingerprint) { throw "Volume PostgreSQL alterado durante a atualização." }
+        if ((Get-VolumeFingerprint $TargetWorktree) -ne $VolumeFingerprint) { throw "Volume PostgreSQL alterado durante a atualização." }
     }
     catch { Invoke-ControlledRollback }
 
