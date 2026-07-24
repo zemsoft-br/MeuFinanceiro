@@ -57,6 +57,7 @@ jobs:
           APP_DATABASE_USER=meufinanceiro_app_update_ci
           APP_DATABASE_PASSWORD=$(openssl rand -hex 32)
           APP_HTTP_PORT=8080
+          COMPOSE_PROJECT_NAME=meufinanceiro-update-ci
           APP_KEYRING_FILE_HOST=.secrets/keyring.json
           EOF_ENV
           python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
@@ -91,7 +92,7 @@ jobs:
           backup_root="$RUNNER_TEMP/meufinanceiro-update-backups"
           env_hash_before="$(sha256sum "$source_root/.env" | awk '{print $1}')"
           keyring_hash_before="$(sha256sum "$source_root/.secrets/keyring.json" | awk '{print $1}')"
-          volume_before="$(docker volume inspect meufinanceiro_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')"
+          volume_before="$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')"
 
           state_path="$(bash infra/scripts/update-foundation.sh \
             --root-dir "$source_root" \
@@ -111,7 +112,7 @@ jobs:
           PY
           test "$(sha256sum "$source_root/.env" | awk '{print $1}')" = "$env_hash_before"
           test "$(sha256sum "$source_root/.secrets/keyring.json" | awk '{print $1}')" = "$keyring_hash_before"
-          test "$(docker volume inspect meufinanceiro_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')" = "$volume_before"
+          test "$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')" = "$volume_before"
           APP_HTTP_PORT=8080 bash tests/smoke/compose-smoke.sh
 
       - name: Validate idempotent target
@@ -178,7 +179,7 @@ jobs:
           set -euo pipefail
           source_root="$RUNNER_TEMP/meufinanceiro-update-source"
           backup_root="$RUNNER_TEMP/meufinanceiro-update-backups"
-          volume_before="$(docker volume inspect meufinanceiro_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')"
+          volume_before="$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')"
           set +e
           MEUFINANCEIRO_UPDATE_TEST_FAIL_AFTER_START=1 \
           MEUFINANCEIRO_UPDATE_TEST_SCHEMA_OVERRIDE_AFTER_FAILURE=synthetic_changed_revision \
@@ -203,7 +204,7 @@ jobs:
           assert state["status"] == "ROLLBACK_REQUIRES_COORDINATED_RESTORE", state
           assert state["detail"] == "schema_changed_or_unknown", state
           PY
-          test "$(docker volume inspect meufinanceiro_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')" = "$volume_before"
+          test "$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')" = "$volume_before"
           test ! -d "$source_root/.updates/update.lock"
 
       - name: Restore target stack and validate cleanup
