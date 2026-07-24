@@ -8,6 +8,8 @@ GITIGNORE = ROOT / ".gitignore"
 README = ROOT / "README.md"
 INSTALLATION = ROOT / "docs/guides/INSTALLATION.md"
 SAFE_UPDATE_QUALITY = ROOT / ".github/workflows/safe-update-quality.yml"
+TEMPORARY_FINALIZER = ROOT / ".github/workflows/temporary-finalize-safe-update.yml"
+TEMPORARY_POWERSHELL_PAYLOAD = ROOT / ".tmp/update-foundation.ps1.b64"
 
 
 def read(path: Path) -> str:
@@ -94,6 +96,11 @@ def test_update_contract_is_linked_and_ignored() -> None:
     assert "update-foundation.sh" in read(SAFE_UPDATE_QUALITY)
     assert "update-foundation.ps1" in read(SAFE_UPDATE_QUALITY)
     assert RUNBOOK.is_file()
+
+
+def test_temporary_finalization_artifacts_are_absent() -> None:
+    assert not TEMPORARY_FINALIZER.exists()
+    assert not TEMPORARY_POWERSHELL_PAYLOAD.exists()
 
 
 def test_safe_update_quality_exercises_apply_and_rollback_states() -> None:
