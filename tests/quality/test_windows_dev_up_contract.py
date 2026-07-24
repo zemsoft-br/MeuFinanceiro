@@ -29,18 +29,27 @@ def test_dev_up_is_composable_and_does_not_exit_the_host() -> None:
 def test_dev_up_captures_json_without_mixing_docker_stderr() -> None:
     content = DEV_UP.read_text(encoding="utf-8")
 
+    assert "$stdoutPath = [System.IO.Path]::GetTempFileName()" in content
     assert "$stderrPath = [System.IO.Path]::GetTempFileName()" in content
-    assert "2> $stderrPath" in content
+    assert "1> $stdoutPath 2> $stderrPath" in content
+    assert "Get-Content -LiteralPath $stdoutPath -Raw" in content
+    assert "Get-Content -LiteralPath $stderrPath -Raw" in content
+    assert "return $stdoutText" in content
+    assert "($output -join \"`n\").Trim()" not in content
     assert "-Capture | ConvertFrom-Json" in content
 
 
-def test_dev_up_treats_empty_stderr_as_an_empty_string() -> None:
+def test_dev_up_rejects_empty_captured_stdout_explicitly() -> None:
     content = DEV_UP.read_text(encoding="utf-8")
 
-    assert "$stderrText = [string](" in content
-    assert (
-        "Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue"
-        in content
-    )
-    assert "$stderrText = $stderrText.Trim()" in content
-    assert "(Get-Content -LiteralPath $stderrPath -Raw).Trim()" not in content
+    assert "$stdoutText = [string](" in content
+    assert "$stdoutText = $stdoutText.Trim()" in content
+    assert "[string]::IsNullOrWhiteSpace($stdoutText)" in content
+    assert 'throw "Comando Docker não retornou a saída esperada."' in content
+
+
+def test_dev_up_cleans_capture_files() -> None:
+    content = DEV_UP.read_text(encoding="utf-8")
+
+    assert "foreach ($temporaryPath in @($stdoutPath, $stderrPath))" in content
+    assert "Remove-Item -LiteralPath $temporaryPath" in content
