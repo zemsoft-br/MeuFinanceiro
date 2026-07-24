@@ -4,6 +4,7 @@
 !.env.example
 .secrets/
 .demo/
+.backups/
 
 # Python
 __pycache__/

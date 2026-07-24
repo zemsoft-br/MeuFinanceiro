@@ -82,6 +82,12 @@ Windows PowerShell:
 
 O ambiente demo fica disponível em `http://127.0.0.1:8081` e exibe identificação visual global. Consulte o [runbook do modo demonstração](docs/runbooks/DEMO_MODE.md) para `load`, `status`, `reset`, encerramento e purga.
 
+### Backup e restauração verificável
+
+A instalação comum possui operadores coordenados para gerar um bundle com dump PostgreSQL, `.env`, keyring e manifesto de integridade. O verificador restaura esse dump em PostgreSQL descartável, aguarda o servidor definitivo atingir estabilidade, não publica portas e não altera a instalação original.
+
+O bundle contém senhas e a chave mestra. Consulte o [runbook de backup e restauração](docs/runbooks/BACKUP_AND_RESTORE.md) antes de executar os comandos e mantenha o resultado em armazenamento criptografado fora do checkout.
+
 ## Quality gates locais
 
 A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
@@ -121,6 +127,7 @@ O Flutter deve implementar os contratos versionados do produto sem copiar regras
 ## Documentação
 
 - [Instalação da fundação e avaliação segura](docs/guides/INSTALLATION.md)
+- [Backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md)
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Arquitetura de informação canônica](docs/architecture/INFORMATION_ARCHITECTURE.md)
