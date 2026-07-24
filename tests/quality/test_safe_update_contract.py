@@ -10,6 +10,7 @@ INSTALLATION = ROOT / "docs/guides/INSTALLATION.md"
 SAFE_UPDATE_QUALITY = ROOT / ".github/workflows/safe-update-quality.yml"
 TEMPORARY_FINALIZER = ROOT / ".github/workflows/temporary-finalize-safe-update.yml"
 TEMPORARY_SMOKE_FIX = ROOT / ".github/workflows/temporary-fix-update-smoke.yml"
+TEMPORARY_CLEANUP_FIX = ROOT / ".github/workflows/temporary-fix-update-cleanup.yml"
 TEMPORARY_POWERSHELL_PAYLOAD = ROOT / ".tmp/update-foundation.ps1.b64"
 
 
@@ -110,6 +111,7 @@ def test_update_contract_is_linked_and_ignored() -> None:
 def test_temporary_finalization_artifacts_are_absent() -> None:
     assert not TEMPORARY_FINALIZER.exists()
     assert not TEMPORARY_SMOKE_FIX.exists()
+    assert not TEMPORARY_CLEANUP_FIX.exists()
     assert not TEMPORARY_POWERSHELL_PAYLOAD.exists()
 
 
@@ -121,3 +123,4 @@ def test_safe_update_quality_exercises_apply_and_rollback_states() -> None:
     assert "target_started_and_smoke_passed" in workflow
     assert "target_failed_schema_unchanged" in workflow
     assert "schema_changed_or_unknown" in workflow
+    assert "meufinanceiro-update-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$" in workflow
