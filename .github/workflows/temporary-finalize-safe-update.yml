@@ -1,0 +1,85 @@
+name: Temporary Finalize Safe Update
+
+on:
+  push:
+    branches:
+      - feature/foundation-safe-update
+    paths:
+      - .github/workflows/temporary-finalize-safe-update.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/foundation-safe-update
+          fetch-depth: 0
+
+      - name: Materialize PowerShell and documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          base64 --decode .tmp/update-foundation.ps1.b64 > infra/scripts/update-foundation.ps1
+          chmod +x infra/scripts/update-foundation.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{path}: expected one anchor, found {count}")
+              target.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+
+          gitignore = Path(".gitignore")
+          text = gitignore.read_text(encoding="utf-8")
+          if ".updates/" not in text:
+              text = text.replace(".backups/\n", ".backups/\n.updates/\n", 1)
+          gitignore.write_text(text, encoding="utf-8", newline="\n")
+
+          replace_once(
+              "README.md",
+              "O bundle contém senhas e a chave mestra. Consulte o [runbook de backup e restauração](docs/runbooks/BACKUP_AND_RESTORE.md) antes de executar os comandos e mantenha o resultado em armazenamento criptografado fora do checkout.\n\n## Quality gates locais",
+              "O bundle contém senhas e a chave mestra. Consulte o [runbook de backup e restauração](docs/runbooks/BACKUP_AND_RESTORE.md) antes de executar os comandos e mantenha o resultado em armazenamento criptografado fora do checkout.\n\n### Atualização segura e rollback controlado\n\nA instalação comum pode avançar para um commit fast-forward somente depois de criar e verificar o backup, construir o target e concluir o smoke. O rollback automático é permitido apenas quando a revisão Alembic permanece inalterada; mudança de schema exige recuperação coordenada e nunca remove o volume automaticamente.\n\nConsulte o [runbook de atualização segura e rollback](docs/runbooks/SAFE_UPDATE_AND_ROLLBACK.md).\n\n## Quality gates locais",
+          )
+          replace_once(
+              "README.md",
+              "- [Backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md)\n",
+              "- [Backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md)\n- [Atualização segura e rollback controlado](docs/runbooks/SAFE_UPDATE_AND_ROLLBACK.md)\n",
+          )
+          replace_once(
+              "docs/guides/INSTALLATION.md",
+              "Atualização, restauração destrutiva real, acesso remoto e validação independente por outra pessoa permanecem em entregas separadas da issue #10.",
+              "Para avançar uma instalação comum baseada em código-fonte, consulte [Atualização segura e rollback controlado](../runbooks/SAFE_UPDATE_AND_ROLLBACK.md). O fluxo exige backup verificado e bloqueia rollback automático quando a revisão Alembic muda.\n\nRestauração destrutiva real, acesso remoto e validação independente por outra pessoa permanecem em entregas separadas da issue #10.",
+          )
+          replace_once(
+              "docs/runbooks/BACKUP_AND_RESTORE.md",
+              "Uma restauração destrutiva real exigirá uma entrega separada, com confirmação explícita, backup prévio e rollback documentado.",
+              "Uma restauração destrutiva real exigirá uma entrega separada, com confirmação explícita, backup prévio e rollback documentado.\n\nPara atualizar o código sem apagar dados, consulte [Atualização segura e rollback controlado](SAFE_UPDATE_AND_ROLLBACK.md). Esse fluxo usa este bundle como pré-condição e não executa downgrade ou restauração destrutiva automaticamente.",
+          )
+          PY
+
+      - name: Commit finalized implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .tmp/update-foundation.ps1.b64
+          git rm .github/workflows/temporary-finalize-safe-update.yml
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add \
+            .gitignore README.md docs/guides/INSTALLATION.md \
+            docs/runbooks/BACKUP_AND_RESTORE.md \
+            infra/scripts/update-foundation.sh \
+            infra/scripts/update-foundation.ps1
+          git diff --cached --check
+          git commit -m "feat(update): complete safe update operators" \
+            -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:feature/foundation-safe-update
