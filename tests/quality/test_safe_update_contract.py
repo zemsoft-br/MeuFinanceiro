@@ -9,6 +9,7 @@ README = ROOT / "README.md"
 INSTALLATION = ROOT / "docs/guides/INSTALLATION.md"
 SAFE_UPDATE_QUALITY = ROOT / ".github/workflows/safe-update-quality.yml"
 TEMPORARY_FINALIZER = ROOT / ".github/workflows/temporary-finalize-safe-update.yml"
+TEMPORARY_SMOKE_FIX = ROOT / ".github/workflows/temporary-fix-update-smoke.yml"
 TEMPORARY_POWERSHELL_PAYLOAD = ROOT / ".tmp/update-foundation.ps1.b64"
 
 
@@ -89,6 +90,14 @@ def test_update_preserves_configuration_and_volume_identity() -> None:
         assert "VolumeFingerprint" in content or "VOLUME_FINGERPRINT" in content
 
 
+def test_unix_smoke_uses_external_compose_configuration() -> None:
+    shell = read(UPDATE_SH)
+
+    assert 'COMPOSE_ENV_FILES="$ENV_FILE"' in shell
+    assert 'APP_KEYRING_FILE_HOST="$KEYRING_FILE"' in shell
+    assert 'cd "$project_dir"' in shell
+
+
 def test_update_contract_is_linked_and_ignored() -> None:
     assert ".updates/" in read(GITIGNORE)
     assert "SAFE_UPDATE_AND_ROLLBACK.md" in read(README)
@@ -100,6 +109,7 @@ def test_update_contract_is_linked_and_ignored() -> None:
 
 def test_temporary_finalization_artifacts_are_absent() -> None:
     assert not TEMPORARY_FINALIZER.exists()
+    assert not TEMPORARY_SMOKE_FIX.exists()
     assert not TEMPORARY_POWERSHELL_PAYLOAD.exists()
 
 
