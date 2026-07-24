@@ -219,7 +219,7 @@ get_volume_description() {
     | tail -n 1)
   [[ -n "$postgres_container" ]] || return 1
   volume_name=$(docker inspect --format \
-    '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' \
+    '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}' \
     "$postgres_container" 2>/dev/null)
   [[ -n "$volume_name" ]] || return 1
   docker volume inspect "$volume_name" \

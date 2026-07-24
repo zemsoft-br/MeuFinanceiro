@@ -85,7 +85,7 @@ function Get-VolumeFingerprint([string]$ProjectDirectory) {
     }
     $volumeName = Invoke-Native -Command "docker" -Arguments @(
         "inspect", "--format",
-        '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}',
+        '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}',
         $containerId
     ) -Capture
     if ([string]::IsNullOrWhiteSpace($volumeName)) {
