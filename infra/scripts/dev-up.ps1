@@ -23,7 +23,10 @@ function Invoke-Docker {
             $output = @(& docker @Arguments 2> $stderrPath | ForEach-Object { "$_" })
             $exitCode = $LASTEXITCODE
             if (Test-Path -LiteralPath $stderrPath) {
-                $stderrText = (Get-Content -LiteralPath $stderrPath -Raw).Trim()
+                $stderrText = [string](
+                    Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+                )
+                $stderrText = $stderrText.Trim()
             }
         }
         else {
