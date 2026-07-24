@@ -124,6 +124,22 @@ def test_backup_operators_copy_binary_dump_through_docker(script: Path) -> None:
     assert "AcknowledgeSensitive" in content or "acknowledge-sensitive" in content
 
 
+@pytest.mark.parametrize("script", [CREATE_PS1, VERIFY_PS1])
+def test_windows_backup_operators_capture_native_output_safely(
+    script: Path,
+) -> None:
+    content = script.read_text(encoding="utf-8")
+
+    assert "$stdoutPath = [System.IO.Path]::GetTempFileName()" in content
+    assert "$stderrPath = [System.IO.Path]::GetTempFileName()" in content
+    assert "& docker @Arguments 1> $stdoutPath 2> $stderrPath" in content
+    assert "foreach ($temporaryPath in @($stdoutPath, $stderrPath))" in content
+    assert "return (($output -join" not in content
+    assert "Comando Docker não retornou a saída esperada." in content
+    assert "[AllowEmptyString()]" in content
+    assert "Saída Docker vazia para $Description." in content
+
+
 @pytest.mark.parametrize("script", [VERIFY_SH, VERIFY_PS1])
 def test_restore_verifiers_are_isolated_and_cleanup(script: Path) -> None:
     content = script.read_text(encoding="utf-8")
