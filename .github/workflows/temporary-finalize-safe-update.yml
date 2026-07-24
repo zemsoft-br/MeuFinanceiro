@@ -1,5 +1,6 @@
 name: Temporary Finalize Safe Update
 
+# Second push intentionally triggers a workflow that already exists on the branch.
 on:
   push:
     branches:
