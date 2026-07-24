@@ -58,14 +58,14 @@ function Invoke-Docker {
     }
 
     if ($exitCode -ne 0) {
-        $stderrText = $stderrText.Trim()
+        $stderrText = [string]::Concat($stderrText).Trim()
         if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
             Write-Warning $stderrText
         }
         throw "Comando Docker falhou com código $exitCode."
     }
     if ($Capture) {
-        $stdoutText = $stdoutText.Trim()
+        $stdoutText = [string]::Concat($stdoutText).Trim()
         if ([string]::IsNullOrWhiteSpace($stdoutText)) {
             throw "Comando Docker não retornou a saída esperada."
         }
@@ -152,6 +152,23 @@ if (-not (Test-Path -LiteralPath $KeyringFile -PathType Leaf)) {
     throw "Keyring não encontrado. Inicialize o ambiente comum antes do backup."
 }
 
+$databaseName = ""
+$postgresUser = ""
+Get-Content -LiteralPath $EnvFile | ForEach-Object {
+    if ($_ -match '^POSTGRES_DB=(.+)$') {
+        $databaseName = $Matches[1].Trim()
+    }
+    elseif ($_ -match '^POSTGRES_USER=(.+)$') {
+        $postgresUser = $Matches[1].Trim()
+    }
+}
+if ([string]::IsNullOrWhiteSpace($databaseName)) {
+    throw "POSTGRES_DB ausente no .env."
+}
+if ([string]::IsNullOrWhiteSpace($postgresUser)) {
+    throw "POSTGRES_USER ausente no .env."
+}
+
 $timestamp = [DateTimeOffset]::UtcNow.ToString("yyyyMMddTHHmmssZ")
 $backupId = "meufinanceiro-$timestamp-$(New-RandomHex 4)"
 $backupRoot = [System.IO.Path]::GetFullPath($OutputDirectory)
@@ -215,9 +232,13 @@ try {
     Invoke-Docker -Arguments @("compose", "exec", "-T", "postgres", "rm", "-f", $containerDump) -Quiet
     Set-PrivateAcl -Path $dumpCopy -IsDirectory $false
 
-    $revisionCommand = 'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --tuples-only --no-align --command "SELECT version_num FROM alembic_version;"'
     $revisionOutput = Invoke-Docker -Arguments @(
-        "compose", "exec", "-T", "postgres", "sh", "-ceu", $revisionCommand
+        "compose", "exec", "-T", "postgres", "psql",
+        "--username", $postgresUser,
+        "--dbname", $databaseName,
+        "--tuples-only",
+        "--no-align",
+        "--command", "SELECT version_num FROM alembic_version;"
     ) -Capture
     $schemaRevision = Select-CapturedLine `
         -Text $revisionOutput `
@@ -235,11 +256,6 @@ try {
     }
     if ((Get-Sha256 $keyringCopy) -ne $keyringHashBefore) {
         throw "Cópia do keyring inconsistente; bundle descartado."
-    }
-
-    $databaseName = "meufinanceiro"
-    Get-Content -LiteralPath $EnvFile | ForEach-Object {
-        if ($_ -match '^POSTGRES_DB=(.+)$') { $databaseName = $Matches[1] }
     }
 
     $keyring = Get-Content -LiteralPath $keyringCopy -Raw | ConvertFrom-Json

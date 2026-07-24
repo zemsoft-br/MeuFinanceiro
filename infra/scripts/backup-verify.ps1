@@ -53,14 +53,14 @@ function Invoke-Docker {
     }
 
     if ($exitCode -ne 0) {
-        $stderrText = $stderrText.Trim()
+        $stderrText = [string]::Concat($stderrText).Trim()
         if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
             Write-Warning $stderrText
         }
         throw "Comando Docker falhou com código $exitCode."
     }
     if ($Capture) {
-        $stdoutText = $stdoutText.Trim()
+        $stdoutText = [string]::Concat($stdoutText).Trim()
         if ([string]::IsNullOrWhiteSpace($stdoutText)) {
             throw "Comando Docker não retornou a saída esperada."
         }
