@@ -1,0 +1,167 @@
+name: Temporary PowerShell Backup Patch
+
+on:
+  push:
+    branches:
+      - feature/foundation-backup-restore
+    paths:
+      - .github/workflows/temporary-fix-backup-powershell.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.ref == 'refs/heads/feature/foundation-backup-restore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/foundation-backup-restore
+          fetch-depth: 0
+
+      - name: Patch PowerShell operators and tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          create_path = Path('infra/scripts/backup-create.ps1')
+          verify_path = Path('infra/scripts/backup-verify.ps1')
+          tests_path = Path('tests/quality/test_backup_contract.py')
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match, found {count}')
+              return text.replace(old, new)
+
+          create = create_path.read_text(encoding='utf-8')
+          create = replace_once(
+              create,
+              '$stderrText = $stderrText.Trim()',
+              '$stderrText = [string]::Concat($stderrText).Trim()',
+              'create stderr normalization',
+          )
+          create = replace_once(
+              create,
+              '$stdoutText = $stdoutText.Trim()',
+              '$stdoutText = [string]::Concat($stdoutText).Trim()',
+              'create stdout normalization',
+          )
+
+          env_anchor = '''if (-not (Test-Path -LiteralPath $KeyringFile -PathType Leaf)) {
+              throw "Keyring não encontrado. Inicialize o ambiente comum antes do backup."
+          }
+
+          $timestamp ='''
+          env_replacement = '''if (-not (Test-Path -LiteralPath $KeyringFile -PathType Leaf)) {
+              throw "Keyring não encontrado. Inicialize o ambiente comum antes do backup."
+          }
+
+          $databaseName = ""
+          $postgresUser = ""
+          Get-Content -LiteralPath $EnvFile | ForEach-Object {
+              if ($_ -match '^POSTGRES_DB=(.+)$') {
+                  $databaseName = $Matches[1].Trim()
+              }
+              elseif ($_ -match '^POSTGRES_USER=(.+)$') {
+                  $postgresUser = $Matches[1].Trim()
+              }
+          }
+          if ([string]::IsNullOrWhiteSpace($databaseName)) {
+              throw "POSTGRES_DB ausente no .env."
+          }
+          if ([string]::IsNullOrWhiteSpace($postgresUser)) {
+              throw "POSTGRES_USER ausente no .env."
+          }
+
+          $timestamp ='''
+          create = replace_once(create, env_anchor, env_replacement, 'environment parsing')
+
+          revision_old = '''    $revisionCommand = 'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --tuples-only --no-align --command "SELECT version_num FROM alembic_version;"'
+              $revisionOutput = Invoke-Docker -Arguments @(
+                  "compose", "exec", "-T", "postgres", "sh", "-ceu", $revisionCommand
+              ) -Capture'''
+          revision_new = '''    $revisionOutput = Invoke-Docker -Arguments @(
+                  "compose", "exec", "-T", "postgres", "psql",
+                  "--username", $postgresUser,
+                  "--dbname", $databaseName,
+                  "--tuples-only",
+                  "--no-align",
+                  "--command", "SELECT version_num FROM alembic_version;"
+              ) -Capture'''
+          create = replace_once(create, revision_old, revision_new, 'revision command')
+
+          duplicate_db = '''    $databaseName = "meufinanceiro"
+              Get-Content -LiteralPath $EnvFile | ForEach-Object {
+                  if ($_ -match '^POSTGRES_DB=(.+)$') { $databaseName = $Matches[1] }
+              }
+
+          '''
+          create = replace_once(create, duplicate_db, '', 'duplicate database parsing')
+          create_path.write_text(create, encoding='utf-8', newline='\n')
+
+          verify = verify_path.read_text(encoding='utf-8')
+          verify = replace_once(
+              verify,
+              '$stderrText = $stderrText.Trim()',
+              '$stderrText = [string]::Concat($stderrText).Trim()',
+              'verify stderr normalization',
+          )
+          verify = replace_once(
+              verify,
+              '$stdoutText = $stdoutText.Trim()',
+              '$stdoutText = [string]::Concat($stdoutText).Trim()',
+              'verify stdout normalization',
+          )
+          verify_path.write_text(verify, encoding='utf-8', newline='\n')
+
+          tests = tests_path.read_text(encoding='utf-8')
+          assertions_anchor = '''    assert "Comando Docker não retornou a saída esperada." in content
+              assert "[AllowEmptyString()]" in content
+              assert "Saída Docker vazia para $Description." in content
+          '''
+          assertions_replacement = '''    assert "Comando Docker não retornou a saída esperada." in content
+              assert "[string]::Concat($stderrText).Trim()" in content
+              assert "[string]::Concat($stdoutText).Trim()" in content
+              assert "[AllowEmptyString()]" in content
+              assert "Saída Docker vazia para $Description." in content
+          '''
+          tests = replace_once(tests, assertions_anchor, assertions_replacement, 'capture assertions')
+
+          insertion_anchor = '''
+
+          @pytest.mark.parametrize("script", [VERIFY_SH, VERIFY_PS1])
+          def test_restore_verifiers_are_isolated_and_cleanup(script: Path) -> None:
+          '''
+          insertion = '''
+
+          def test_windows_backup_revision_query_uses_native_arguments() -> None:
+              content = CREATE_PS1.read_text(encoding="utf-8")
+
+              assert '$revisionCommand' not in content
+              assert '"psql",' in content
+              assert '"--username", $postgresUser' in content
+              assert '"--dbname", $databaseName' in content
+              assert '"--command", "SELECT version_num FROM alembic_version;"' in content
+
+
+          @pytest.mark.parametrize("script", [VERIFY_SH, VERIFY_PS1])
+          def test_restore_verifiers_are_isolated_and_cleanup(script: Path) -> None:
+          '''
+          tests = replace_once(tests, insertion_anchor, insertion, 'revision test insertion')
+          tests_path.write_text(tests, encoding='utf-8', newline='\n')
+          PY
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add infra/scripts/backup-create.ps1 infra/scripts/backup-verify.ps1 tests/quality/test_backup_contract.py
+          git diff --cached --check
+          git commit -m "fix(backup): make PowerShell revision capture robust" -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:feature/foundation-backup-restore
