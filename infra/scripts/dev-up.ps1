@@ -14,19 +14,26 @@ function Invoke-Docker {
     )
 
     $previousPreference = $ErrorActionPreference
+    $stdoutPath = $null
     $stderrPath = $null
+    $stdoutText = ""
     $stderrText = ""
     try {
         $ErrorActionPreference = "Continue"
         if ($Capture) {
+            $stdoutPath = [System.IO.Path]::GetTempFileName()
             $stderrPath = [System.IO.Path]::GetTempFileName()
-            $output = @(& docker @Arguments 2> $stderrPath | ForEach-Object { "$_" })
+            & docker @Arguments 1> $stdoutPath 2> $stderrPath
             $exitCode = $LASTEXITCODE
+            if (Test-Path -LiteralPath $stdoutPath) {
+                $stdoutText = [string](
+                    Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction SilentlyContinue
+                )
+            }
             if (Test-Path -LiteralPath $stderrPath) {
                 $stderrText = [string](
                     Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
                 )
-                $stderrText = $stderrText.Trim()
             }
         }
         else {
@@ -36,19 +43,26 @@ function Invoke-Docker {
     }
     finally {
         $ErrorActionPreference = $previousPreference
-        if ($stderrPath -and (Test-Path -LiteralPath $stderrPath)) {
-            Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+        foreach ($temporaryPath in @($stdoutPath, $stderrPath)) {
+            if ($temporaryPath -and (Test-Path -LiteralPath $temporaryPath)) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
         }
     }
 
     if ($exitCode -ne 0) {
+        $stderrText = $stderrText.Trim()
         if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
             Write-Warning $stderrText
         }
         throw "Comando Docker falhou com código $exitCode."
     }
     if ($Capture) {
-        return (($output -join "`n").Trim())
+        $stdoutText = $stdoutText.Trim()
+        if ([string]::IsNullOrWhiteSpace($stdoutText)) {
+            throw "Comando Docker não retornou a saída esperada."
+        }
+        return $stdoutText
     }
     if (-not $Quiet) {
         $output | ForEach-Object { Write-Host $_ }
