@@ -1,0 +1,55 @@
+name: Temporary Fix Update Cleanup
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - ready_for_review
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Restrict temporary worktree detector
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path(".github/workflows/safe-update-quality.yml")
+          text = path.read_text(encoding="utf-8")
+          old = "if git worktree list --porcelain | grep -q 'meufinanceiro-update-'; then"
+          new = (
+              "if git worktree list --porcelain | "
+              "grep -Eq 'meufinanceiro-update-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$'; then"
+          )
+          if text.count(old) != 1:
+              raise RuntimeError("cleanup detector anchor not found exactly once")
+          path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          PY
+
+      - name: Commit correction and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/temporary-fix-update-cleanup.yml
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add .github/workflows/safe-update-quality.yml
+          git diff --cached --check
+          git commit -m "fix(ci): distinguish source and ephemeral update worktrees" \
+            -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
