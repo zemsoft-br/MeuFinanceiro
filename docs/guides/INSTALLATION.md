@@ -299,4 +299,6 @@ Quando o ambiente comum estiver saudável, consulte o [runbook de backup e resta
 
 O bundle contém senhas e chave mestra. Ele deve permanecer em armazenamento criptografado e nunca pode ser versionado ou anexado a issues.
 
-Atualização, restauração destrutiva real, acesso remoto e validação independente por outra pessoa permanecem em entregas separadas da issue #10.
+Para avançar uma instalação comum baseada em código-fonte, consulte [Atualização segura e rollback controlado](../runbooks/SAFE_UPDATE_AND_ROLLBACK.md). O fluxo exige backup verificado e bloqueia rollback automático quando a revisão Alembic muda.
+
+Restauração destrutiva real, acesso remoto e validação independente por outra pessoa permanecem em entregas separadas da issue #10.

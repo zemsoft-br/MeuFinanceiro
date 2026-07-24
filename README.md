@@ -88,6 +88,12 @@ A instalação comum possui operadores coordenados para gerar um bundle com dump
 
 O bundle contém senhas e a chave mestra. Consulte o [runbook de backup e restauração](docs/runbooks/BACKUP_AND_RESTORE.md) antes de executar os comandos e mantenha o resultado em armazenamento criptografado fora do checkout.
 
+### Atualização segura e rollback controlado
+
+A instalação comum pode avançar para um commit fast-forward somente depois de criar e verificar o backup, construir o target e concluir o smoke. O rollback automático é permitido apenas quando a revisão Alembic permanece inalterada; mudança de schema exige recuperação coordenada e nunca remove o volume automaticamente.
+
+Consulte o [runbook de atualização segura e rollback](docs/runbooks/SAFE_UPDATE_AND_ROLLBACK.md).
+
 ## Quality gates locais
 
 A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
@@ -128,6 +134,7 @@ O Flutter deve implementar os contratos versionados do produto sem copiar regras
 
 - [Instalação da fundação e avaliação segura](docs/guides/INSTALLATION.md)
 - [Backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md)
+- [Atualização segura e rollback controlado](docs/runbooks/SAFE_UPDATE_AND_ROLLBACK.md)
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Arquitetura de informação canônica](docs/architecture/INFORMATION_ARCHITECTURE.md)
