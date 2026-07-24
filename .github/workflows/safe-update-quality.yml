@@ -213,7 +213,8 @@ jobs:
           APP_KEYRING_FILE_HOST="$PWD/.secrets/keyring.json" docker compose up \
             --build --detach --wait --wait-timeout 180
           APP_HTTP_PORT=8080 bash tests/smoke/compose-smoke.sh
-          if git worktree list --porcelain | grep -q 'meufinanceiro-update-'; then
+          if git worktree list --porcelain \
+            | grep -Eq 'meufinanceiro-update-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$'; then
             echo "Worktree temporário de update permaneceu após cleanup." >&2
             exit 1
           fi
