@@ -76,3 +76,5 @@ jobs:
           git commit -m "fix(update): match PostgreSQL volume mount contract" \
             -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
           git push origin HEAD:feature/foundation-safe-update
+
+# Triggered through the Contents API so the PR emits synchronize.
