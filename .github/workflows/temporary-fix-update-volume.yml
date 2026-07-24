@@ -1,0 +1,214 @@
+name: Temporary Fix Update Volume
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - ready_for_review
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Discover the PostgreSQL volume from the running container
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise RuntimeError(f"{label}: expected one match, found {text.count(old)}")
+              path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+
+          shell = Path("infra/scripts/update-foundation.sh")
+          replace_once(
+              shell,
+              '''ENV_HASH=$(sha256sum "$ENV_FILE" | awk '{print $1}')
+          KEYRING_HASH=$(sha256sum "$KEYRING_FILE" | awk '{print $1}')
+          volume_description=$(docker volume inspect meufinanceiro_postgres_data \\
+            --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null) || {
+            write_state FAILED_PRECHECK "volume_missing"
+            echo "Volume PostgreSQL da instalação não encontrado." >&2
+            exit 1
+          }
+          VOLUME_FINGERPRINT=$(printf '%s' "$volume_description" | sha256sum | awk '{print $1}')
+
+          get_env_value() {
+          ''',
+              '''ENV_HASH=$(sha256sum "$ENV_FILE" | awk '{print $1}')
+          KEYRING_HASH=$(sha256sum "$KEYRING_FILE" | awk '{print $1}')
+
+          get_env_value() {
+          ''',
+              "remove hardcoded volume",
+          )
+          replace_once(
+              shell,
+              '''compose_for() {
+            local project_dir=$1
+            shift
+            APP_KEYRING_FILE_HOST="$KEYRING_FILE" docker compose \\
+              --project-directory "$project_dir" \\
+              --env-file "$ENV_FILE" \\
+              -f "$project_dir/compose.yaml" "$@"
+          }
+
+          get_schema_revision() {
+          ''',
+              '''compose_for() {
+            local project_dir=$1
+            shift
+            APP_KEYRING_FILE_HOST="$KEYRING_FILE" docker compose \\
+              --project-directory "$project_dir" \\
+              --env-file "$ENV_FILE" \\
+              -f "$project_dir/compose.yaml" "$@"
+          }
+
+          get_volume_description() {
+            local project_dir=$1
+            local postgres_container volume_name
+            postgres_container=$(compose_for "$project_dir" ps -q postgres \\
+              | awk 'NF {gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print}' \\
+              | tail -n 1)
+            [[ -n "$postgres_container" ]] || return 1
+            volume_name=$(docker inspect --format \\
+              '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' \\
+              "$postgres_container" 2>/dev/null)
+            [[ -n "$volume_name" ]] || return 1
+            docker volume inspect "$volume_name" \\
+              --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null
+          }
+
+          volume_description=$(get_volume_description "$ROOT_DIR") || {
+            write_state FAILED_PRECHECK "volume_missing"
+            echo "Volume PostgreSQL da instalação não encontrado." >&2
+            exit 1
+          }
+          VOLUME_FINGERPRINT=$(printf '%s' "$volume_description" | sha256sum | awk '{print $1}')
+
+          get_schema_revision() {
+          ''',
+              "add dynamic volume discovery",
+          )
+          replace_once(
+              shell,
+              '''      rollback_volume_description=$(docker volume inspect meufinanceiro_postgres_data \\
+                --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null || true)
+          ''',
+              '''      rollback_volume_description=$(get_volume_description "$ROOT_DIR" || true)
+          ''',
+              "rollback volume",
+          )
+          replace_once(
+              shell,
+              '''if ! current_volume_description=$(docker volume inspect meufinanceiro_postgres_data \\
+            --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null); then
+          ''',
+              '''if ! current_volume_description=$(get_volume_description "$TARGET_WORKTREE"); then
+          ''',
+              "applied volume",
+          )
+
+          powershell = Path("infra/scripts/update-foundation.ps1")
+          replace_once(
+              powershell,
+              '''function Get-VolumeFingerprint {
+              $description = Invoke-Native -Command "docker" -Arguments @(
+                  "volume", "inspect", "meufinanceiro_postgres_data",
+                  "--format", "{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}"
+              ) -Capture
+              if ([string]::IsNullOrWhiteSpace($description)) {
+                  throw "Volume PostgreSQL da instalação não encontrado."
+              }
+              $bytes = [Text.Encoding]::UTF8.GetBytes($description)
+              $sha = [Security.Cryptography.SHA256]::Create()
+              try {
+                  return -join ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") })
+              }
+              finally { $sha.Dispose() }
+          }
+          ''',
+              '''function Get-VolumeFingerprint([string]$ProjectDirectory) {
+              $containerId = Invoke-Compose $ProjectDirectory @("ps", "-q", "postgres") -Capture
+              if ([string]::IsNullOrWhiteSpace($containerId)) {
+                  throw "Container PostgreSQL da instalação não encontrado."
+              }
+              $volumeName = Invoke-Native -Command "docker" -Arguments @(
+                  "inspect", "--format",
+                  '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}',
+                  $containerId
+              ) -Capture
+              if ([string]::IsNullOrWhiteSpace($volumeName)) {
+                  throw "Volume PostgreSQL da instalação não encontrado."
+              }
+              $description = Invoke-Native -Command "docker" -Arguments @(
+                  "volume", "inspect", $volumeName,
+                  "--format", "{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}"
+              ) -Capture
+              $bytes = [Text.Encoding]::UTF8.GetBytes($description)
+              $sha = [Security.Cryptography.SHA256]::Create()
+              try {
+                  return -join ($sha.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") })
+              }
+              finally { $sha.Dispose() }
+          }
+          ''',
+              "PowerShell volume function",
+          )
+          text = powershell.read_text(encoding="utf-8")
+          replacements = {
+              "(Get-VolumeFingerprint) -ne $VolumeFingerprint": [
+                  "(Get-VolumeFingerprint $RootDir) -ne $VolumeFingerprint",
+                  "(Get-VolumeFingerprint $TargetWorktree) -ne $VolumeFingerprint",
+              ],
+              "try { $VolumeFingerprint = Get-VolumeFingerprint }": [
+                  "try { $VolumeFingerprint = Get-VolumeFingerprint $RootDir }",
+              ],
+          }
+          for old, new_values in replacements.items():
+              for new in new_values:
+                  if old not in text:
+                      raise RuntimeError(f"PowerShell call anchor missing: {old}")
+                  text = text.replace(old, new, 1)
+          powershell.write_text(text, encoding="utf-8", newline="\n")
+
+          workflow = Path(".github/workflows/safe-update-quality.yml")
+          text = workflow.read_text(encoding="utf-8")
+          marker = "          COMPOSE_PROJECT_NAME=meufinanceiro-update-ci\n"
+          if marker not in text:
+              anchor = "          APP_HTTP_PORT=8080\n"
+              if text.count(anchor) != 1:
+                  raise RuntimeError("COMPOSE_PROJECT_NAME anchor missing")
+              text = text.replace(anchor, anchor + marker, 1)
+          workflow.write_text(text, encoding="utf-8", newline="\n")
+          PY
+          bash -n infra/scripts/update-foundation.sh
+
+      - name: Commit corrections
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add \
+            infra/scripts/update-foundation.sh \
+            infra/scripts/update-foundation.ps1 \
+            .github/workflows/safe-update-quality.yml
+          git commit -m "fix(update): discover the active PostgreSQL volume" \
+            -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
