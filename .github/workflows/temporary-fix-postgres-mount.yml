@@ -1,0 +1,67 @@
+name: Temporary Fix PostgreSQL Mount
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - ready_for_review
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Correct PostgreSQL mount discovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for path in (
+              Path('infra/scripts/update-foundation.sh'),
+              Path('infra/scripts/update-foundation.ps1'),
+          ):
+              text = path.read_text(encoding='utf-8')
+              old = '/var/lib/postgresql/data'
+              if text.count(old) != 1:
+                  raise RuntimeError(f'{path}: expected exactly one old mount, found {text.count(old)}')
+              path.write_text(text.replace(old, '/var/lib/postgresql'), encoding='utf-8', newline='\n')
+
+          test_path = Path('tests/quality/test_safe_update_contract.py')
+          text = test_path.read_text(encoding='utf-8')
+          old = '''        assert "/var/lib/postgresql/data" in content
+        assert "VolumeFingerprint" in content or "VOLUME_FINGERPRINT" in content
+'''
+          new = '''        assert 'Destination "/var/lib/postgresql"' in content
+        assert "/var/lib/postgresql/data" not in content
+        assert "VolumeFingerprint" in content or "VOLUME_FINGERPRINT" in content
+'''
+          if text.count(old) != 1:
+              raise RuntimeError('test contract anchor not found exactly once')
+          test_path.write_text(text.replace(old, new), encoding='utf-8', newline='\n')
+          PY
+
+      - name: Commit correction and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/temporary-fix-postgres-mount.yml
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add infra/scripts/update-foundation.sh infra/scripts/update-foundation.ps1 tests/quality/test_safe_update_contract.py
+          git diff --cached --check
+          git commit -m "fix(update): match PostgreSQL volume mount contract" \
+            -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:feature/foundation-safe-update
