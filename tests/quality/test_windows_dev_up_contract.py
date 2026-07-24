@@ -32,3 +32,12 @@ def test_dev_up_captures_json_without_mixing_docker_stderr() -> None:
     assert "$stderrPath = [System.IO.Path]::GetTempFileName()" in content
     assert "2> $stderrPath" in content
     assert "-Capture | ConvertFrom-Json" in content
+
+
+def test_dev_up_treats_empty_stderr_as_an_empty_string() -> None:
+    content = DEV_UP.read_text(encoding="utf-8")
+
+    assert "$stderrText = [string](" in content
+    assert "Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue" in content
+    assert "$stderrText = $stderrText.Trim()" in content
+    assert "(Get-Content -LiteralPath $stderrPath -Raw).Trim()" not in content
