@@ -1,0 +1,71 @@
+name: Temporary Fix Update Smoke
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - ready_for_review
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout head branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Propagate external Compose environment to smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("infra/scripts/update-foundation.sh")
+          text = path.read_text(encoding="utf-8")
+          old = '''run_smoke() {
+            local project_dir=$1
+            (
+              cd "$project_dir"
+              APP_HTTP_PORT="$(get_env_value APP_HTTP_PORT)" \\
+                bash tests/smoke/compose-smoke.sh
+            )
+          }
+          '''
+          new = '''run_smoke() {
+            local project_dir=$1
+            (
+              cd "$project_dir"
+              COMPOSE_ENV_FILES="$ENV_FILE" \\
+              APP_KEYRING_FILE_HOST="$KEYRING_FILE" \\
+              APP_HTTP_PORT="$(get_env_value APP_HTTP_PORT)" \\
+                bash tests/smoke/compose-smoke.sh
+            )
+          }
+          '''
+          if text.count(old) != 1:
+              raise RuntimeError("run_smoke anchor not found exactly once")
+          path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
+          PY
+          bash -n infra/scripts/update-foundation.sh
+
+      - name: Commit correction and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/temporary-fix-update-smoke.yml
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add infra/scripts/update-foundation.sh
+          git diff --cached --check
+          git commit -m "fix(update): propagate external Compose environment to smoke" \
+            -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
