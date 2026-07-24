@@ -11,6 +11,7 @@ SAFE_UPDATE_QUALITY = ROOT / ".github/workflows/safe-update-quality.yml"
 TEMPORARY_FINALIZER = ROOT / ".github/workflows/temporary-finalize-safe-update.yml"
 TEMPORARY_SMOKE_FIX = ROOT / ".github/workflows/temporary-fix-update-smoke.yml"
 TEMPORARY_CLEANUP_FIX = ROOT / ".github/workflows/temporary-fix-update-cleanup.yml"
+TEMPORARY_VOLUME_FIX = ROOT / ".github/workflows/temporary-fix-update-volume.yml"
 TEMPORARY_POWERSHELL_PAYLOAD = ROOT / ".tmp/update-foundation.ps1.b64"
 
 
@@ -83,12 +84,18 @@ def test_schema_change_blocks_destructive_rollback() -> None:
         assert "docker volume rm" not in content
 
 
-def test_update_preserves_configuration_and_volume_identity() -> None:
-    for content in (read(UPDATE_SH), read(UPDATE_PS1)):
+def test_update_preserves_configuration_and_discovers_volume_identity() -> None:
+    shell = read(UPDATE_SH)
+    powershell = read(UPDATE_PS1)
+
+    for content in (shell, powershell):
         assert "EnvHash" in content or "ENV_HASH" in content
         assert "KeyringHash" in content or "KEYRING_HASH" in content
-        assert "meufinanceiro_postgres_data" in content
+        assert "/var/lib/postgresql/data" in content
         assert "VolumeFingerprint" in content or "VOLUME_FINGERPRINT" in content
+        assert "meufinanceiro_postgres_data" not in content
+    assert "get_volume_description" in shell
+    assert "Get-VolumeFingerprint([string]$ProjectDirectory)" in powershell
 
 
 def test_unix_smoke_uses_external_compose_configuration() -> None:
@@ -112,6 +119,7 @@ def test_temporary_finalization_artifacts_are_absent() -> None:
     assert not TEMPORARY_FINALIZER.exists()
     assert not TEMPORARY_SMOKE_FIX.exists()
     assert not TEMPORARY_CLEANUP_FIX.exists()
+    assert not TEMPORARY_VOLUME_FIX.exists()
     assert not TEMPORARY_POWERSHELL_PAYLOAD.exists()
 
 
@@ -124,3 +132,5 @@ def test_safe_update_quality_exercises_apply_and_rollback_states() -> None:
     assert "target_failed_schema_unchanged" in workflow
     assert "schema_changed_or_unknown" in workflow
     assert "meufinanceiro-update-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$" in workflow
+    assert "COMPOSE_PROJECT_NAME=meufinanceiro-update-ci" in workflow
+    assert "meufinanceiro-update-ci_postgres_data" in workflow
