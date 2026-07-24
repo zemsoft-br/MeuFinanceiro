@@ -35,7 +35,7 @@ def test_dev_up_captures_json_without_mixing_docker_stderr() -> None:
     assert "Get-Content -LiteralPath $stdoutPath -Raw" in content
     assert "Get-Content -LiteralPath $stderrPath -Raw" in content
     assert "return $stdoutText" in content
-    assert "($output -join \"`n\").Trim()" not in content
+    assert '($output -join "`n").Trim()' not in content
     assert "-Capture | ConvertFrom-Json" in content
 
 
