@@ -1,25 +1,25 @@
 name: Temporary Finalize Safe Update
 
-# Second push intentionally triggers a workflow that already exists on the branch.
 on:
-  push:
+  pull_request:
     branches:
-      - feature/foundation-safe-update
-    paths:
-      - .github/workflows/temporary-finalize-safe-update.yml
+      - develop
+    types:
+      - ready_for_review
 
 permissions:
   contents: write
 
 jobs:
   finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Checkout branch
+      - name: Checkout head branch
         uses: actions/checkout@v6
         with:
-          ref: feature/foundation-safe-update
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Materialize PowerShell and documentation
@@ -83,4 +83,4 @@ jobs:
           git diff --cached --check
           git commit -m "feat(update): complete safe update operators" \
             -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
-          git push origin HEAD:feature/foundation-safe-update
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
