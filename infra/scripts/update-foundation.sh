@@ -233,6 +233,8 @@ run_smoke() {
   local project_dir=$1
   (
     cd "$project_dir"
+    COMPOSE_ENV_FILES="$ENV_FILE" \
+    APP_KEYRING_FILE_HOST="$KEYRING_FILE" \
     APP_HTTP_PORT="$(get_env_value APP_HTTP_PORT)" \
       bash tests/smoke/compose-smoke.sh
   )
