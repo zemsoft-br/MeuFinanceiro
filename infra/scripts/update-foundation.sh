@@ -189,13 +189,6 @@ git -C "$ROOT_DIR" merge-base --is-ancestor "$SOURCE_COMMIT" "$TARGET_COMMIT" ||
 
 ENV_HASH=$(sha256sum "$ENV_FILE" | awk '{print $1}')
 KEYRING_HASH=$(sha256sum "$KEYRING_FILE" | awk '{print $1}')
-volume_description=$(docker volume inspect meufinanceiro_postgres_data \
-  --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null) || {
-  write_state FAILED_PRECHECK "volume_missing"
-  echo "Volume PostgreSQL da instalação não encontrado." >&2
-  exit 1
-}
-VOLUME_FINGERPRINT=$(printf '%s' "$volume_description" | sha256sum | awk '{print $1}')
 
 get_env_value() {
   local key=$1
@@ -217,6 +210,28 @@ compose_for() {
     --env-file "$ENV_FILE" \
     -f "$project_dir/compose.yaml" "$@"
 }
+
+get_volume_description() {
+  local project_dir=$1
+  local postgres_container volume_name
+  postgres_container=$(compose_for "$project_dir" ps -q postgres \
+    | awk 'NF {gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print}' \
+    | tail -n 1)
+  [[ -n "$postgres_container" ]] || return 1
+  volume_name=$(docker inspect --format \
+    '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' \
+    "$postgres_container" 2>/dev/null)
+  [[ -n "$volume_name" ]] || return 1
+  docker volume inspect "$volume_name" \
+    --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null
+}
+
+volume_description=$(get_volume_description "$ROOT_DIR") || {
+  write_state FAILED_PRECHECK "volume_missing"
+  echo "Volume PostgreSQL da instalação não encontrado." >&2
+  exit 1
+}
+VOLUME_FINGERPRINT=$(printf '%s' "$volume_description" | sha256sum | awk '{print $1}')
 
 get_schema_revision() {
   local project_dir=$1
@@ -286,8 +301,7 @@ rollback_after_failure() {
     if compose_for "$ROOT_DIR" up --build --detach --wait --wait-timeout 180 >&2 && \
        run_smoke "$ROOT_DIR" >&2; then
       local rollback_volume_description=""
-      rollback_volume_description=$(docker volume inspect meufinanceiro_postgres_data \
-        --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null || true)
+      rollback_volume_description=$(get_volume_description "$ROOT_DIR" || true)
       if [[ "$(sha256sum "$ENV_FILE" | awk '{print $1}')" == "$ENV_HASH" && \
             "$(sha256sum "$KEYRING_FILE" | awk '{print $1}')" == "$KEYRING_HASH" && \
             -n "$rollback_volume_description" && \
@@ -335,8 +349,7 @@ fi
 if [[ "$(sha256sum "$KEYRING_FILE" | awk '{print $1}')" != "$KEYRING_HASH" ]]; then
   run_controlled_rollback
 fi
-if ! current_volume_description=$(docker volume inspect meufinanceiro_postgres_data \
-  --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null); then
+if ! current_volume_description=$(get_volume_description "$TARGET_WORKTREE"); then
   run_controlled_rollback
 fi
 if [[ "$(printf '%s' "$current_volume_description" | sha256sum | awk '{print $1}')" != "$VOLUME_FINGERPRINT" ]]; then
