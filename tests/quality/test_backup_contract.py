@@ -145,7 +145,7 @@ def test_windows_backup_operators_capture_native_output_safely(
 def test_windows_backup_revision_query_uses_native_arguments() -> None:
     content = CREATE_PS1.read_text(encoding="utf-8")
 
-    assert '$revisionCommand' not in content
+    assert "$revisionCommand" not in content
     assert '"psql",' in content
     assert '"--username", $postgresUser' in content
     assert '"--dbname", $databaseName' in content
