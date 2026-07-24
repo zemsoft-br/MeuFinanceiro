@@ -21,19 +21,55 @@ function Invoke-Docker {
     )
 
     $previousPreference = $ErrorActionPreference
+    $stdoutPath = $null
+    $stderrPath = $null
+    $stdoutText = ""
+    $stderrText = ""
     try {
         $ErrorActionPreference = "Continue"
-        $output = @(& docker @Arguments 2>&1 | ForEach-Object { "$_" })
-        $exitCode = $LASTEXITCODE
+        if ($Capture) {
+            $stdoutPath = [System.IO.Path]::GetTempFileName()
+            $stderrPath = [System.IO.Path]::GetTempFileName()
+            & docker @Arguments 1> $stdoutPath 2> $stderrPath
+            $exitCode = $LASTEXITCODE
+            if (Test-Path -LiteralPath $stdoutPath) {
+                $stdoutText = [string](
+                    Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction SilentlyContinue
+                )
+            }
+            if (Test-Path -LiteralPath $stderrPath) {
+                $stderrText = [string](
+                    Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+                )
+            }
+        }
+        else {
+            $output = @(& docker @Arguments 2>&1 | ForEach-Object { "$_" })
+            $exitCode = $LASTEXITCODE
+        }
     }
     finally {
         $ErrorActionPreference = $previousPreference
+        foreach ($temporaryPath in @($stdoutPath, $stderrPath)) {
+            if ($temporaryPath -and (Test-Path -LiteralPath $temporaryPath)) {
+                Remove-Item -LiteralPath $temporaryPath -Force -ErrorAction SilentlyContinue
+            }
+        }
     }
+
     if ($exitCode -ne 0) {
+        $stderrText = $stderrText.Trim()
+        if (-not [string]::IsNullOrWhiteSpace($stderrText)) {
+            Write-Warning $stderrText
+        }
         throw "Comando Docker falhou com código $exitCode."
     }
     if ($Capture) {
-        return (($output -join "`n").Trim())
+        $stdoutText = $stdoutText.Trim()
+        if ([string]::IsNullOrWhiteSpace($stdoutText)) {
+            throw "Comando Docker não retornou a saída esperada."
+        }
+        return $stdoutText
     }
     if (-not $Quiet) {
         $output | ForEach-Object { Write-Host $_ }
@@ -43,6 +79,7 @@ function Invoke-Docker {
 function Select-CapturedLine {
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$Text,
         [Parameter(Mandatory = $true)]
         [string]$Pattern,
@@ -50,6 +87,9 @@ function Select-CapturedLine {
         [string]$Description
     )
 
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        throw "Saída Docker vazia para $Description."
+    }
     $matches = @(
         $Text -split "`r?`n" |
             ForEach-Object { $_.Trim() } |
