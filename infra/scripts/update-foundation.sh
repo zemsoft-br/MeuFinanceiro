@@ -229,6 +229,15 @@ get_schema_revision() {
     | tail -n 1
 }
 
+run_smoke() {
+  local project_dir=$1
+  (
+    cd "$project_dir"
+    APP_HTTP_PORT="$(get_env_value APP_HTTP_PORT)" \
+      bash tests/smoke/compose-smoke.sh
+  )
+}
+
 SOURCE_SCHEMA=$(get_schema_revision "$ROOT_DIR")
 [[ -n "$SOURCE_SCHEMA" ]] || {
   write_state FAILED_PRECHECK "schema_revision_missing"
@@ -249,7 +258,7 @@ if ! bundle_path=$(bash "$ROOT_DIR/infra/scripts/backup-create.sh" \
   echo "A criação do backup pré-atualização falhou." >&2
   exit 1
 fi
-if ! bash "$ROOT_DIR/infra/scripts/backup-verify.sh" "$bundle_path"; then
+if ! bash "$ROOT_DIR/infra/scripts/backup-verify.sh" "$bundle_path" >&2; then
   write_state FAILED_PRECHECK "backup_verify_failed"
   echo "A restauração descartável do backup pré-atualização falhou." >&2
   exit 1
@@ -260,7 +269,7 @@ write_state PREPARED "backup_verified"
 git -C "$ROOT_DIR" worktree add --detach "$TARGET_WORKTREE" "$TARGET_COMMIT" >/dev/null
 WORKTREE_ADDED=1
 
-if ! compose_for "$TARGET_WORKTREE" build; then
+if ! compose_for "$TARGET_WORKTREE" build >&2; then
   write_state FAILED_PRECHECK "target_build_failed"
   echo "Build do target falhou; a instalação original não foi alterada." >&2
   exit 1
@@ -272,9 +281,8 @@ rollback_after_failure() {
     CURRENT_SCHEMA="$MEUFINANCEIRO_UPDATE_TEST_SCHEMA_OVERRIDE_AFTER_FAILURE"
   fi
   if [[ -n "$CURRENT_SCHEMA" && "$CURRENT_SCHEMA" == "$SOURCE_SCHEMA" ]]; then
-    if compose_for "$ROOT_DIR" up --build --detach --wait --wait-timeout 180 && \
-       APP_HTTP_PORT="$(get_env_value APP_HTTP_PORT)" \
-         bash "$ROOT_DIR/tests/smoke/compose-smoke.sh"; then
+    if compose_for "$ROOT_DIR" up --build --detach --wait --wait-timeout 180 >&2 && \
+       run_smoke "$ROOT_DIR" >&2; then
       local rollback_volume_description=""
       rollback_volume_description=$(docker volume inspect meufinanceiro_postgres_data \
         --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' 2>/dev/null || true)
@@ -304,7 +312,7 @@ run_controlled_rollback() {
   exit "$rollback_code"
 }
 
-if ! compose_for "$TARGET_WORKTREE" up --detach --wait --wait-timeout 180; then
+if ! compose_for "$TARGET_WORKTREE" up --detach --wait --wait-timeout 180 >&2; then
   run_controlled_rollback
 fi
 
@@ -312,8 +320,7 @@ if [[ "${MEUFINANCEIRO_UPDATE_TEST_FAIL_AFTER_START:-0}" == "1" ]]; then
   run_controlled_rollback
 fi
 
-if ! APP_HTTP_PORT="$(get_env_value APP_HTTP_PORT)" \
-  bash "$TARGET_WORKTREE/tests/smoke/compose-smoke.sh"; then
+if ! run_smoke "$TARGET_WORKTREE" >&2; then
   run_controlled_rollback
 fi
 
@@ -335,7 +342,7 @@ if [[ "$(printf '%s' "$current_volume_description" | sha256sum | awk '{print $1}
 fi
 
 if [[ "$SKIP_CHECKOUT_ADVANCE" -ne 1 ]]; then
-  if ! git -C "$ROOT_DIR" merge --ff-only "$TARGET_COMMIT"; then
+  if ! git -C "$ROOT_DIR" merge --ff-only "$TARGET_COMMIT" >&2; then
     run_controlled_rollback
   fi
 fi
