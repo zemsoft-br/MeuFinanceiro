@@ -38,6 +38,9 @@ def test_dev_up_treats_empty_stderr_as_an_empty_string() -> None:
     content = DEV_UP.read_text(encoding="utf-8")
 
     assert "$stderrText = [string](" in content
-    assert "Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue" in content
+    assert (
+        "Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue"
+        in content
+    )
     assert "$stderrText = $stderrText.Trim()" in content
     assert "(Get-Content -LiteralPath $stderrPath -Raw).Trim()" not in content
