@@ -1,0 +1,37 @@
+name: Temporary Backup Test Formatter
+
+on:
+  push:
+    branches:
+      - feature/foundation-backup-restore
+    paths:
+      - .github/workflows/temporary-format-backup-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.ref == 'refs/heads/feature/foundation-backup-restore'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v6
+        with:
+          ref: feature/foundation-backup-restore
+          fetch-depth: 0
+
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+
+      - name: Format and commit
+        shell: bash
+        run: |
+          python -m ruff format tests/quality/test_backup_contract.py
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add tests/quality/test_backup_contract.py
+          git diff --cached --check
+          git commit -m "test(backup): format PowerShell revision contract" -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:feature/foundation-backup-restore
