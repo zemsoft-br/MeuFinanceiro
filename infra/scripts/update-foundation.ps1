@@ -50,11 +50,11 @@ function Invoke-Native {
     }
 
     if ($exitCode -ne 0) {
-        $message = [string]::Concat($stderrText).Trim()
+        $message = ([string]$stderrText).Trim()
         if (-not [string]::IsNullOrWhiteSpace($message)) { Write-Warning $message }
         throw "$Command falhou com código $exitCode."
     }
-    if ($Capture) { return [string]::Concat($stdoutText).Trim() }
+    if ($Capture) { return ([string]$stdoutText).Trim() }
     if (-not $Quiet) { $output | ForEach-Object { Write-Host $_ } }
 }
 
