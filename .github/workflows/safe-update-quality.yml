@@ -1,239 +1,116 @@
-name: Safe Update Quality
+name: Temporary PowerShell Null Capture Fix
 
 on:
   pull_request:
     branches:
       - develop
-      - main
     types:
-      - opened
-      - reopened
       - synchronize
-      - ready_for_review
-    paths:
-      - compose.yaml
-      - infra/scripts/update-foundation.sh
-      - infra/scripts/update-foundation.ps1
-      - infra/scripts/backup-create.sh
-      - infra/scripts/backup-create.ps1
-      - infra/scripts/backup-verify.sh
-      - infra/scripts/backup-verify.ps1
-      - tests/smoke/**
-      - tests/quality/test_safe_update_contract.py
-      - .github/workflows/safe-update-quality.yml
-  workflow_dispatch:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: safe-update-quality-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  safe-update-quality:
-    name: Source update and rollback integration
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 95
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout pull request head
+      - name: Checkout head branch
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0
-          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 2
 
-      - name: Create disposable configuration
+      - name: Patch null-safe PowerShell capture
         shell: bash
         run: |
           set -euo pipefail
-          umask 077
-          cat > .env <<EOF_ENV
-          POSTGRES_DB=meufinanceiro_update_ci
-          POSTGRES_USER=meufinanceiro_admin_update_ci
-          POSTGRES_PASSWORD=$(openssl rand -hex 32)
-          APP_DATABASE_USER=meufinanceiro_app_update_ci
-          APP_DATABASE_PASSWORD=$(openssl rand -hex 32)
-          APP_HTTP_PORT=8080
-          COMPOSE_PROJECT_NAME=meufinanceiro-update-ci
-          APP_KEYRING_FILE_HOST=.secrets/keyring.json
-          EOF_ENV
-          python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Prepare source installation
-        shell: bash
-        env:
-          UPDATE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          source_root="$RUNNER_TEMP/meufinanceiro-update-source"
-          rm -rf "$source_root"
-          git worktree add --detach "$source_root" "$UPDATE_BASE_SHA"
-          cp .env "$source_root/.env"
-          mkdir -p "$source_root/.secrets"
-          cp .secrets/keyring.json "$source_root/.secrets/keyring.json"
-          APP_KEYRING_FILE_HOST="$source_root/.secrets/keyring.json" docker compose \
-            --project-directory "$source_root" \
-            --env-file "$source_root/.env" \
-            -f "$source_root/compose.yaml" \
-            up --build --detach --wait --wait-timeout 180
-          APP_HTTP_PORT=8080 bash "$source_root/tests/smoke/compose-smoke.sh"
+          replacements = {
+              Path("infra/scripts/update-foundation.ps1"): {
+                  "$message = [string]::Concat($stderrText).Trim()":
+                      "$message = ([string]$stderrText).Trim()",
+                  "if ($Capture) { return [string]::Concat($stdoutText).Trim() }":
+                      "if ($Capture) { return ([string]$stdoutText).Trim() }",
+              },
+              Path("infra/scripts/backup-create.ps1"): {
+                  "$stderrText = [string]::Concat($stderrText).Trim()":
+                      "$stderrText = ([string]$stderrText).Trim()",
+                  "$stdoutText = [string]::Concat($stdoutText).Trim()":
+                      "$stdoutText = ([string]$stdoutText).Trim()",
+              },
+              Path("infra/scripts/backup-verify.ps1"): {
+                  "$stderrText = [string]::Concat($stderrText).Trim()":
+                      "$stderrText = ([string]$stderrText).Trim()",
+                  "$stdoutText = [string]::Concat($stdoutText).Trim()":
+                      "$stdoutText = ([string]$stdoutText).Trim()",
+              },
+          }
 
-      - name: Validate safe source update
-        id: safe_update
-        shell: bash
-        env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          source_root="$RUNNER_TEMP/meufinanceiro-update-source"
-          backup_root="$RUNNER_TEMP/meufinanceiro-update-backups"
-          env_hash_before="$(sha256sum "$source_root/.env" | awk '{print $1}')"
-          keyring_hash_before="$(sha256sum "$source_root/.secrets/keyring.json" | awk '{print $1}')"
-          volume_before="$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')"
+          for path, mapping in replacements.items():
+              text = path.read_text(encoding="utf-8")
+              for old, new in mapping.items():
+                  if text.count(old) != 1:
+                      raise RuntimeError(
+                          f"{path}: expected one occurrence of {old!r}, "
+                          f"found {text.count(old)}"
+                      )
+                  text = text.replace(old, new)
+              path.write_text(text, encoding="utf-8", newline="\n")
 
-          state_path="$(bash infra/scripts/update-foundation.sh \
-            --root-dir "$source_root" \
-            --target-ref "$UPDATE_TARGET_SHA" \
-            --backup-dir "$backup_root" \
-            --acknowledge-sensitive \
-            --no-fetch --allow-detached --skip-checkout-advance)"
-          python3 - "$state_path" <<'PY'
-          import json
-          import sys
+          test_path = Path("tests/quality/test_safe_update_contract.py")
+          text = test_path.read_text(encoding="utf-8")
+          constants_anchor = (
+              'UPDATE_PS1 = ROOT / "infra/scripts/update-foundation.ps1"\n'
+          )
+          constants = (
+              constants_anchor
+              + 'BACKUP_CREATE_PS1 = ROOT / "infra/scripts/backup-create.ps1"\n'
+              + 'BACKUP_VERIFY_PS1 = ROOT / "infra/scripts/backup-verify.ps1"\n'
+          )
+          if text.count(constants_anchor) != 1:
+              raise RuntimeError("PowerShell constants anchor not found exactly once")
+          text = text.replace(constants_anchor, constants)
 
-          with open(sys.argv[1], encoding="utf-8") as handle:
-              state = json.load(handle)
-          assert state["status"] == "APPLIED", state
-          assert state["detail"] == "target_started_and_smoke_passed", state
-          assert state["backup_id"], state
-          PY
-          test "$(sha256sum "$source_root/.env" | awk '{print $1}')" = "$env_hash_before"
-          test "$(sha256sum "$source_root/.secrets/keyring.json" | awk '{print $1}')" = "$keyring_hash_before"
-          test "$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')" = "$volume_before"
-          APP_HTTP_PORT=8080 bash tests/smoke/compose-smoke.sh
+          test_anchor = (
+              "\ndef test_update_operators_require_fast_forward_and_clean_checkout() -> None:\n"
+          )
+          test_block = '''
 
-      - name: Validate idempotent target
-        shell: bash
-        env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          state_path="$(bash infra/scripts/update-foundation.sh \
-            --root-dir "$PWD" \
-            --target-ref "$UPDATE_TARGET_SHA" \
-            --backup-dir "$RUNNER_TEMP/meufinanceiro-update-idempotent-backups" \
-            --acknowledge-sensitive \
-            --no-fetch --allow-detached --skip-checkout-advance)"
-          python3 - "$state_path" <<'PY'
-          import json
-          import sys
+def test_powershell_native_capture_is_null_safe() -> None:
+    for path in (UPDATE_PS1, BACKUP_CREATE_PS1, BACKUP_VERIFY_PS1):
+        content = read(path)
+        assert "[string]::Concat(" not in content
+        assert "([string]$stderrText).Trim()" in content
+        assert "([string]$stdoutText).Trim()" in content
 
-          with open(sys.argv[1], encoding="utf-8") as handle:
-              state = json.load(handle)
-          assert state["status"] == "APPLIED", state
-          assert state["detail"] == "target_already_applied", state
-          assert state["backup_id"] is None, state
+
+def test_update_operators_require_fast_forward_and_clean_checkout() -> None:
+'''
+          if text.count(test_anchor) != 1:
+              raise RuntimeError("PowerShell null-safe test anchor not found exactly once")
+          text = text.replace(test_anchor, test_block)
+          test_path.write_text(text, encoding="utf-8", newline="\n")
           PY
 
-      - name: Validate rollback with unchanged schema
-        shell: bash
-        env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          source_root="$RUNNER_TEMP/meufinanceiro-update-source"
-          backup_root="$RUNNER_TEMP/meufinanceiro-update-backups"
-          set +e
-          MEUFINANCEIRO_UPDATE_TEST_FAIL_AFTER_START=1 \
-            bash infra/scripts/update-foundation.sh \
-              --root-dir "$source_root" \
-              --target-ref "$UPDATE_TARGET_SHA" \
-              --backup-dir "$backup_root" \
-              --acknowledge-sensitive \
-              --no-fetch --allow-detached --skip-checkout-advance
-          result=$?
-          set -e
-          test "$result" -eq 2
-          state_path="$(find "$source_root/.updates" -mindepth 2 -maxdepth 2 \
-            -name state.json -type f -printf '%T@ %p\n' \
-            | sort -nr | head -n1 | cut -d' ' -f2-)"
-          python3 - "$state_path" <<'PY'
-          import json
-          import sys
-
-          with open(sys.argv[1], encoding="utf-8") as handle:
-              state = json.load(handle)
-          assert state["status"] == "ROLLED_BACK", state
-          assert state["detail"] == "target_failed_schema_unchanged", state
-          PY
-          APP_HTTP_PORT=8080 bash "$source_root/tests/smoke/compose-smoke.sh"
-
-      - name: Validate schema-change rollback block
-        shell: bash
-        env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          set -euo pipefail
-          source_root="$RUNNER_TEMP/meufinanceiro-update-source"
-          backup_root="$RUNNER_TEMP/meufinanceiro-update-backups"
-          volume_before="$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')"
-          set +e
-          MEUFINANCEIRO_UPDATE_TEST_FAIL_AFTER_START=1 \
-          MEUFINANCEIRO_UPDATE_TEST_SCHEMA_OVERRIDE_AFTER_FAILURE=synthetic_changed_revision \
-            bash infra/scripts/update-foundation.sh \
-              --root-dir "$source_root" \
-              --target-ref "$UPDATE_TARGET_SHA" \
-              --backup-dir "$backup_root" \
-              --acknowledge-sensitive \
-              --no-fetch --allow-detached --skip-checkout-advance
-          result=$?
-          set -e
-          test "$result" -eq 3
-          state_path="$(find "$source_root/.updates" -mindepth 2 -maxdepth 2 \
-            -name state.json -type f -printf '%T@ %p\n' \
-            | sort -nr | head -n1 | cut -d' ' -f2-)"
-          python3 - "$state_path" <<'PY'
-          import json
-          import sys
-
-          with open(sys.argv[1], encoding="utf-8") as handle:
-              state = json.load(handle)
-          assert state["status"] == "ROLLBACK_REQUIRES_COORDINATED_RESTORE", state
-          assert state["detail"] == "schema_changed_or_unknown", state
-          PY
-          test "$(docker volume inspect meufinanceiro-update-ci_postgres_data --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}')" = "$volume_before"
-          test ! -d "$source_root/.updates/update.lock"
-
-      - name: Restore target stack and validate cleanup
+      - name: Restore workflow and publish correction
         shell: bash
         run: |
           set -euo pipefail
-          APP_KEYRING_FILE_HOST="$PWD/.secrets/keyring.json" docker compose up \
-            --build --detach --wait --wait-timeout 180
-          APP_HTTP_PORT=8080 bash tests/smoke/compose-smoke.sh
-          if git worktree list --porcelain \
-            | grep -Eq 'meufinanceiro-update-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}$'; then
-            echo "Worktree temporário de update permaneceu após cleanup." >&2
-            exit 1
-          fi
-          if docker ps --all --quiet --filter name=meufinanceiro-backup-verify- | grep -q .; then
-            echo "Container temporário de restore permaneceu após cleanup." >&2
-            exit 1
-          fi
-
-      - name: Stop disposable installation
-        if: always()
-        shell: bash
-        run: |
-          docker ps --all --quiet --filter name=meufinanceiro-backup-verify- \
-            | xargs --no-run-if-empty docker rm --force || true
-          git worktree remove --force \
-            "$RUNNER_TEMP/meufinanceiro-update-source" >/dev/null 2>&1 || true
-          rm -rf \
-            "$RUNNER_TEMP/meufinanceiro-update-source" \
-            "$RUNNER_TEMP/meufinanceiro-update-backups" \
-            "$RUNNER_TEMP/meufinanceiro-update-idempotent-backups"
-          docker compose down --volumes --remove-orphans --timeout 40 || true
+          git show HEAD^:.github/workflows/safe-update-quality.yml \
+            > .github/workflows/safe-update-quality.yml
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "vinicius@zemsoft.com.br"
+          git add \
+            .github/workflows/safe-update-quality.yml \
+            infra/scripts/update-foundation.ps1 \
+            infra/scripts/backup-create.ps1 \
+            infra/scripts/backup-verify.ps1 \
+            tests/quality/test_safe_update_contract.py
+          git diff --cached --check
+          git commit -m "fix(update): handle empty native output on PowerShell" \
+            -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
+          git push origin HEAD:feature/foundation-safe-update
