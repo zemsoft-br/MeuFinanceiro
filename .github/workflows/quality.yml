@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 4
+          fetch-depth: 0
 
       - name: Patch null-safe PowerShell capture
         shell: bash
@@ -97,17 +97,14 @@ def test_update_operators_require_fast_forward_and_clean_checkout() -> None:
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^^:.github/workflows/quality.yml > .github/workflows/quality.yml
-          git show HEAD^^^:.github/workflows/safe-update-quality.yml > .github/workflows/safe-update-quality.yml
+          git show 6b8c11521b5db446ec3a76dfeda8ba8506737506:.github/workflows/quality.yml \
+            > .github/workflows/quality.yml
+          git show 6b8c11521b5db446ec3a76dfeda8ba8506737506:.github/workflows/safe-update-quality.yml \
+            > .github/workflows/safe-update-quality.yml
+          rm -f .powershell-fix-trigger
           git config user.name "Vinicius Eduardo Dezem"
           git config user.email "vinicius@zemsoft.com.br"
-          git add \
-            .github/workflows/quality.yml \
-            .github/workflows/safe-update-quality.yml \
-            infra/scripts/update-foundation.ps1 \
-            infra/scripts/backup-create.ps1 \
-            infra/scripts/backup-verify.ps1 \
-            tests/quality/test_safe_update_contract.py
+          git add -A
           git diff --cached --check
           git commit -m "fix(update): handle empty native output on PowerShell" \
             -m "Signed-off-by: Vinicius Eduardo Dezem <vinicius@zemsoft.com.br>"
