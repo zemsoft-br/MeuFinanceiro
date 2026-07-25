@@ -6,6 +6,7 @@ on:
       - develop
     types:
       - synchronize
+      - ready_for_review
 
 permissions:
   contents: write
@@ -20,7 +21,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.ref }}
-          fetch-depth: 3
+          fetch-depth: 4
 
       - name: Patch null-safe PowerShell capture
         shell: bash
@@ -96,8 +97,8 @@ def test_update_operators_require_fast_forward_and_clean_checkout() -> None:
         shell: bash
         run: |
           set -euo pipefail
-          git show HEAD^:.github/workflows/quality.yml > .github/workflows/quality.yml
-          git show HEAD^^:.github/workflows/safe-update-quality.yml > .github/workflows/safe-update-quality.yml
+          git show HEAD^^:.github/workflows/quality.yml > .github/workflows/quality.yml
+          git show HEAD^^^:.github/workflows/safe-update-quality.yml > .github/workflows/safe-update-quality.yml
           git config user.name "Vinicius Eduardo Dezem"
           git config user.email "vinicius@zemsoft.com.br"
           git add \
