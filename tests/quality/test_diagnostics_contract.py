@@ -63,6 +63,16 @@ def test_powershell_native_capture_handles_empty_streams() -> None:
     assert "Get-Content -LiteralPath $stderrPath -Raw" not in powershell
 
 
+def test_powershell_schema_query_avoids_nested_native_quotes() -> None:
+    powershell = read(EXPORT_PS1)
+
+    assert '"printenv", "POSTGRES_USER"' in powershell
+    assert '"printenv", "POSTGRES_DB"' in powershell
+    assert '"--command", "SELECT version_num FROM alembic_version;"' in powershell
+    assert '"postgres", "sh", "-c"' not in powershell
+    assert 'psql --username "$POSTGRES_USER"' not in powershell
+
+
 def test_collection_never_copies_or_reads_secret_files_as_text() -> None:
     shell = read(EXPORT_SH)
     powershell = read(EXPORT_PS1)
