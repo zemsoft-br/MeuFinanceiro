@@ -283,9 +283,31 @@ Não publique logs sem revisar se contêm caminhos locais ou outras informaçõe
 
 Para diagnóstico técnico ampliado, consulte o [runbook do ambiente local](../runbooks/LOCAL_DEVELOPMENT.md) e o [runbook do modo demonstração](../runbooks/DEMO_MODE.md).
 
+### Gerar evidência sanitizada
+
+Antes de copiar logs manualmente, execute o doctor e gere o bundle sanitizado:
+
+Linux, macOS ou WSL 2:
+
+```bash
+bash infra/scripts/doctor.sh
+bash infra/scripts/diagnostics-export.sh
+```
+
+Windows PowerShell:
+
+```powershell
+& .\infra\scripts\doctor.ps1
+& .\infra\scripts\diagnostics-export.ps1
+```
+
+Os exportadores coletam somente evidência operacional permitida, executam redaction defensiva e recusam arquivos proibidos. Ainda assim, extraia e revise todos os arquivos antes de compartilhar.
+
+Consulte [Diagnóstico sanitizado e troubleshooting](../runbooks/DIAGNOSTICS_AND_TROUBLESHOOTING.md) para falhas de Docker Desktop, portas, volumes, migrações, permissões, health e atualização bloqueada.
+
 ## Segurança
 
-- não versione nem compartilhe `.env`, `.secrets`, `.demo` ou `.backups`;
+- não versione nem compartilhe `.env`, `.secrets`, `.demo`, `.backups`, `.updates` ou `.diagnostics`;
 - não copie senhas ou keyrings entre ambiente comum e demo;
 - não insira credenciais Pluggy ou de qualquer integração externa;
 - não altere a publicação do PostgreSQL;
@@ -300,5 +322,7 @@ Quando o ambiente comum estiver saudável, consulte o [runbook de backup e resta
 O bundle contém senhas e chave mestra. Ele deve permanecer em armazenamento criptografado e nunca pode ser versionado ou anexado a issues.
 
 Para avançar uma instalação comum baseada em código-fonte, consulte [Atualização segura e rollback controlado](../runbooks/SAFE_UPDATE_AND_ROLLBACK.md). O fluxo exige backup verificado e bloqueia rollback automático quando a revisão Alembic muda.
+
+Para coletar evidências sem copiar arquivos sensíveis, consulte [Diagnóstico sanitizado e troubleshooting](../runbooks/DIAGNOSTICS_AND_TROUBLESHOOTING.md).
 
 Restauração destrutiva real, acesso remoto e validação independente por outra pessoa permanecem em entregas separadas da issue #10.

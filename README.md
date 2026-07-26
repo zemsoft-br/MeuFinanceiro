@@ -94,6 +94,12 @@ A instalação comum pode avançar para um commit fast-forward somente depois de
 
 Consulte o [runbook de atualização segura e rollback](docs/runbooks/SAFE_UPDATE_AND_ROLLBACK.md).
 
+### Diagnóstico sanitizado
+
+Os operadores `doctor` validam pré-requisitos sem alterar a instalação. Quando for necessário compartilhar evidências, os exportadores geram um bundle local com estado dos serviços, health, revisão Alembic e logs limitados, sem copiar `.env`, keyring ou dumps.
+
+Consulte o [runbook de diagnóstico sanitizado e troubleshooting](docs/runbooks/DIAGNOSTICS_AND_TROUBLESHOOTING.md) e revise todo o bundle antes de compartilhá-lo.
+
 ## Quality gates locais
 
 A suíte completa exige Python 3.13, Node.js para os testes PWA, Flutter na revisão fixada e um PostgreSQL descartável informado explicitamente por `TEST_DATABASE_URL` e `TEST_APP_DATABASE_USER`.
@@ -135,6 +141,7 @@ O Flutter deve implementar os contratos versionados do produto sem copiar regras
 - [Instalação da fundação e avaliação segura](docs/guides/INSTALLATION.md)
 - [Backup e restauração verificável](docs/runbooks/BACKUP_AND_RESTORE.md)
 - [Atualização segura e rollback controlado](docs/runbooks/SAFE_UPDATE_AND_ROLLBACK.md)
+- [Diagnóstico sanitizado e troubleshooting](docs/runbooks/DIAGNOSTICS_AND_TROUBLESHOOTING.md)
 - [Especificação do produto](docs/PRODUCT_SPECIFICATION.md)
 - [Arquitetura inicial](docs/ARCHITECTURE.md)
 - [Arquitetura de informação canônica](docs/architecture/INFORMATION_ARCHITECTURE.md)

@@ -6,6 +6,7 @@
 .demo/
 .backups/
 .updates/
+.diagnostics/
 
 # Python
 __pycache__/

@@ -1,0 +1,196 @@
+name: Diagnostics Quality
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+    paths:
+      - compose.yaml
+      - infra/scripts/doctor.sh
+      - infra/scripts/doctor.ps1
+      - infra/scripts/diagnostics-export.sh
+      - infra/scripts/diagnostics-export.ps1
+      - docs/guides/INSTALLATION.md
+      - docs/runbooks/DIAGNOSTICS_AND_TROUBLESHOOTING.md
+      - tests/quality/test_diagnostics_contract.py
+      - .github/workflows/diagnostics-quality.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: diagnostics-quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnostics-quality:
+    name: Sanitized diagnostics integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Create disposable configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          admin_secret="diagnostics-admin-$(openssl rand -hex 24)"
+          app_secret="diagnostics-app-$(openssl rand -hex 24)"
+          echo "::add-mask::$admin_secret"
+          echo "::add-mask::$app_secret"
+          printf 'DIAGNOSTICS_ADMIN_SECRET=%s\n' "$admin_secret" >> "$GITHUB_ENV"
+          printf 'DIAGNOSTICS_APP_SECRET=%s\n' "$app_secret" >> "$GITHUB_ENV"
+          cat > .env <<EOF_ENV
+          POSTGRES_DB=meufinanceiro_diagnostics_ci
+          POSTGRES_USER=meufinanceiro_admin_diagnostics_ci
+          POSTGRES_PASSWORD=$admin_secret
+          APP_DATABASE_USER=meufinanceiro_app_diagnostics_ci
+          APP_DATABASE_PASSWORD=$app_secret
+          APP_HTTP_PORT=8080
+          COMPOSE_PROJECT_NAME=meufinanceiro-diagnostics-ci
+          APP_KEYRING_FILE_HOST=.secrets/keyring.json
+          EOF_ENV
+          python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
+
+      - name: Start disposable stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP_KEYRING_FILE_HOST="$PWD/.secrets/keyring.json" docker compose up \
+            --build --detach --wait --wait-timeout 180
+          APP_HTTP_PORT=8080 bash tests/smoke/compose-smoke.sh
+
+      - name: Capture read-only baseline
+        id: baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          containers="$(docker compose ps --all -q | sort | sha256sum | awk '{print $1}')"
+          volume="$(docker volume inspect meufinanceiro-diagnostics-ci_postgres_data \
+            --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' | sha256sum | awk '{print $1}')"
+          env_hash="$(sha256sum .env | awk '{print $1}')"
+          keyring_hash="$(sha256sum .secrets/keyring.json | awk '{print $1}')"
+          echo "containers=$containers" >> "$GITHUB_OUTPUT"
+          echo "volume=$volume" >> "$GITHUB_OUTPUT"
+          echo "env_hash=$env_hash" >> "$GITHUB_OUTPUT"
+          echo "keyring_hash=$keyring_hash" >> "$GITHUB_OUTPUT"
+
+      - name: Run doctor and export bundle
+        id: export
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash infra/scripts/doctor.sh
+          archive="$(bash infra/scripts/diagnostics-export.sh \
+            --output-dir "$RUNNER_TEMP/diagnostics")"
+          test -f "$archive"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Validate sanitized archive
+        shell: bash
+        env:
+          ARCHIVE_PATH: ${{ steps.export.outputs.archive }}
+        run: |
+          set -euo pipefail
+          extract="$RUNNER_TEMP/diagnostics-extracted"
+          mkdir -p "$extract"
+          tar -xzf "$ARCHIVE_PATH" -C "$extract"
+          bundle_dir="$(find "$extract" -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -n "$bundle_dir"
+          for name in \
+            README.txt manifest.json versions.txt host.txt git.txt \
+            config-presence.txt doctor.txt compose-ps.json health.json \
+            schema-revision.txt logs.txt; do
+            test -f "$bundle_dir/$name"
+          done
+
+          python3 - "$bundle_dir/manifest.json" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+          assert payload["format"] == "meufinanceiro-sanitized-diagnostics"
+          assert payload["version"] == 1
+          assert payload["privacy"] == {
+              "automatic_upload": False,
+              "contains_database_dump": False,
+              "contains_env": False,
+              "contains_keyring": False,
+          }
+          PY
+
+          if find "$bundle_dir" -type f \( \
+            -name '.env' -o -name 'keyring.json' -o -name '*.dump' \
+            -o -name '*.sql' -o -name '*.pem' -o -name '*.key' \
+          \) -print -quit | grep -q .; then
+            echo "Arquivo proibido encontrado no bundle." >&2
+            exit 1
+          fi
+
+          ! grep -R -F -- "$DIAGNOSTICS_ADMIN_SECRET" "$bundle_dir"
+          ! grep -R -F -- "$DIAGNOSTICS_APP_SECRET" "$bundle_dir"
+          python3 - "$bundle_dir" .secrets/keyring.json <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          bundle = "\n".join(
+              path.read_text(encoding="utf-8", errors="replace")
+              for path in Path(sys.argv[1]).iterdir()
+              if path.is_file()
+          )
+          keyring = json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+
+          def values(value):
+              if isinstance(value, dict):
+                  for item in value.values():
+                      yield from values(item)
+              elif isinstance(value, list):
+                  for item in value:
+                      yield from values(item)
+              elif isinstance(value, str) and len(value) >= 20:
+                  yield value
+
+          leaked = [value for value in values(keyring) if value in bundle]
+          assert not leaked, "material do keyring apareceu no bundle"
+          PY
+
+      - name: Verify collection was read-only
+        shell: bash
+        env:
+          CONTAINERS_BEFORE: ${{ steps.baseline.outputs.containers }}
+          VOLUME_BEFORE: ${{ steps.baseline.outputs.volume }}
+          ENV_BEFORE: ${{ steps.baseline.outputs.env_hash }}
+          KEYRING_BEFORE: ${{ steps.baseline.outputs.keyring_hash }}
+        run: |
+          set -euo pipefail
+          containers_after="$(docker compose ps --all -q | sort | sha256sum | awk '{print $1}')"
+          volume_after="$(docker volume inspect meufinanceiro-diagnostics-ci_postgres_data \
+            --format '{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}' | sha256sum | awk '{print $1}')"
+          test "$containers_after" = "$CONTAINERS_BEFORE"
+          test "$volume_after" = "$VOLUME_BEFORE"
+          test "$(sha256sum .env | awk '{print $1}')" = "$ENV_BEFORE"
+          test "$(sha256sum .secrets/keyring.json | awk '{print $1}')" = "$KEYRING_BEFORE"
+          APP_HTTP_PORT=8080 bash tests/smoke/compose-smoke.sh
+
+      - name: Stop disposable stack
+        if: always()
+        shell: bash
+        run: |
+          docker compose down --volumes --remove-orphans --timeout 40 || true
+          rm -rf "$RUNNER_TEMP/diagnostics" "$RUNNER_TEMP/diagnostics-extracted"
