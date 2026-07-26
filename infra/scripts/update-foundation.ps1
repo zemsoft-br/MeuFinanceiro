@@ -83,18 +83,35 @@ function Get-VolumeFingerprint([string]$ProjectDirectory) {
     if ([string]::IsNullOrWhiteSpace($containerId)) {
         throw "Container PostgreSQL da instalação não encontrado."
     }
-    $volumeName = Invoke-Native -Command "docker" -Arguments @(
-        "inspect", "--format",
-        '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql"}}{{.Name}}{{end}}{{end}}',
-        $containerId
+
+    $containerJson = Invoke-Native -Command "docker" -Arguments @(
+        "inspect", $containerId
     ) -Capture
-    if ([string]::IsNullOrWhiteSpace($volumeName)) {
+    $containers = @($containerJson | ConvertFrom-Json)
+    if ($containers.Count -ne 1) {
+        throw "Inspeção do container PostgreSQL retornou resultado inválido."
+    }
+    $volumeMounts = @(
+        $containers[0].Mounts |
+            Where-Object {
+                $_.Destination -eq "/var/lib/postgresql" -and
+                -not [string]::IsNullOrWhiteSpace([string]$_.Name)
+            }
+    )
+    if ($volumeMounts.Count -ne 1) {
         throw "Volume PostgreSQL da instalação não encontrado."
     }
-    $description = Invoke-Native -Command "docker" -Arguments @(
-        "volume", "inspect", $volumeName,
-        "--format", "{{.Name}}|{{.Mountpoint}}|{{.CreatedAt}}"
+    $volumeName = [string]$volumeMounts[0].Name
+
+    $volumeJson = Invoke-Native -Command "docker" -Arguments @(
+        "volume", "inspect", $volumeName
     ) -Capture
+    $volumes = @($volumeJson | ConvertFrom-Json)
+    if ($volumes.Count -ne 1) {
+        throw "Inspeção do volume PostgreSQL retornou resultado inválido."
+    }
+    $volume = $volumes[0]
+    $description = "$([string]$volume.Name)|$([string]$volume.Mountpoint)|$([string]$volume.CreatedAt)"
     $bytes = [Text.Encoding]::UTF8.GetBytes($description)
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
