@@ -145,7 +145,9 @@ class PluggyClient:
                 if attempt < MAX_REQUEST_ATTEMPTS:
                     self._sleeper(RETRY_BASE_SECONDS * attempt)
                     continue
-                raise SpikeError("Falha de rede ou timeout ao acessar a Pluggy.") from None
+                raise SpikeError(
+                    "Falha de rede ou timeout ao acessar a Pluggy."
+                ) from None
         if raw is None:
             raise SpikeError("A Pluggy não retornou resposta.")
 
@@ -460,7 +462,9 @@ class CallbackStore:
             )
 
 
-def make_handler(connect_token: str, store: CallbackStore) -> type[BaseHTTPRequestHandler]:
+def make_handler(
+    connect_token: str, store: CallbackStore
+) -> type[BaseHTTPRequestHandler]:
     page = _widget_html(connect_token)
 
     class Handler(BaseHTTPRequestHandler):
@@ -606,9 +610,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.command == "probe":
             report = probe_report(client.list_sandbox_connectors(api_key))
-            output = local_output_path(
-                args.output or default_report_path("probe")
-            )
+            output = local_output_path(args.output or default_report_path("probe"))
             write_report(
                 report,
                 output,
@@ -644,9 +646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 item=item,
                 products=product_payloads,
             )
-            output = local_output_path(
-                args.output or default_report_path("collection")
-            )
+            output = local_output_path(args.output or default_report_path("collection"))
             write_report(
                 report,
                 output,

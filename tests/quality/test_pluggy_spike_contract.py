@@ -67,8 +67,7 @@ def test_client_uses_widget_flow_without_direct_item_creation() -> None:
     assert connect_token == "connect-token-secret"
     assert module.metadata_inventory(connectors)["record_count"] == 1
     assert not any(
-        method == "POST" and url.endswith("/items")
-        for method, url, _ in calls
+        method == "POST" and url.endswith("/items") for method, url, _ in calls
     )
 
 
