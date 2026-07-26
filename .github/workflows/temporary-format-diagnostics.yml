@@ -1,0 +1,38 @@
+name: Temporary Format Diagnostics
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+    paths:
+      - tests/quality/test_diagnostics_contract.py
+      - .github/workflows/temporary-format-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Format exact test file
+        run: |
+          python -m pip install --disable-pip-version-check ruff==0.15.22
+          python -m ruff format tests/quality/test_diagnostics_contract.py
+      - name: Upload formatted file
+        uses: actions/upload-artifact@v4
+        with:
+          name: formatted-diagnostics-test-${{ github.run_id }}
+          path: tests/quality/test_diagnostics_contract.py
+          retention-days: 1
+          if-no-files-found: error
