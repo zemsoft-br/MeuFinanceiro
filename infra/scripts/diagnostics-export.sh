@@ -309,7 +309,7 @@ from pathlib import Path
 root = Path(sys.argv[1])
 patterns = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
-    re.compile(r"(?i)postgres(?:ql)?://[^\s/]+@"),
+    re.compile(r"(?i)postgres(?:ql)?://(?!\[REDACTED\]@)[^\s/]+@"),
     re.compile(r"(?i)\b(?:POSTGRES_PASSWORD|APP_DATABASE_PASSWORD|DATABASE_URL|ACCESS_TOKEN|REFRESH_TOKEN|CLIENT_SECRET|PRIVATE_KEY)\b\s*[:=]\s*(?!\[REDACTED\])\S+"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
 )

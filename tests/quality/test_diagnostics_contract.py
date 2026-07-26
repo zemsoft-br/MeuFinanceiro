@@ -74,12 +74,8 @@ def test_collection_never_copies_or_reads_secret_files_as_text() -> None:
 
     assert 'sha256sum "$ENV_FILE"' in shell
     assert 'sha256sum "$KEYRING_FILE"' in shell
-    assert (
-        "Get-FileHash -Algorithm SHA256 -LiteralPath $EnvFile" in powershell
-    )
-    assert (
-        "Get-FileHash -Algorithm SHA256 -LiteralPath $KeyringFile" in powershell
-    )
+    assert "Get-FileHash -Algorithm SHA256 -LiteralPath $EnvFile" in powershell
+    assert "Get-FileHash -Algorithm SHA256 -LiteralPath $KeyringFile" in powershell
 
 
 def test_collection_is_read_only_and_avoids_raw_inspection() -> None:
@@ -142,7 +138,7 @@ def test_doctors_do_not_mutate_the_installation() -> None:
             "migrate",
             "backup",
             "remove-item -literalpath $envfile",
-            "rm -f \"$env_file\"",
+            'rm -f "$env_file"',
         ):
             assert forbidden not in lowered
 

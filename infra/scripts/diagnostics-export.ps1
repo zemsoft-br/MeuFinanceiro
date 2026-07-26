@@ -230,7 +230,13 @@ tracked_changes_end
                 }
             }
         )
-        Write-SanitizedFile (Join-Path $StagingDirectory "compose-ps.json") ($selected | ConvertTo-Json -Depth 6)
+        $composePsJson = if ($selected.Count -eq 0) {
+    "[]"
+}
+else {
+    $selected | ConvertTo-Json -Depth 6
+}
+Write-SanitizedFile (Join-Path $StagingDirectory "compose-ps.json") $composePsJson
 
         $logs = Invoke-Compose @(
             "logs", "--no-color", "--tail=200",
