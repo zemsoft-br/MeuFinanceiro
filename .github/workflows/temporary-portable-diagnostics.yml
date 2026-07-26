@@ -1,0 +1,88 @@
+name: Temporary Portable Diagnostics
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+    paths:
+      - .github/workflows/temporary-portable-diagnostics.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Apply portable hash helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("infra/scripts/diagnostics-export.sh")
+          text = path.read_text(encoding="utf-8")
+          anchor = '''sanitize_to() {
+            local destination=$1
+            python3 "$SANITIZER" "$ROOT_DIR" "${HOME:-}" > "$destination"
+          }
+
+          '''
+          helper = '''sanitize_to() {
+            local destination=$1
+            python3 "$SANITIZER" "$ROOT_DIR" "${HOME:-}" > "$destination"
+          }
+
+          sha256_file() {
+            python3 - "$1" <<'PY_HASH'
+          import hashlib
+          import sys
+
+          digest = hashlib.sha256()
+          with open(sys.argv[1], "rb") as handle:
+              for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                  digest.update(chunk)
+          print(digest.hexdigest())
+          PY_HASH
+          }
+
+          '''
+          if text.count(anchor) != 1:
+              raise SystemExit("âncora do sanitizador não encontrada exatamente uma vez")
+          text = text.replace(anchor, helper)
+          replacements = {
+              '''echo "env_sha256=$(sha256sum "$ENV_FILE" | awk '{print $1}')"''':
+                  '''echo "env_sha256=$(sha256_file "$ENV_FILE")"''',
+              '''echo "keyring_sha256=$(sha256sum "$KEYRING_FILE" | awk '{print $1}')"''':
+                  '''echo "keyring_sha256=$(sha256_file "$KEYRING_FILE")"''',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"hash esperado não encontrado: {old}")
+              text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8")
+          PY
+          rm .github/workflows/temporary-portable-diagnostics.yml
+      - name: Publish final branch state
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git config user.name "Vinicius Eduardo Dezem"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add \
+            infra/scripts/diagnostics-export.sh \
+            .github/workflows/temporary-portable-diagnostics.yml
+          git commit -s -m "fix(diagnostics): use portable SHA-256 helper"
+          git push origin "HEAD:$HEAD_BRANCH"
