@@ -53,6 +53,11 @@ def test_exporters_exist_and_use_stable_bundle_contract() -> None:
     assert '"[]"' in powershell
 
 
+def test_powershell_scripts_use_utf8_bom_for_windows_51() -> None:
+    for path in (DOCTOR_PS1, EXPORT_PS1):
+        assert path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
 def test_powershell_native_capture_handles_empty_streams() -> None:
     powershell = read(EXPORT_PS1)
 
