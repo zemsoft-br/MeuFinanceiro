@@ -13,10 +13,11 @@ on:
       - .github/workflows/pluggy-format-snapshot.yml
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -24,7 +25,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -41,13 +42,18 @@ jobs:
           tests/quality/test_pluggy_spike_contract.py
           infra/scripts/run-quality.py
 
-      - name: Upload formatted snapshot
-        uses: actions/upload-artifact@v4
-        with:
-          name: pluggy-formatted-${{ github.run_id }}
-          path: |
-            tools/pluggy-spike/pluggy_spike.py
-            tests/quality/test_pluggy_spike_contract.py
-            infra/scripts/run-quality.py
-          if-no-files-found: error
-          retention-days: 1
+      - name: Commit formatted files and remove temporary workflow
+        env:
+          HEAD_BRANCH: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          rm .github/workflows/pluggy-format-snapshot.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            tools/pluggy-spike/pluggy_spike.py \
+            tests/quality/test_pluggy_spike_contract.py \
+            infra/scripts/run-quality.py \
+            .github/workflows/pluggy-format-snapshot.yml
+          git commit --signoff -m 'style(pluggy): apply exact Ruff formatting'
+          git push origin "HEAD:$HEAD_BRANCH"
