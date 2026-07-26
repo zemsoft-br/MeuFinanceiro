@@ -91,10 +91,11 @@ def test_update_preserves_configuration_and_discovers_volume_identity() -> None:
     for content in (shell, powershell):
         assert "EnvHash" in content or "ENV_HASH" in content
         assert "KeyringHash" in content or "KEYRING_HASH" in content
-        assert 'Destination "/var/lib/postgresql"' in content
         assert "/var/lib/postgresql/data" not in content
         assert "VolumeFingerprint" in content or "VOLUME_FINGERPRINT" in content
         assert "meufinanceiro_postgres_data" not in content
+    assert 'Destination "/var/lib/postgresql"' in shell
+    assert 'Destination -eq "/var/lib/postgresql"' in powershell
     assert "get_volume_description" in shell
     assert "Get-VolumeFingerprint([string]$ProjectDirectory)" in powershell
 
