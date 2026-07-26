@@ -247,10 +247,29 @@ tracked_changes_end
         )
         Write-SanitizedFile (Join-Path $StagingDirectory "logs.txt") ($logs.Stdout + "`n" + $logs.Stderr)
 
-        $schema = Invoke-Compose @(
-            "exec", "-T", "postgres", "sh", "-c",
-            'psql --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" --tuples-only --no-align --command "SELECT version_num FROM alembic_version;"'
-        )
+        $postgresUser = Invoke-Compose @("exec", "-T", "postgres", "printenv", "POSTGRES_USER")
+        $postgresDb = Invoke-Compose @("exec", "-T", "postgres", "printenv", "POSTGRES_DB")
+        $schema = if (
+            $postgresUser.ExitCode -eq 0 -and
+            $postgresDb.ExitCode -eq 0 -and
+            -not [string]::IsNullOrWhiteSpace($postgresUser.Stdout) -and
+            -not [string]::IsNullOrWhiteSpace($postgresDb.Stdout)
+        ) {
+            Invoke-Compose @(
+                "exec", "-T", "postgres", "psql",
+                "--username", $postgresUser.Stdout.Trim(),
+                "--dbname", $postgresDb.Stdout.Trim(),
+                "--tuples-only", "--no-align",
+                "--command", "SELECT version_num FROM alembic_version;"
+            )
+        }
+        else {
+            [pscustomobject]@{
+                ExitCode = 1
+                Stdout = ""
+                Stderr = "POSTGRES_USER ou POSTGRES_DB indisponível no container."
+            }
+        }
         $schemaValue = if ($schema.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($schema.Stdout)) {
             @($schema.Stdout -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })[-1].Trim()
         }
