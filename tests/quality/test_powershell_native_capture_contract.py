@@ -19,9 +19,7 @@ def test_native_capture_handles_empty_output_on_windows_powershell() -> None:
 
 
 def test_update_volume_discovery_avoids_go_templates() -> None:
-    content = (ROOT / "infra/scripts/update-foundation.ps1").read_text(
-        encoding="utf-8"
-    )
+    content = (ROOT / "infra/scripts/update-foundation.ps1").read_text(encoding="utf-8")
 
     assert '"inspect", "--format"' not in content
     assert '"volume", "inspect", $volumeName' in content
