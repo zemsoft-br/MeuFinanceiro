@@ -96,6 +96,19 @@ sanitize_to() {
   python3 "$SANITIZER" "$ROOT_DIR" "${HOME:-}" > "$destination"
 }
 
+sha256_file() {
+  python3 - "$1" <<'PY_HASH'
+import hashlib
+import sys
+
+digest = hashlib.sha256()
+with open(sys.argv[1], "rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+print(digest.hexdigest())
+PY_HASH
+}
+
 write_command() {
   local destination=$1
   shift
@@ -171,13 +184,13 @@ EOF
 {
   if [[ -f "$ENV_FILE" ]]; then
     echo "env_present=true"
-    echo "env_sha256=$(sha256sum "$ENV_FILE" | awk '{print $1}')"
+    echo "env_sha256=$(sha256_file "$ENV_FILE")"
   else
     echo "env_present=false"
   fi
   if [[ -f "$KEYRING_FILE" ]]; then
     echo "keyring_present=true"
-    echo "keyring_sha256=$(sha256sum "$KEYRING_FILE" | awk '{print $1}')"
+    echo "keyring_sha256=$(sha256_file "$KEYRING_FILE")"
   else
     echo "keyring_present=false"
   fi
