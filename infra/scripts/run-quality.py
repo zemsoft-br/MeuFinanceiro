@@ -30,6 +30,7 @@ PYTHON_PATHS = (
     "apps/worker",
     "infra/scripts",
     "tests/quality",
+    "tools/pluggy-spike",
 )
 
 
@@ -172,6 +173,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             "packages/persistence/src",
             "apps/api/app",
             "apps/worker/worker",
+            "tools/pluggy-spike/pluggy_spike.py",
         ]
     )
     run(

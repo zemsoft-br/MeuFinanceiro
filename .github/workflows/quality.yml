@@ -144,17 +144,18 @@ jobs:
       - name: Lint Python
         run: >-
           .quality-venv/bin/python -m ruff check
-          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality
+          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
 
       - name: Check Python formatting
         run: >-
           .quality-venv/bin/python -m ruff format --check
-          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality
+          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
 
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
           packages/security/src packages/persistence/src apps/api/app apps/worker/worker
+          tools/pluggy-spike/pluggy_spike.py
 
       - name: Test Python
         id: python_tests
