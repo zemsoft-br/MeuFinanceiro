@@ -1,0 +1,53 @@
+name: Pluggy Mypy Snapshot
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+    paths:
+      - tools/pluggy-spike/pluggy_spike.py
+      - .github/workflows/pluggy-mypy-snapshot.yml
+
+permissions:
+  contents: read
+
+jobs:
+  mypy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install exact mypy
+        run: python -m pip install --disable-pip-version-check mypy==2.3.0
+
+      - name: Capture strict type-check report
+        shell: bash
+        run: |
+          set +e
+          python -m mypy --strict tools/pluggy-spike/pluggy_spike.py > mypy.log 2>&1
+          status=$?
+          cat mypy.log
+          printf 'exit_code=%s\n' "$status" > mypy-status.txt
+          exit 0
+
+      - name: Upload mypy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: pluggy-mypy-${{ github.run_id }}
+          path: |
+            mypy.log
+            mypy-status.txt
+          if-no-files-found: error
+          retention-days: 1
