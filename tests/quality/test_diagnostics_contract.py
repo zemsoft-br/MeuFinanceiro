@@ -48,6 +48,9 @@ def test_exporters_exist_and_use_stable_bundle_contract() -> None:
     assert ".tar.gz" in shell
     assert "Compress-Archive" in powershell
     assert ".zip" in powershell
+    assert "(?!\\[REDACTED\\]@)" in shell
+    assert "$selected.Count -eq 0" in powershell
+    assert '"[]"' in powershell
 
 
 def test_collection_never_copies_or_reads_secret_files_as_text() -> None:
