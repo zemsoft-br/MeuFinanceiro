@@ -53,6 +53,16 @@ def test_exporters_exist_and_use_stable_bundle_contract() -> None:
     assert '"[]"' in powershell
 
 
+def test_powershell_native_capture_handles_empty_streams() -> None:
+    powershell = read(EXPORT_PS1)
+
+    assert "$exitCode = $LASTEXITCODE" in powershell
+    assert "[System.IO.File]::ReadAllText($stdoutPath).Trim()" in powershell
+    assert "[System.IO.File]::ReadAllText($stderrPath).Trim()" in powershell
+    assert "Get-Content -LiteralPath $stdoutPath -Raw" not in powershell
+    assert "Get-Content -LiteralPath $stderrPath -Raw" not in powershell
+
+
 def test_collection_never_copies_or_reads_secret_files_as_text() -> None:
     shell = read(EXPORT_SH)
     powershell = read(EXPORT_PS1)
