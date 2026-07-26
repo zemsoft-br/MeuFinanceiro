@@ -46,21 +46,18 @@ function Invoke-NativeCapture {
     }
 }
 
-function Test-Command([string]$Name) {
-    if (Get-Command $Name -ErrorAction SilentlyContinue) {
-        Write-Ok "$Name disponível"
-        return $true
-    }
-    Write-Fail "$Name não encontrado"
-    return $false
-}
-
 Write-Output "MeuFinanceiro doctor (somente leitura)"
 Write-Output "Raiz: <REPOSITORY>"
 Write-Output "Endpoint: $BaseUrl"
 
-$hasGit = Test-Command "git"
-$hasDocker = Test-Command "docker"
+$hasGit = $null -ne (Get-Command "git" -ErrorAction SilentlyContinue)
+$hasDocker = $null -ne (Get-Command "docker" -ErrorAction SilentlyContinue)
+
+if ($hasGit) { Write-Ok "git disponível" }
+else { Write-Fail "git não encontrado" }
+
+if ($hasDocker) { Write-Ok "docker disponível" }
+else { Write-Fail "docker não encontrado" }
 
 if ($hasGit) {
     $inside = Invoke-NativeCapture "git" @("-C", $RootDirectory, "rev-parse", "--is-inside-work-tree")
