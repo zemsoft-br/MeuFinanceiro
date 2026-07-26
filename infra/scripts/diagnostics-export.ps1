@@ -34,10 +34,13 @@ function Invoke-NativeCapture {
     $stderrPath = [System.IO.Path]::GetTempFileName()
     try {
         & $Command @Arguments 1> $stdoutPath 2> $stderrPath
+        $exitCode = $LASTEXITCODE
+        $stdout = [System.IO.File]::ReadAllText($stdoutPath).Trim()
+        $stderr = [System.IO.File]::ReadAllText($stderrPath).Trim()
         return [pscustomobject]@{
-            ExitCode = $LASTEXITCODE
-            Stdout = ([string](Get-Content -LiteralPath $stdoutPath -Raw -ErrorAction SilentlyContinue)).Trim()
-            Stderr = ([string](Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue)).Trim()
+            ExitCode = $exitCode
+            Stdout = $stdout
+            Stderr = $stderr
         }
     }
     finally {
@@ -231,12 +234,12 @@ tracked_changes_end
             }
         )
         $composePsJson = if ($selected.Count -eq 0) {
-    "[]"
-}
-else {
-    $selected | ConvertTo-Json -Depth 6
-}
-Write-SanitizedFile (Join-Path $StagingDirectory "compose-ps.json") $composePsJson
+            "[]"
+        }
+        else {
+            $selected | ConvertTo-Json -Depth 6
+        }
+        Write-SanitizedFile (Join-Path $StagingDirectory "compose-ps.json") $composePsJson
 
         $logs = Invoke-Compose @(
             "logs", "--no-color", "--tail=200",
