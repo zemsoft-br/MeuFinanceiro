@@ -75,8 +75,11 @@ def test_collection_never_copies_or_reads_secret_files_as_text() -> None:
     ):
         assert forbidden not in powershell
 
-    assert 'sha256sum "$ENV_FILE"' in shell
-    assert 'sha256sum "$KEYRING_FILE"' in shell
+    assert "sha256_file()" in shell
+    assert 'sha256_file "$ENV_FILE"' in shell
+    assert 'sha256_file "$KEYRING_FILE"' in shell
+    assert 'sha256sum "$ENV_FILE"' not in shell
+    assert 'sha256sum "$KEYRING_FILE"' not in shell
     assert "Get-FileHash -Algorithm SHA256 -LiteralPath $EnvFile" in powershell
     assert "Get-FileHash -Algorithm SHA256 -LiteralPath $KeyringFile" in powershell
 
