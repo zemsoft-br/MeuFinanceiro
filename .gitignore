@@ -5,6 +5,7 @@
 .secrets/
 .demo/
 .backups/
+.updates/
 
 # Python
 __pycache__/

@@ -149,6 +149,8 @@ A prova descartável não:
 
 Uma restauração destrutiva real exigirá uma entrega separada, com confirmação explícita, backup prévio e rollback documentado.
 
+Para atualizar o código sem apagar dados, consulte [Atualização segura e rollback controlado](SAFE_UPDATE_AND_ROLLBACK.md). Esse fluxo usa este bundle como pré-condição e não executa downgrade ou restauração destrutiva automaticamente.
+
 ## Consistência operacional
 
 A criação do bundle:

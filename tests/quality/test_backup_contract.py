@@ -136,8 +136,9 @@ def test_windows_backup_operators_capture_native_output_safely(
     assert "foreach ($temporaryPath in @($stdoutPath, $stderrPath))" in content
     assert "return (($output -join" not in content
     assert "Comando Docker não retornou a saída esperada." in content
-    assert "[string]::Concat($stderrText).Trim()" in content
-    assert "[string]::Concat($stdoutText).Trim()" in content
+    assert "([string]$stderrText).Trim()" in content
+    assert "([string]$stdoutText).Trim()" in content
+    assert "[string]::Concat(" not in content
     assert "[AllowEmptyString()]" in content
     assert "Saída Docker vazia para $Description." in content
 
