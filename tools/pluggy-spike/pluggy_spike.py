@@ -74,7 +74,7 @@ def utc_now() -> str:
 
 def _urlopen_transport(request: Request, timeout: float) -> bytes:
     with urlopen(request, timeout=timeout) as response:  # noqa: S310
-        return response.read()
+        return bytes(response.read())
 
 
 def credentials_from_environment(
