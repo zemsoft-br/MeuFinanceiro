@@ -170,10 +170,15 @@ class PluggyClient:
         )
         if not isinstance(payload, dict):
             raise SpikeError("Resposta de autenticação inválida.")
-        access_token = payload.get("accessToken")
-        if not isinstance(access_token, str) or not access_token:
-            raise SpikeError("Resposta de autenticação sem accessToken.")
-        return access_token
+        api_key = payload.get("apiKey")
+        if isinstance(api_key, str) and api_key:
+            return api_key
+
+        legacy_access_token = payload.get("accessToken")
+        if isinstance(legacy_access_token, str) and legacy_access_token:
+            return legacy_access_token
+
+        raise SpikeError("Resposta de autenticação sem apiKey.")
 
     def list_sandbox_connectors(self, api_key: str) -> JsonValue:
         query = urlencode({"sandbox": "true", "countries": "BR"})

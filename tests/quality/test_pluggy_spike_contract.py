@@ -46,7 +46,7 @@ def test_client_uses_widget_flow_without_direct_item_creation() -> None:
         assert timeout == 15.0
         calls.append((request.method, request.full_url, dict(request.headers)))
         if request.full_url.endswith("/auth"):
-            return json.dumps({"accessToken": "api-key-secret"}).encode()
+            return json.dumps({"apiKey": "api-key-secret"}).encode()
         if "/connectors?" in request.full_url:
             return json.dumps(
                 {"results": [{"id": 1, "name": "Pluggy Bank", "sandbox": True}]}
@@ -69,6 +69,42 @@ def test_client_uses_widget_flow_without_direct_item_creation() -> None:
     assert not any(
         method == "POST" and url.endswith("/items") for method, url, _ in calls
     )
+
+
+def test_authentication_accepts_legacy_access_token() -> None:
+    module = load_module()
+
+    def transport(request: Request, timeout: float) -> bytes:
+        del request, timeout
+        return json.dumps({"accessToken": "legacy-api-key"}).encode()
+
+    client = module.PluggyClient(
+        module.Credentials("client-id", "client-secret"),
+        transport=transport,
+    )
+
+    assert client.authenticate() == "legacy-api-key"
+
+
+def test_authentication_rejects_missing_api_key() -> None:
+    module = load_module()
+
+    def transport(request: Request, timeout: float) -> bytes:
+        del request, timeout
+        return json.dumps({"unexpected": "sensitive-value"}).encode()
+
+    client = module.PluggyClient(
+        module.Credentials("client-id", "client-secret"),
+        transport=transport,
+    )
+
+    try:
+        client.authenticate()
+    except module.SpikeError as exc:
+        assert str(exc) == "Resposta de autenticação sem apiKey."
+        assert "sensitive-value" not in str(exc)
+    else:
+        raise AssertionError("Missing API key response was accepted")
 
 
 def test_reports_drop_values_and_reject_tokens(tmp_path: Path) -> None:
