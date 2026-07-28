@@ -76,10 +76,7 @@ def test_fake_provider_satisfies_runtime_protocol() -> None:
 
     assert isinstance(provider, BankingProvider)
     assert provider.provider_name == "fake"
-    assert (
-        provider.get_connection("connection-1").status
-        is ConnectionStatus.AVAILABLE
-    )
+    assert provider.get_connection("connection-1").status is ConnectionStatus.AVAILABLE
     assert (
         provider.get_capabilities("connection-1")[0].capability
         is Capability.TRANSACTIONS
@@ -160,8 +157,7 @@ def test_disconnect_is_explicit_and_preserves_seeded_data() -> None:
     provider.disconnect("connection-1", "actor-1")
 
     assert (
-        provider.get_connection("connection-1").status
-        is ConnectionStatus.DISCONNECTED
+        provider.get_connection("connection-1").status is ConnectionStatus.DISCONNECTED
     )
     assert len(provider.list_accounts("connection-1")) == 1
     assert len(provider.list_transactions("account-1", None, None).records) == 2
