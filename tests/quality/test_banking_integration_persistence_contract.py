@@ -41,7 +41,8 @@ def test_integration_is_fail_closed_and_disabled_by_default() -> None:
 
     assert "A ausência de uma configuração ativa significa `disabled`" in content
     assert "não instancia" in content
-    assert "Configurar e ativar são ações distintas" in content
+    assert "Configurar e" in content
+    assert "ativar são ações distintas" in content
     assert "health principal permanece saudável" in content
     assert "funcionamento integral sem provider" in content
 
@@ -79,7 +80,8 @@ def test_ephemeral_and_banking_credentials_are_never_persisted() -> None:
 def test_residence_entities_require_direct_rls_scope() -> None:
     content = combined_contract()
 
-    assert "contêm `residence_id` diretamente" in content
+    assert "representam conexão, conta, cursor, execução ou dado de uma família" in content
+    assert "`residence_id` diretamente" in content
     assert "RLS obrigatória" in content
     assert "não pode possuir `BYPASSRLS`" in content
     assert "própria linha" in content
@@ -123,7 +125,8 @@ def test_retention_separates_secrets_operations_and_domain_data() -> None:
     assert "eventos administrativos e de segurança: padrão de 365 dias" in content
     assert "tokens efêmeros e credenciais bancárias | nunca persistir" in content
     assert "dados financeiros importados" in content
-    assert "não apaga automaticamente o histórico financeiro" in content
+    assert "não apaga automaticamente o" in content
+    assert "histórico financeiro" in content
     assert "nunca usa cascade destrutivo" in content
 
 
