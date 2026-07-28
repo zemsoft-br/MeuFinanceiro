@@ -1,18 +1,29 @@
 from __future__ import annotations
 
 import os
+import re
+import secrets
 from collections.abc import Iterator
 
+import psycopg
 import pytest
+from psycopg import sql
 from sqlalchemy import create_engine, delete
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 
+from meufinanceiro_persistence.bootstrap import normalize_psycopg_url
 from meufinanceiro_persistence.migrations import upgrade
 from meufinanceiro_persistence.schema import (
+    connection_capabilities,
+    connections,
     demo_fixture,
     demo_task_effects,
+    provider_configurations,
     task_queue,
 )
+
+_RUNTIME_PASSWORD = "disposable-rls-test-password"
+_ROLE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,62}$")
 
 
 @pytest.fixture(scope="session")
@@ -24,8 +35,43 @@ def database_url() -> str:
 
 
 @pytest.fixture(scope="session")
-def app_database_user() -> str:
-    return os.environ.get("TEST_APP_DATABASE_USER", "postgres")
+def app_database_user(database_url: str) -> Iterator[str]:
+    role_name = f"meufinanceiro_test_{secrets.token_hex(4)}"
+    if not _ROLE_PATTERN.fullmatch(role_name):
+        raise ValueError("TEST_APP_DATABASE_USER is not a valid PostgreSQL role")
+
+    with psycopg.connect(
+        normalize_psycopg_url(database_url),
+        autocommit=True,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql.SQL(
+                    "CREATE ROLE {} LOGIN PASSWORD %s "
+                    "NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                    "NOREPLICATION NOBYPASSRLS"
+                ).format(sql.Identifier(role_name)),
+                (_RUNTIME_PASSWORD,),
+            )
+    yield role_name
+
+    with psycopg.connect(
+        normalize_psycopg_url(database_url),
+        autocommit=True,
+    ) as connection:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                sql.SQL("DROP OWNED BY {}").format(sql.Identifier(role_name))
+            )
+            cursor.execute(sql.SQL("DROP ROLE {}").format(sql.Identifier(role_name)))
+
+
+@pytest.fixture(scope="session")
+def runtime_database_url(database_url: str, app_database_user: str) -> str:
+    return make_url(database_url).set(
+        username=app_database_user,
+        password=_RUNTIME_PASSWORD,
+    ).render_as_string(hide_password=False)
 
 
 @pytest.fixture(scope="session")
@@ -36,9 +82,19 @@ def engine(database_url: str, app_database_user: str) -> Iterator[Engine]:
     engine.dispose()
 
 
+@pytest.fixture(scope="session")
+def runtime_engine(runtime_database_url: str) -> Iterator[Engine]:
+    engine = create_engine(runtime_database_url, pool_pre_ping=True)
+    yield engine
+    engine.dispose()
+
+
 @pytest.fixture(autouse=True)
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
+        connection.execute(delete(connection_capabilities))
+        connection.execute(delete(connections))
+        connection.execute(delete(provider_configurations))
         connection.execute(delete(demo_fixture))
         connection.execute(delete(demo_task_effects))
         connection.execute(delete(task_queue))
