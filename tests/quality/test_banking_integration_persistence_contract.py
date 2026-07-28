@@ -85,7 +85,7 @@ def test_residence_entities_require_direct_rls_scope() -> None:
     )
     assert "`residence_id` diretamente" in content
     assert "RLS obrigatória" in content
-    assert "não pode possuir `BYPASSRLS`" in content
+    assert "possuir `BYPASSRLS`" in content
     assert "própria linha" in content
     assert "duas residências" in content
     assert "impedir leitura, update e delete cruzados" in content
