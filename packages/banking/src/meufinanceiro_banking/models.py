@@ -232,9 +232,7 @@ class ConnectionIntent:
             self.kind is ConnectionIntentKind.REAUTHENTICATE
             and external_connection_id is None
         ):
-            raise ValueError(
-                "external_connection_id is required for reauthentication"
-            )
+            raise ValueError("external_connection_id is required for reauthentication")
 
 
 @dataclass(frozen=True, slots=True)
@@ -280,9 +278,7 @@ class ConnectionState:
             ConnectionStatus.REAUTHENTICATION_REQUIRED,
         }
         if expected_user_action and not self.requires_user_action:
-            raise ValueError(
-                "requires_user_action must be true for the current status"
-            )
+            raise ValueError("requires_user_action must be true for the current status")
         if self.status is ConnectionStatus.DISCONNECTED and self.requires_user_action:
             raise ValueError("a disconnected connection cannot require user action")
 
@@ -446,9 +442,7 @@ class ExternalCreditCardBill:
         if self.minimum_payment is not None:
             _require_non_negative(self.minimum_payment, "minimum_payment")
             if self.minimum_payment > self.total_amount:
-                raise ValueError(
-                    "minimum_payment must not exceed total_amount"
-                )
+                raise ValueError("minimum_payment must not exceed total_amount")
         object.__setattr__(self, "currency", _clean_currency(self.currency))
 
 
@@ -563,6 +557,4 @@ class RefreshRequest:
             self.status is RefreshStatus.RATE_LIMITED
             and self.next_refresh_allowed_at is None
         ):
-            raise ValueError(
-                "next_refresh_allowed_at is required when rate limited"
-            )
+            raise ValueError("next_refresh_allowed_at is required when rate limited")
