@@ -40,7 +40,7 @@ def test_contract_separates_security_and_lifecycle_concepts() -> None:
     assert "API key" in contract
     assert "Connect Token" in contract
     assert "somente memória" in contract
-    assert "Criar uma nova conexão para renovar consentimento é proibido" in contract
+    assert "nova conexão para renovar consentimento é proibido" in contract
     assert "Desconectar é uma operação destrutiva" in contract
 
 
@@ -75,12 +75,14 @@ def test_capabilities_are_declared_per_connection() -> None:
 def test_manual_sync_is_bounded_and_webhook_optional() -> None:
     contract = read(CONTRACT)
 
-    assert "sincronização manual sem depender de endpoint público" in contract
+    assert "## Sincronização manual sem webhook obrigatório" in contract
+    assert "A primeira implementação produtiva deve suportar sincronização manual" in contract
+    assert "de endpoint público" in contract
     assert "Somente uma atualização pode permanecer ativa por conexão" in contract
     assert "Não existe polling contínuo" in contract
     assert "Ausência de informação segura bloqueia" in contract
     assert "Webhooks podem reduzir polling" in contract
-    assert "não são requisito para o modo local" in contract
+    assert "O modo local permanece funcional sem URL pública" in contract
     assert "nunca depender somente do webhook" in contract
 
 
@@ -92,8 +94,9 @@ def test_reconciliation_contract_preserves_pending_and_deletions() -> None:
 
     assert "repetir a mesma página não cria novos lançamentos" in contract
     assert "mudança de `PENDING` para `CONFIRMED` atualiza" in contract
-    assert "sem apagar o lançamento do usuário silenciosamente" in contract
-    assert "descrição, data e valor não formam chave suficiente" in contract
+    assert "exclusão externa marca a representação importada para revisão" in contract
+    assert "lançamento do usuário silenciosamente" in contract
+    assert "não pode depender apenas de descrição, data e valor" in contract
 
 
 def test_retry_policy_remains_bounded() -> None:
