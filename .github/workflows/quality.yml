@@ -165,7 +165,11 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: quality-python-format-${{ github.run_id }}
-          path: ${{ runner.temp }}/python-format.patch
+          path: |
+            ${{ runner.temp }}/python-format.patch
+            packages/banking/src/meufinanceiro_banking/models.py
+            packages/banking/tests/test_fake_provider.py
+            packages/banking/tests/test_public_contract.py
           retention-days: 3
           if-no-files-found: error
 
