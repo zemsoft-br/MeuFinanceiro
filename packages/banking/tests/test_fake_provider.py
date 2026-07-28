@@ -27,7 +27,9 @@ from meufinanceiro_banking import (
 NOW = datetime(2026, 7, 28, 12, 0, tzinfo=UTC)
 
 
-def build_provider(*, next_refresh_allowed_at: datetime | None = None) -> FakeBankingProvider:
+def build_provider(
+    *, next_refresh_allowed_at: datetime | None = None
+) -> FakeBankingProvider:
     provider = FakeBankingProvider(clock=lambda: NOW, page_size=2)
     capability = ConnectionCapability(
         capability=Capability.TRANSACTIONS,
@@ -74,8 +76,14 @@ def test_fake_provider_satisfies_runtime_protocol() -> None:
 
     assert isinstance(provider, BankingProvider)
     assert provider.provider_name == "fake"
-    assert provider.get_connection("connection-1").status is ConnectionStatus.AVAILABLE
-    assert provider.get_capabilities("connection-1")[0].capability is Capability.TRANSACTIONS
+    assert (
+        provider.get_connection("connection-1").status
+        is ConnectionStatus.AVAILABLE
+    )
+    assert (
+        provider.get_capabilities("connection-1")[0].capability
+        is Capability.TRANSACTIONS
+    )
 
 
 def test_intents_are_deterministic_and_do_not_expose_tokens() -> None:
@@ -151,7 +159,10 @@ def test_disconnect_is_explicit_and_preserves_seeded_data() -> None:
 
     provider.disconnect("connection-1", "actor-1")
 
-    assert provider.get_connection("connection-1").status is ConnectionStatus.DISCONNECTED
+    assert (
+        provider.get_connection("connection-1").status
+        is ConnectionStatus.DISCONNECTED
+    )
     assert len(provider.list_accounts("connection-1")) == 1
     assert len(provider.list_transactions("account-1", None, None).records) == 2
     with pytest.raises(BankingProviderError) as captured:
