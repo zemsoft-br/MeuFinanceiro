@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -101,4 +103,192 @@ demo_fixture = Table(
         name="ck_demo_fixture_checksum_sha256",
     ),
     schema="infra",
+)
+
+
+provider_configurations = Table(
+    "provider_configurations",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("installation_id", UUID(as_uuid=True), nullable=False),
+    Column("provider", String(64), nullable=False),
+    Column("state", String(16), nullable=False),
+    Column("client_id_envelope", Text, nullable=True),
+    Column("client_secret_envelope", Text, nullable=True),
+    Column("configuration_revision", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("enabled_at", DateTime(timezone=True), nullable=True),
+    Column("disabled_at", DateTime(timezone=True), nullable=True),
+    CheckConstraint(
+        "provider ~ '^[a-z][a-z0-9_]{0,62}$'",
+        name="ck_provider_configurations_provider",
+    ),
+    CheckConstraint(
+        "state IN ('disabled', 'configured', 'enabled')",
+        name="ck_provider_configurations_state",
+    ),
+    CheckConstraint(
+        "configuration_revision > 0",
+        name="ck_provider_configurations_revision_positive",
+    ),
+    CheckConstraint(
+        "(client_id_envelope IS NULL) = (client_secret_envelope IS NULL)",
+        name="ck_provider_configurations_envelopes_paired",
+    ),
+    CheckConstraint(
+        "state = 'disabled' OR "
+        "(client_id_envelope IS NOT NULL AND client_secret_envelope IS NOT NULL)",
+        name="ck_provider_configurations_state_credentials",
+    ),
+    CheckConstraint(
+        "state <> 'enabled' OR enabled_at IS NOT NULL",
+        name="ck_provider_configurations_enabled_at",
+    ),
+    UniqueConstraint(
+        "installation_id",
+        "provider",
+        name="uq_provider_configurations_installation_provider",
+    ),
+    UniqueConstraint(
+        "id",
+        "installation_id",
+        "provider",
+        name="uq_provider_configurations_scope",
+    ),
+    schema="integrations",
+)
+
+
+connections = Table(
+    "connections",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("installation_id", UUID(as_uuid=True), nullable=False),
+    Column("residence_id", UUID(as_uuid=True), nullable=False),
+    Column("provider", String(64), nullable=False),
+    Column("provider_configuration_id", UUID(as_uuid=True), nullable=False),
+    Column("external_connection_id", String(512), nullable=False),
+    Column("status", String(32), nullable=False),
+    Column("requires_user_action", Boolean, nullable=False),
+    Column("last_successful_sync_at", DateTime(timezone=True), nullable=True),
+    Column("last_attempt_at", DateTime(timezone=True), nullable=True),
+    Column("next_refresh_allowed_at", DateTime(timezone=True), nullable=True),
+    Column("consent_expires_at", DateTime(timezone=True), nullable=True),
+    Column("provider_reason_code", String(128), nullable=True),
+    Column("disconnected_at", DateTime(timezone=True), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "provider ~ '^[a-z][a-z0-9_]{0,62}$'",
+        name="ck_connections_provider",
+    ),
+    CheckConstraint(
+        "status IN ("
+        "'PENDING_USER_ACTION', 'SYNC_REQUESTED', 'SYNCING', 'AVAILABLE', "
+        "'PARTIAL', 'REAUTHENTICATION_REQUIRED', 'TEMPORARILY_UNAVAILABLE', "
+        "'RATE_LIMITED', 'DISCONNECTED', 'FAILED')",
+        name="ck_connections_status",
+    ),
+    CheckConstraint(
+        "provider_reason_code IS NULL OR "
+        "provider_reason_code ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'",
+        name="ck_connections_provider_reason_code",
+    ),
+    CheckConstraint(
+        "status NOT IN ('PENDING_USER_ACTION', 'REAUTHENTICATION_REQUIRED') "
+        "OR requires_user_action",
+        name="ck_connections_required_user_action",
+    ),
+    CheckConstraint(
+        "status <> 'DISCONNECTED' OR "
+        "(NOT requires_user_action AND disconnected_at IS NOT NULL)",
+        name="ck_connections_disconnected_state",
+    ),
+    ForeignKeyConstraint(
+        ["provider_configuration_id", "installation_id", "provider"],
+        [
+            "integrations.provider_configurations.id",
+            "integrations.provider_configurations.installation_id",
+            "integrations.provider_configurations.provider",
+        ],
+        ondelete="RESTRICT",
+        name="fk_connections_provider_configuration_scope",
+    ),
+    UniqueConstraint(
+        "installation_id",
+        "provider",
+        "external_connection_id",
+        name="uq_connections_external",
+    ),
+    UniqueConstraint(
+        "id",
+        "residence_id",
+        name="uq_connections_residence_scope",
+    ),
+    schema="integrations",
+)
+
+Index(
+    "ix_connections_residence_status",
+    connections.c.residence_id,
+    connections.c.status,
+)
+
+
+connection_capabilities = Table(
+    "connection_capabilities",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("residence_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("capability", String(64), nullable=False),
+    Column("state", String(32), nullable=False),
+    Column("source", String(16), nullable=False),
+    Column("provider_reason_code", String(128), nullable=True),
+    Column("observed_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "capability IN ("
+        "'identity', 'bank_accounts', 'credit_accounts', 'transactions', "
+        "'credit_card_bills', 'investments', 'loans', 'manual_refresh', "
+        "'consent_renewal', 'disconnect', 'webhooks')",
+        name="ck_connection_capabilities_capability",
+    ),
+    CheckConstraint(
+        "state IN ("
+        "'SUPPORTED', 'NOT_AVAILABLE', 'REQUIRES_USER_ACTION', "
+        "'NOT_OBSERVED', 'UNKNOWN')",
+        name="ck_connection_capabilities_state",
+    ),
+    CheckConstraint(
+        "source IN ('CONTRACT', 'OBSERVATION', 'OPERATION')",
+        name="ck_connection_capabilities_source",
+    ),
+    CheckConstraint(
+        "provider_reason_code IS NULL OR "
+        "provider_reason_code ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'",
+        name="ck_connection_capabilities_provider_reason_code",
+    ),
+    ForeignKeyConstraint(
+        ["connection_id", "residence_id"],
+        [
+            "integrations.connections.id",
+            "integrations.connections.residence_id",
+        ],
+        ondelete="CASCADE",
+        name="fk_connection_capabilities_connection_scope",
+    ),
+    UniqueConstraint(
+        "connection_id",
+        "capability",
+        name="uq_connection_capabilities_connection_capability",
+    ),
+    schema="integrations",
+)
+
+Index(
+    "ix_connection_capabilities_residence_connection",
+    connection_capabilities.c.residence_id,
+    connection_capabilities.c.connection_id,
 )
