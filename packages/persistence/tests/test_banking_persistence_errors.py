@@ -9,10 +9,54 @@ from sqlalchemy.engine import Engine
 
 from meufinanceiro_persistence import (
     BankingIntegrationStore,
+    BankingPersistenceError,
     ConnectionConflictError,
     ProviderConfigurationState,
     StoredConnectionStatus,
 )
+
+
+def test_configuration_database_failure_never_echoes_credentials(
+    engine: Engine,
+    runtime_engine: Engine,
+    app_database_user: str,
+) -> None:
+    client_id = "sensitive-client-id"
+    client_secret = "sensitive-client-secret"
+
+    with engine.begin() as connection:
+        quoted_role = connection.dialect.identifier_preparer.quote(app_database_user)
+        connection.exec_driver_sql(
+            "REVOKE INSERT ON integrations.provider_configurations "
+            f"FROM {quoted_role}"
+        )
+
+    try:
+        store = BankingIntegrationStore(
+            runtime_engine,
+            SecretCipher(create_keyring()),
+        )
+        with pytest.raises(BankingPersistenceError) as captured:
+            store.create_configuration(
+                installation_id=uuid4(),
+                provider="pluggy",
+                client_id=client_id,
+                client_secret=client_secret,
+            )
+    finally:
+        with engine.begin() as connection:
+            quoted_role = connection.dialect.identifier_preparer.quote(
+                app_database_user
+            )
+            connection.exec_driver_sql(
+                "GRANT INSERT ON integrations.provider_configurations "
+                f"TO {quoted_role}"
+            )
+
+    assert str(captured.value) == "provider configuration could not be persisted"
+    assert client_id not in str(captured.value)
+    assert client_secret not in str(captured.value)
+    assert captured.value.__cause__ is None
 
 
 def test_cross_residence_conflict_never_echoes_external_identifier(
