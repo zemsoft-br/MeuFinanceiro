@@ -149,29 +149,11 @@ jobs:
           packages/banking packages/security packages/persistence apps/api apps/worker
           infra/scripts tests/quality tools/pluggy-spike
 
-      - name: Generate Python formatting diagnostic
-        id: python_format
-        shell: bash
-        run: |
-          set -euo pipefail
-          .quality-venv/bin/python -m ruff format \
-            packages/banking packages/security packages/persistence \
-            apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
-          git diff --binary > "$RUNNER_TEMP/python-format.patch"
-          test ! -s "$RUNNER_TEMP/python-format.patch"
-
-      - name: Upload Python formatting diagnostics
-        if: failure() && steps.python_format.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-python-format-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/python-format.patch
-            packages/banking/src/meufinanceiro_banking/models.py
-            packages/banking/tests/test_fake_provider.py
-            packages/banking/tests/test_public_contract.py
-          retention-days: 3
-          if-no-files-found: error
+      - name: Check Python formatting
+        run: >-
+          .quality-venv/bin/python -m ruff format --check
+          packages/banking packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
 
       - name: Type-check Python
         run: >-
