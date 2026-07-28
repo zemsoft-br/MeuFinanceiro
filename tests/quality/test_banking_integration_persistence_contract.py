@@ -80,7 +80,9 @@ def test_ephemeral_and_banking_credentials_are_never_persisted() -> None:
 def test_residence_entities_require_direct_rls_scope() -> None:
     content = combined_contract()
 
-    assert "representam conexão, conta, cursor, execução ou dado de uma família" in content
+    assert (
+        "representam conexão, conta, cursor, execução ou dado de uma família" in content
+    )
     assert "`residence_id` diretamente" in content
     assert "RLS obrigatória" in content
     assert "não pode possuir `BYPASSRLS`" in content
