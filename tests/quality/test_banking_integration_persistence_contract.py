@@ -44,7 +44,7 @@ def test_integration_is_fail_closed_and_disabled_by_default() -> None:
     assert "não instancia" in content
     assert "Configurar e ativar são ações distintas" in content
     assert "health principal permanece saudável" in content
-    assert "continua funcional sem provider" in content
+    assert "funcionamento integral sem provider" in content
 
 
 def test_application_credentials_use_context_bound_envelopes() -> None:
