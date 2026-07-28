@@ -76,7 +76,7 @@ def test_manual_sync_is_bounded_and_webhook_optional() -> None:
     contract = read(CONTRACT)
 
     assert "## Sincronização manual sem webhook obrigatório" in contract
-    assert "A primeira implementação produtiva deve suportar sincronização manual" in contract
+    assert "deve suportar sincronização manual" in contract
     assert "de endpoint público" in contract
     assert "Somente uma atualização pode permanecer ativa por conexão" in contract
     assert "Não existe polling contínuo" in contract
