@@ -160,7 +160,7 @@ def test_external_page_freezes_records_and_validates_cursor() -> None:
 
 
 def test_currency_and_control_characters_are_rejected() -> None:
-    with pytest.raises(ValueError, match="three-letter"):
+    with pytest.raises(ValueError, match="currency"):
         ExternalAccount(
             external_account_id="account-1",
             external_connection_id="connection-1",
