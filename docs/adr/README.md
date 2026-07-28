@@ -10,6 +10,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0005 — Configuração segura, criptografia e gerenciamento de chaves](0005-security-configuration-and-key-management.md)
 - [ADR-0006 — Persistência e fila de tarefas no PostgreSQL](0006-postgresql-persistence-and-task-queue.md)
 - [ADR-0008 — Flutter como cliente canônico multiplataforma](0008-flutter-multiplatform-client.md)
+- [ADR-0012 — Persistência, segurança e feature flag da integração bancária](0012-banking-integration-persistence-security-and-feature-flag.md)
 
 ## Decisões propostas
 
