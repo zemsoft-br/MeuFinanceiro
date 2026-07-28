@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from .models import (
+    ConnectionCapability,
     ConnectionIntent,
     ConnectionIntentKind,
     ConnectionState,
@@ -169,15 +170,16 @@ class FakeBankingProvider:
                 retryable=False,
                 safe_message="connection is disconnected",
             )
+        connection_id = connection.external_connection_id
         normalized_actor_id = _clean_identifier(actor_id, "actor_id")
         now = self._now()
         return ConnectionIntent(
             intent_id=self._next_id("reauth"),
             kind=ConnectionIntentKind.REAUTHENTICATE,
-            residence_id=self._residence_by_connection[external_connection_id],
+            residence_id=self._residence_by_connection[connection_id],
             actor_id=normalized_actor_id,
             expires_at=now + timedelta(minutes=5),
-            external_connection_id=external_connection_id,
+            external_connection_id=connection_id,
         )
 
     def get_connection(self, external_connection_id: str) -> ConnectionState:
@@ -197,7 +199,7 @@ class FakeBankingProvider:
     def get_capabilities(
         self,
         external_connection_id: str,
-    ) -> tuple:
+    ) -> tuple[ConnectionCapability, ...]:
         return self.get_connection(external_connection_id).capabilities
 
     def list_accounts(
@@ -277,6 +279,7 @@ class FakeBankingProvider:
     ) -> RefreshRequest:
         connection = self.get_connection(external_connection_id)
         _clean_identifier(actor_id, "actor_id")
+        connection_id = connection.external_connection_id
         if connection.status is ConnectionStatus.DISCONNECTED:
             raise BankingProviderError(
                 ProviderErrorCategory.CONFLICT,
@@ -286,7 +289,7 @@ class FakeBankingProvider:
         if connection.requires_user_action:
             return RefreshRequest(
                 request_id=self._next_id("refresh"),
-                external_connection_id=external_connection_id,
+                external_connection_id=connection_id,
                 status=RefreshStatus.REQUIRES_USER_ACTION,
                 requested_at=self._now(),
             )
@@ -296,14 +299,14 @@ class FakeBankingProvider:
         if next_allowed is not None and next_allowed > now:
             return RefreshRequest(
                 request_id=self._next_id("refresh"),
-                external_connection_id=external_connection_id,
+                external_connection_id=connection_id,
                 status=RefreshStatus.RATE_LIMITED,
                 requested_at=now,
                 next_refresh_allowed_at=next_allowed,
             )
         return RefreshRequest(
             request_id=self._next_id("refresh"),
-            external_connection_id=external_connection_id,
+            external_connection_id=connection_id,
             status=RefreshStatus.REQUESTED,
             requested_at=now,
             next_poll_at=now + timedelta(seconds=5),
@@ -312,7 +315,7 @@ class FakeBankingProvider:
     def disconnect(self, external_connection_id: str, actor_id: str) -> None:
         connection = self.get_connection(external_connection_id)
         _clean_identifier(actor_id, "actor_id")
-        self._connections[external_connection_id] = replace(
+        self._connections[connection.external_connection_id] = replace(
             connection,
             status=ConnectionStatus.DISCONNECTED,
             requires_user_action=False,
