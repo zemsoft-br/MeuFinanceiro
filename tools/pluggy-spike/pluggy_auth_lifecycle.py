@@ -255,9 +255,7 @@ class AuthLifecycleClient:
                 if exc.code == 429:
                     decision = rate_limit_decision(_header_mapping(exc))
                     trace.retry_after_observed |= decision.retry_after_present
-                    trace.rate_limit_reset_observed |= (
-                        decision.rate_limit_reset_present
-                    )
+                    trace.rate_limit_reset_observed |= decision.rate_limit_reset_present
                     if (
                         attempt < MAX_REQUEST_ATTEMPTS
                         and decision.wait_seconds is not None
