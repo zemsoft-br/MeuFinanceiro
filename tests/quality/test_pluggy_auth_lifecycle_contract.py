@@ -344,9 +344,7 @@ def test_report_uses_only_coarse_expiration_and_wait_metadata() -> None:
     )
     rendered = module.validate_report(report)
 
-    assert report["authentication"]["expiration_wait_bucket"] == (
-        "TWO_HOURS_OR_MORE"
-    )
+    assert report["authentication"]["expiration_wait_bucket"] == "TWO_HOURS_OR_MORE"
     assert "7260" not in rendered
     assert "X-API-KEY" not in rendered
     assert report["privacy"]["api_key_persisted"] is False
