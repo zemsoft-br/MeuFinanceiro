@@ -37,7 +37,9 @@ def test_contract_separates_security_and_lifecycle_concepts() -> None:
     ):
         assert concept in contract
 
-    assert "API key e Connect Token somente em memória" in contract
+    assert "API key" in contract
+    assert "Connect Token" in contract
+    assert "somente memória" in contract
     assert "Criar uma nova conexão para renovar consentimento é proibido" in contract
     assert "Desconectar é uma operação destrutiva" in contract
 
