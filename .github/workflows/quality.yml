@@ -57,6 +57,7 @@ jobs:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: |
+            packages/banking/pyproject.toml
             packages/security/pyproject.toml
             packages/persistence/pyproject.toml
             apps/api/pyproject.toml
@@ -136,6 +137,7 @@ jobs:
             mypy==2.3.0 \
             pip-audit==2.10.1 \
             ruff==0.15.22 \
+            -e './packages/banking[test]' \
             -e './packages/security[test]' \
             -e './packages/persistence[test]' \
             -e './apps/api[test]' \
@@ -144,18 +146,20 @@ jobs:
       - name: Lint Python
         run: >-
           .quality-venv/bin/python -m ruff check
-          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
+          packages/banking packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
 
       - name: Check Python formatting
         run: >-
           .quality-venv/bin/python -m ruff format --check
-          packages/security packages/persistence apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
+          packages/banking packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
 
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
-          packages/security/src packages/persistence/src apps/api/app apps/worker/worker
-          tools/pluggy-spike/pluggy_spike.py
+          packages/banking/src packages/security/src packages/persistence/src
+          apps/api/app apps/worker/worker tools/pluggy-spike/pluggy_spike.py
 
       - name: Test Python
         id: python_tests
@@ -163,7 +167,7 @@ jobs:
         run: |
           set -o pipefail
           .quality-venv/bin/python -m pytest \
-            packages/security/tests packages/persistence/tests \
+            packages/banking/tests packages/security/tests packages/persistence/tests \
             apps/api/tests apps/worker/tests tests/quality \
             2>&1 | tee "$RUNNER_TEMP/python-tests.log"
 
