@@ -51,8 +51,7 @@ def test_protocol_annotations_only_reference_neutral_models() -> None:
 
 def test_package_sources_do_not_import_external_runtime_libraries() -> None:
     sources = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in PACKAGE_ROOT.glob("*.py")
+        path.read_text(encoding="utf-8") for path in PACKAGE_ROOT.glob("*.py")
     ).lower()
 
     for forbidden_import in (
