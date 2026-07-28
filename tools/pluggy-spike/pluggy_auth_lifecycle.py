@@ -189,7 +189,7 @@ def _decode_json(raw: bytes) -> JsonValue:
 
 def _backoff_seconds(attempt: int, jitter: Jitter) -> float:
     base = min(RETRY_MAX_SECONDS, RETRY_BASE_SECONDS * (2 ** (attempt - 1)))
-    return min(RETRY_MAX_SECONDS, base + max(0.0, jitter(base)))
+    return float(min(RETRY_MAX_SECONDS, base + max(0.0, jitter(base))))
 
 
 class AuthLifecycleClient:
