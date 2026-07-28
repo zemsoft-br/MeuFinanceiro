@@ -5,8 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ADR = (
-    ROOT
-    / "docs/adr/0012-banking-integration-persistence-security-and-feature-flag.md"
+    ROOT / "docs/adr/0012-banking-integration-persistence-security-and-feature-flag.md"
 )
 MODEL = ROOT / "docs/architecture/BANKING_INTEGRATION_PERSISTENCE_MODEL.md"
 ADR_INDEX = ROOT / "docs/adr/README.md"
