@@ -24,6 +24,7 @@ TOOLS = (
     "ruff==0.15.22",
 )
 PYTHON_PATHS = (
+    "packages/banking",
     "packages/security",
     "packages/persistence",
     "apps/api",
@@ -148,6 +149,8 @@ def ensure_python_environment(recreate: bool) -> Path:
             "--disable-pip-version-check",
             *TOOLS,
             "-e",
+            "./packages/banking[test]",
+            "-e",
             "./packages/security[test]",
             "-e",
             "./packages/persistence[test]",
@@ -169,6 +172,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             "-m",
             "mypy",
             "--strict",
+            "packages/banking/src",
             "packages/security/src",
             "packages/persistence/src",
             "apps/api/app",
@@ -181,6 +185,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             str(python),
             "-m",
             "pytest",
+            "packages/banking/tests",
             "packages/security/tests",
             "packages/persistence/tests",
             "apps/api/tests",
