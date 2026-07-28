@@ -104,8 +104,11 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 
 | Pacote | Versão | Uso | Licença |
 |---|---:|---|---|
+| meufinanceiro-banking | 0.1.0 | protocolo neutro, DTOs imutáveis e provider fake sem I/O | AGPL-3.0-only |
 | meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
 | meufinanceiro-persistence | 0.1.0 | engine, transações, Alembic, health e fila PostgreSQL | AGPL-3.0-only |
+
+`meufinanceiro-banking` usa somente a biblioteca padrão do Python 3.13. O pacote não adiciona SDK bancário, cliente HTTP, serialização, persistência ou dependência transitiva de runtime. `pytest` permanece apenas no extra de testes.
 
 ## Ferramentas Python de qualidade
 

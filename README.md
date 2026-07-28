@@ -122,6 +122,7 @@ apps/
   app/       cliente Flutter canônico e fontes Web/PWA
   worker/    consumidor da fila persistente
 packages/
+  banking/   protocolo neutro, DTOs imutáveis e provider fake
   security/  keyring, criptografia, senhas e redaction
   persistence/ SQLAlchemy, Alembic, health, fila e fixture demo
   contracts/ contratos compartilhados futuros
