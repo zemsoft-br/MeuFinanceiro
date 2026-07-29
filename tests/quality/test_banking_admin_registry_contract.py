@@ -13,6 +13,7 @@ MAIN_SOURCE = (REPOSITORY_ROOT / "apps/api/app/main.py").read_text(encoding="utf
 CONFIG_SOURCE = (REPOSITORY_ROOT / "apps/api/app/core/config.py").read_text(
     encoding="utf-8"
 )
+COMPOSE_SOURCE = (REPOSITORY_ROOT / "compose.yaml").read_text(encoding="utf-8")
 
 
 def test_registry_remains_provider_neutral() -> None:
@@ -53,5 +54,6 @@ def test_default_runtime_registry_is_empty_and_frozen() -> None:
     assert ".register(" not in MAIN_SOURCE
 
 
-def test_banking_feature_flag_is_disabled_by_default() -> None:
+def test_banking_feature_flag_is_disabled_by_default_and_forwarded() -> None:
     assert "app_banking_enabled: bool = False" in CONFIG_SOURCE
+    assert "APP_BANKING_ENABLED: ${APP_BANKING_ENABLED:-false}" in COMPOSE_SOURCE
