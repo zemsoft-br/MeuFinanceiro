@@ -1,0 +1,54 @@
+name: Quality Format Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  format-diagnostic:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 69
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request head
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+
+      - name: Format banking persistence files
+        run: |
+          python -m ruff format \
+            packages/persistence/src/meufinanceiro_persistence/banking_store.py \
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0003_banking_persistence.py \
+            packages/persistence/tests/conftest.py \
+            packages/persistence/tests/test_banking_persistence.py \
+            packages/persistence/tests/test_banking_persistence_errors.py
+
+      - name: Upload formatted files
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-format-diagnostic-${{ github.run_id }}
+          path: |
+            packages/persistence/src/meufinanceiro_persistence/banking_store.py
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0003_banking_persistence.py
+            packages/persistence/tests/conftest.py
+            packages/persistence/tests/test_banking_persistence.py
+            packages/persistence/tests/test_banking_persistence_errors.py
+          retention-days: 1
+          if-no-files-found: error
