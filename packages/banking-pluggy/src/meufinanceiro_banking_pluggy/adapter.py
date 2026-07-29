@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from typing import NoReturn, TypeVar
 
 from meufinanceiro_banking import (
@@ -147,9 +147,7 @@ class PluggyBankingProvider:
             external_connection_id, "external_connection_id"
         )
         item = self._call_gateway(lambda: self._gateway.get_item(item_id))
-        if item.item_id != item_id:
-            self._invalid_snapshot()
-        return self._normalize(lambda: self._map_item(item))
+        return self._normalize(lambda: self._validate_and_map_item(item_id, item))
 
     def get_capabilities(
         self,
@@ -165,10 +163,8 @@ class PluggyBankingProvider:
             external_connection_id, "external_connection_id"
         )
         snapshots = self._call_gateway(lambda: self._gateway.list_accounts(item_id))
-        if any(snapshot.item_id != item_id for snapshot in snapshots):
-            self._invalid_snapshot()
         return self._normalize(
-            lambda: tuple(self._map_account(snapshot) for snapshot in snapshots)
+            lambda: self._validate_and_map_accounts(item_id, snapshots)
         )
 
     def list_transactions(
@@ -187,9 +183,9 @@ class PluggyBankingProvider:
                 changed_since,
             )
         )
-        if any(record.account_id != account_id for record in snapshot.records):
-            self._invalid_snapshot()
-        return self._normalize(lambda: self._map_transaction_page(snapshot))
+        return self._normalize(
+            lambda: self._validate_and_map_transaction_page(account_id, snapshot)
+        )
 
     def list_credit_card_bills(
         self,
@@ -223,6 +219,61 @@ class PluggyBankingProvider:
     def disconnect(self, external_connection_id: str, actor_id: str) -> None:
         del external_connection_id, actor_id
         self._unsupported()
+
+    @staticmethod
+    def _validate_and_map_item(
+        item_id: str,
+        value: object,
+    ) -> ConnectionState:
+        if not isinstance(value, PluggyItemSnapshot):
+            PluggyBankingProvider._invalid_snapshot()
+        if value.item_id != item_id or not isinstance(value.capabilities, tuple):
+            PluggyBankingProvider._invalid_snapshot()
+        if any(
+            not isinstance(snapshot, PluggyCapabilitySnapshot)
+            for snapshot in value.capabilities
+        ):
+            PluggyBankingProvider._invalid_snapshot()
+        return PluggyBankingProvider._map_item(value)
+
+    @staticmethod
+    def _validate_and_map_accounts(
+        item_id: str,
+        value: object,
+    ) -> tuple[ExternalAccount, ...]:
+        if not isinstance(value, tuple):
+            PluggyBankingProvider._invalid_snapshot()
+        mapped: list[ExternalAccount] = []
+        account_ids: set[str] = set()
+        for snapshot in value:
+            if not isinstance(snapshot, PluggyAccountSnapshot):
+                PluggyBankingProvider._invalid_snapshot()
+            if snapshot.item_id != item_id or snapshot.account_id in account_ids:
+                PluggyBankingProvider._invalid_snapshot()
+            account_ids.add(snapshot.account_id)
+            mapped.append(PluggyBankingProvider._map_account(snapshot))
+        return tuple(mapped)
+
+    @staticmethod
+    def _validate_and_map_transaction_page(
+        account_id: str,
+        value: object,
+    ) -> ExternalPage[ExternalTransaction]:
+        if not isinstance(value, PluggyTransactionPageSnapshot):
+            PluggyBankingProvider._invalid_snapshot()
+        if not isinstance(value.records, tuple):
+            PluggyBankingProvider._invalid_snapshot()
+        for record in value.records:
+            if not isinstance(record, PluggyTransactionSnapshot):
+                PluggyBankingProvider._invalid_snapshot()
+            if record.account_id != account_id:
+                PluggyBankingProvider._invalid_snapshot()
+            if not isinstance(record.effective_date, date) or isinstance(
+                record.effective_date,
+                datetime,
+            ):
+                PluggyBankingProvider._invalid_snapshot()
+        return PluggyBankingProvider._map_transaction_page(value)
 
     @staticmethod
     def _map_item(item: PluggyItemSnapshot) -> ConnectionState:
@@ -322,12 +373,7 @@ class PluggyBankingProvider:
         try:
             return operation()
         except PluggyGatewayError as error:
-            raise BankingProviderError(
-                _GATEWAY_ERROR_TO_PROVIDER[error.category],
-                retryable=error.retryable,
-                provider_reason_code=error.provider_reason_code,
-                safe_message="provider read operation failed",
-            ) from None
+            PluggyBankingProvider._raise_gateway_error(error)
         except Exception:
             raise BankingProviderError(
                 ProviderErrorCategory.INTERNAL,
@@ -336,10 +382,31 @@ class PluggyBankingProvider:
             ) from None
 
     @staticmethod
+    def _raise_gateway_error(error: PluggyGatewayError) -> NoReturn:
+        try:
+            if not isinstance(error.retryable, bool):
+                raise TypeError("retryable must be bool")
+            provider_error = BankingProviderError(
+                _GATEWAY_ERROR_TO_PROVIDER[error.category],
+                retryable=error.retryable,
+                provider_reason_code=error.provider_reason_code,
+                safe_message="provider read operation failed",
+            )
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise BankingProviderError(
+                ProviderErrorCategory.INTERNAL,
+                retryable=False,
+                safe_message="provider gateway failed",
+            ) from None
+        raise provider_error from None
+
+    @staticmethod
     def _normalize(operation: Callable[[], Result]) -> Result:
         try:
             return operation()
-        except (KeyError, TypeError, ValueError):
+        except BankingProviderError:
+            raise
+        except Exception:
             PluggyBankingProvider._invalid_snapshot()
 
     @staticmethod

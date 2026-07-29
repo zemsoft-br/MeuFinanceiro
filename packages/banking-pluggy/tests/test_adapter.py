@@ -360,3 +360,86 @@ def test_unsupported_operations_do_not_call_gateway() -> None:
         assert captured.value.retryable is False
 
     assert gateway.calls == []
+
+
+@pytest.mark.parametrize(
+    "operation",
+    ["connection", "accounts", "transactions"],
+)
+def test_malformed_gateway_return_types_are_sanitized(
+    operation: str,
+) -> None:
+    gateway = GatewayStub()
+    provider = PluggyBankingProvider(gateway)
+
+    if operation == "connection":
+        gateway.item = object()  # type: ignore[assignment]
+
+        def invocation() -> object:
+            return provider.get_connection("item-001")
+
+    elif operation == "accounts":
+        gateway.accounts = (object(),)  # type: ignore[assignment]
+
+        def invocation() -> object:
+            return provider.list_accounts("item-001")
+
+    else:
+        gateway.page = object()  # type: ignore[assignment]
+
+        def invocation() -> object:
+            return provider.list_transactions("account-bank", None, None)
+
+    with pytest.raises(BankingProviderError) as captured:
+        invocation()
+
+    assert captured.value.category is ProviderErrorCategory.INTERNAL
+    assert str(captured.value) == ("provider snapshot could not be normalized")
+    assert captured.value.__cause__ is None
+
+
+def test_invalid_effective_date_snapshot_is_rejected() -> None:
+    gateway = GatewayStub()
+    gateway.page = PluggyTransactionPageSnapshot(
+        records=(
+            PluggyTransactionSnapshot(
+                account_id="account-bank",
+                transaction_id="transaction-invalid-date",
+                state=PluggyTransactionState.POSTED,
+                effective_date="2026-07-20",  # type: ignore[arg-type]
+                amount=Decimal("1.00"),
+                currency="BRL",
+            ),
+        ),
+        next_cursor=None,
+        source_window="synthetic-window-invalid-date",
+        retrieved_at=NOW,
+    )
+    provider = PluggyBankingProvider(gateway)
+
+    with pytest.raises(BankingProviderError) as captured:
+        provider.list_transactions("account-bank", None, None)
+
+    assert captured.value.category is ProviderErrorCategory.INTERNAL
+    assert str(captured.value) == ("provider snapshot could not be normalized")
+    assert captured.value.__cause__ is None
+
+
+def test_malformed_gateway_error_is_sanitized() -> None:
+    gateway = GatewayStub()
+    error = PluggyGatewayError(
+        PluggyGatewayErrorCategory.INTERNAL,
+        retryable=False,
+    )
+    error.category = "sensitive-category"  # type: ignore[assignment]
+    error.retryable = "yes"  # type: ignore[assignment]
+    gateway.error = error
+    provider = PluggyBankingProvider(gateway)
+
+    with pytest.raises(BankingProviderError) as captured:
+        provider.get_connection("item-001")
+
+    assert captured.value.category is ProviderErrorCategory.INTERNAL
+    assert str(captured.value) == "provider gateway failed"
+    assert "sensitive-category" not in str(captured.value)
+    assert captured.value.__cause__ is None
