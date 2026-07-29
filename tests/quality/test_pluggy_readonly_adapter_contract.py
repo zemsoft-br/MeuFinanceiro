@@ -6,8 +6,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPOSITORY_ROOT / "packages/banking-pluggy"
 SOURCE_ROOT = PACKAGE_ROOT / "src/meufinanceiro_banking_pluggy"
 SOURCE_TEXT = "\n".join(
-    path.read_text(encoding="utf-8")
-    for path in sorted(SOURCE_ROOT.glob("*.py"))
+    path.read_text(encoding="utf-8") for path in sorted(SOURCE_ROOT.glob("*.py"))
 )
 PYPROJECT_TEXT = (PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
 API_MAIN_TEXT = (REPOSITORY_ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
@@ -17,12 +16,12 @@ API_DOCKERFILE_TEXT = (REPOSITORY_ROOT / "apps/api/Dockerfile").read_text(
 API_PYPROJECT_TEXT = (REPOSITORY_ROOT / "apps/api/pyproject.toml").read_text(
     encoding="utf-8"
 )
-QUALITY_WORKFLOW_TEXT = (
-    REPOSITORY_ROOT / ".github/workflows/quality.yml"
-).read_text(encoding="utf-8")
-LOCAL_QUALITY_TEXT = (
-    REPOSITORY_ROOT / "infra/scripts/run-quality.py"
-).read_text(encoding="utf-8")
+QUALITY_WORKFLOW_TEXT = (REPOSITORY_ROOT / ".github/workflows/quality.yml").read_text(
+    encoding="utf-8"
+)
+LOCAL_QUALITY_TEXT = (REPOSITORY_ROOT / "infra/scripts/run-quality.py").read_text(
+    encoding="utf-8"
+)
 
 
 def test_adapter_source_has_no_transport_or_secret_surface() -> None:

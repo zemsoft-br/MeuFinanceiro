@@ -156,9 +156,7 @@ class GatewayStub:
         cursor: str | None,
         changed_since: datetime | None,
     ) -> PluggyTransactionPageSnapshot:
-        self.calls.append(
-            ("list_transactions", (account_id, cursor, changed_since))
-        )
+        self.calls.append(("list_transactions", (account_id, cursor, changed_since)))
         self._raise_if_configured()
         return self.page
 
@@ -186,8 +184,7 @@ def test_connection_and_capabilities_are_normalized() -> None:
         Capability.TRANSACTIONS,
     ]
     assert all(
-        entry.state is CapabilityState.SUPPORTED
-        for entry in connection.capabilities
+        entry.state is CapabilityState.SUPPORTED for entry in connection.capabilities
     )
     assert all(
         entry.source is CapabilitySource.OBSERVATION

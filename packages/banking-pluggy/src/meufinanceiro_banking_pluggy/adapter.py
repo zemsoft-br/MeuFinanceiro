@@ -143,7 +143,9 @@ class PluggyBankingProvider:
         self._unsupported()
 
     def get_connection(self, external_connection_id: str) -> ConnectionState:
-        item_id = self._clean_identifier(external_connection_id, "external_connection_id")
+        item_id = self._clean_identifier(
+            external_connection_id, "external_connection_id"
+        )
         item = self._call_gateway(lambda: self._gateway.get_item(item_id))
         if item.item_id != item_id:
             self._invalid_snapshot()
@@ -159,7 +161,9 @@ class PluggyBankingProvider:
         self,
         external_connection_id: str,
     ) -> tuple[ExternalAccount, ...]:
-        item_id = self._clean_identifier(external_connection_id, "external_connection_id")
+        item_id = self._clean_identifier(
+            external_connection_id, "external_connection_id"
+        )
         snapshots = self._call_gateway(lambda: self._gateway.list_accounts(item_id))
         if any(snapshot.item_id != item_id for snapshot in snapshots):
             self._invalid_snapshot()
@@ -346,7 +350,9 @@ class PluggyBankingProvider:
         if (
             not normalized
             or len(normalized) > 512
-            or any(ord(character) < 32 or ord(character) == 127 for character in normalized)
+            or any(
+                ord(character) < 32 or ord(character) == 127 for character in normalized
+            )
         ):
             PluggyBankingProvider._invalid_request()
         return normalized
