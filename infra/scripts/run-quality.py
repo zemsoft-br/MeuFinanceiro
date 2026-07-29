@@ -25,6 +25,7 @@ TOOLS = (
 )
 PYTHON_PATHS = (
     "packages/banking",
+    "packages/banking-pluggy",
     "packages/security",
     "packages/persistence",
     "apps/api",
@@ -151,6 +152,8 @@ def ensure_python_environment(recreate: bool) -> Path:
             "-e",
             "./packages/banking[test]",
             "-e",
+            "./packages/banking-pluggy[test]",
+            "-e",
             "./packages/security[test]",
             "-e",
             "./packages/persistence[test]",
@@ -173,6 +176,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             "mypy",
             "--strict",
             "packages/banking/src",
+            "packages/banking-pluggy/src",
             "packages/security/src",
             "packages/persistence/src",
             "apps/api/app",
@@ -186,6 +190,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             "-m",
             "pytest",
             "packages/banking/tests",
+            "packages/banking-pluggy/tests",
             "packages/security/tests",
             "packages/persistence/tests",
             "apps/api/tests",
