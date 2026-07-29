@@ -129,8 +129,13 @@ def test_unknown_provider_cannot_be_configured_or_receive_new_credentials() -> N
             client_secret="sensitive-secret",
         )
 
-    assert configure_error.value.code is BankingAdministrationErrorCode.PROVIDER_UNAVAILABLE
-    assert replace_error.value.code is BankingAdministrationErrorCode.PROVIDER_UNAVAILABLE
+    assert (
+        configure_error.value.code
+        is BankingAdministrationErrorCode.PROVIDER_UNAVAILABLE
+    )
+    assert (
+        replace_error.value.code is BankingAdministrationErrorCode.PROVIDER_UNAVAILABLE
+    )
     assert "sensitive" not in str(configure_error.value)
     assert store.calls == []
 

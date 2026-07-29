@@ -4,16 +4,15 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 REGISTRY_SOURCE = (
-    REPOSITORY_ROOT
-    / "packages/banking/src/meufinanceiro_banking/registry.py"
+    REPOSITORY_ROOT / "packages/banking/src/meufinanceiro_banking/registry.py"
 ).read_text(encoding="utf-8")
-ADMIN_SOURCE = (
-    REPOSITORY_ROOT / "apps/api/app/services/banking_admin.py"
-).read_text(encoding="utf-8")
+ADMIN_SOURCE = (REPOSITORY_ROOT / "apps/api/app/services/banking_admin.py").read_text(
+    encoding="utf-8"
+)
 MAIN_SOURCE = (REPOSITORY_ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
-CONFIG_SOURCE = (
-    REPOSITORY_ROOT / "apps/api/app/core/config.py"
-).read_text(encoding="utf-8")
+CONFIG_SOURCE = (REPOSITORY_ROOT / "apps/api/app/core/config.py").read_text(
+    encoding="utf-8"
+)
 
 
 def test_registry_remains_provider_neutral() -> None:
