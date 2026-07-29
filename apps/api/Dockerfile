@@ -10,13 +10,19 @@ RUN groupadd --system --gid 10001 app \
 
 WORKDIR /workspace
 
+COPY packages/banking/pyproject.toml ./packages/banking/
+COPY packages/banking/src ./packages/banking/src
 COPY packages/security/pyproject.toml ./packages/security/
 COPY packages/security/src ./packages/security/src
 COPY packages/persistence/pyproject.toml ./packages/persistence/
 COPY packages/persistence/src ./packages/persistence/src
 COPY apps/api/pyproject.toml ./apps/api/
 COPY apps/api/app ./apps/api/app
-RUN python -m pip install ./packages/security ./packages/persistence ./apps/api
+RUN python -m pip install \
+    ./packages/banking \
+    ./packages/security \
+    ./packages/persistence \
+    ./apps/api
 
 WORKDIR /app
 USER app
