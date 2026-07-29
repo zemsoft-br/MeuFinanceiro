@@ -4,6 +4,8 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from meufinanceiro_banking import BankingProviderRegistry
+from meufinanceiro_persistence import BankingIntegrationStore
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
@@ -12,6 +14,7 @@ from app.api.routes.demo import router as demo_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.database import create_database
+from app.services.banking_admin import BankingAdministrationService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -22,9 +25,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         install_log_redaction()
         keyring = load_keyring(resolved_settings.app_keyring_file)
         database = create_database(resolved_settings)
-        app.state.secret_cipher = SecretCipher(keyring)
+        secret_cipher = SecretCipher(keyring)
+        provider_registry = BankingProviderRegistry().freeze()
+        banking_store = BankingIntegrationStore(database.engine, secret_cipher)
+        app.state.secret_cipher = secret_cipher
         app.state.database = database
         app.state.settings = resolved_settings
+        app.state.banking_provider_registry = provider_registry
+        app.state.banking_administration = BankingAdministrationService(
+            banking_store,
+            provider_registry,
+            feature_enabled=resolved_settings.app_banking_enabled,
+        )
         try:
             yield
         finally:
