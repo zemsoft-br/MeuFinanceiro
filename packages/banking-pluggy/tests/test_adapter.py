@@ -304,13 +304,21 @@ def test_inconsistent_snapshot_fails_closed(operation: str) -> None:
 
     if operation == "connection":
         gateway.item = item_snapshot("different-item")
-        invocation: Callable[[], object] = lambda: provider.get_connection("item-001")
+
+        def invocation() -> object:
+            return provider.get_connection("item-001")
+
     elif operation == "accounts":
         gateway.accounts = account_snapshots("different-item")
-        invocation = lambda: provider.list_accounts("item-001")
+
+        def invocation() -> object:
+            return provider.list_accounts("item-001")
+
     else:
         gateway.page = transaction_page("different-account")
-        invocation = lambda: provider.list_transactions("account-bank", None, None)
+
+        def invocation() -> object:
+            return provider.list_transactions("account-bank", None, None)
 
     with pytest.raises(BankingProviderError) as captured:
         invocation()
