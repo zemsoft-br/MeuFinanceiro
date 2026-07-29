@@ -47,11 +47,13 @@ def app_database_user(database_url: str) -> Iterator[str]:
         with connection.cursor() as cursor:
             cursor.execute(
                 sql.SQL(
-                    "CREATE ROLE {} LOGIN PASSWORD %s "
+                    "CREATE ROLE {} LOGIN PASSWORD {} "
                     "NOSUPERUSER NOCREATEDB NOCREATEROLE "
                     "NOREPLICATION NOBYPASSRLS"
-                ).format(sql.Identifier(role_name)),
-                (_RUNTIME_PASSWORD,),
+                ).format(
+                    sql.Identifier(role_name),
+                    sql.Literal(_RUNTIME_PASSWORD),
+                )
             )
     yield role_name
 
