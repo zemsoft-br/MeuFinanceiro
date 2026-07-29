@@ -9,6 +9,7 @@ from uuid import UUID
 from meufinanceiro_banking import (
     BankingProviderRegistry,
     ProviderNotRegisteredError,
+    normalize_provider_name,
 )
 from meufinanceiro_persistence import (
     BankingPersistenceError,
@@ -119,10 +120,11 @@ class BankingAdministrationService:
         installation_id: UUID,
         provider: str,
     ) -> ProviderConfigurationRecord:
+        normalized_provider = self._normalize_provider(provider)
         try:
             return self._store.get_configuration(
                 installation_id=installation_id,
-                provider=provider,
+                provider=normalized_provider,
             )
         except BankingPersistenceError as error:
             self._raise_persistence_error(error)
@@ -156,16 +158,16 @@ class BankingAdministrationService:
         expected_revision: int,
         state: ProviderConfigurationState,
     ) -> ProviderConfigurationRecord:
-        normalized_provider = provider
+        normalized_provider = self._normalize_provider(provider)
         if state is ProviderConfigurationState.ENABLED:
             if not self._feature_enabled:
                 raise BankingAdministrationError(
                     BankingAdministrationErrorCode.FEATURE_DISABLED,
                     "banking integration is disabled",
                 )
-            normalized_provider = self._require_registered(provider)
+            normalized_provider = self._require_registered(normalized_provider)
         elif state is ProviderConfigurationState.CONFIGURED:
-            normalized_provider = self._require_registered(provider)
+            normalized_provider = self._require_registered(normalized_provider)
 
         try:
             return self._store.set_configuration_state(
@@ -177,14 +179,24 @@ class BankingAdministrationService:
         except BankingPersistenceError as error:
             self._raise_persistence_error(error)
 
+    @staticmethod
+    def _provider_unavailable() -> NoReturn:
+        raise BankingAdministrationError(
+            BankingAdministrationErrorCode.PROVIDER_UNAVAILABLE,
+            "banking provider is unavailable",
+        ) from None
+
+    def _normalize_provider(self, provider: str) -> str:
+        try:
+            return normalize_provider_name(provider)
+        except (TypeError, ValueError):
+            self._provider_unavailable()
+
     def _require_registered(self, provider: str) -> str:
         try:
             return self._registry.require_registered(provider)
-        except ProviderNotRegisteredError:
-            raise BankingAdministrationError(
-                BankingAdministrationErrorCode.PROVIDER_UNAVAILABLE,
-                "banking provider is unavailable",
-            ) from None
+        except (ProviderNotRegisteredError, TypeError, ValueError):
+            self._provider_unavailable()
 
     @staticmethod
     def _raise_persistence_error(error: BankingPersistenceError) -> NoReturn:
