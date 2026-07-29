@@ -380,7 +380,7 @@ class BankingIntegrationStore:
                 if configuration["state"] != ProviderConfigurationState.ENABLED.value:
                     raise ProviderNotEnabledError("provider is not enabled")
 
-                statement = postgresql_insert(connections).values(
+                insert_statement = postgresql_insert(connections).values(
                     id=uuid4(),
                     installation_id=installation_id,
                     residence_id=residence_id,
@@ -398,7 +398,7 @@ class BankingIntegrationStore:
                     created_at=func.transaction_timestamp(),
                     updated_at=func.transaction_timestamp(),
                 )
-                statement = statement.on_conflict_do_update(
+                statement = insert_statement.on_conflict_do_update(
                     index_elements=[
                         connections.c.installation_id,
                         connections.c.provider,
