@@ -245,12 +245,10 @@ def _enable_rls() -> None:
         "current_setting('app.current_residence_id', true), '')::uuid"
     )
     op.execute(
-        "ALTER TABLE integrations.provider_configurations "
-        "ENABLE ROW LEVEL SECURITY"
+        "ALTER TABLE integrations.provider_configurations ENABLE ROW LEVEL SECURITY"
     )
     op.execute(
-        "ALTER TABLE integrations.provider_configurations "
-        "FORCE ROW LEVEL SECURITY"
+        "ALTER TABLE integrations.provider_configurations FORCE ROW LEVEL SECURITY"
     )
     op.execute(
         "CREATE POLICY provider_configurations_installation_isolation "
@@ -267,12 +265,10 @@ def _enable_rls() -> None:
         f"WITH CHECK ({installation_expression} AND {residence_expression})"
     )
     op.execute(
-        "ALTER TABLE integrations.connection_capabilities "
-        "ENABLE ROW LEVEL SECURITY"
+        "ALTER TABLE integrations.connection_capabilities ENABLE ROW LEVEL SECURITY"
     )
     op.execute(
-        "ALTER TABLE integrations.connection_capabilities "
-        "FORCE ROW LEVEL SECURITY"
+        "ALTER TABLE integrations.connection_capabilities FORCE ROW LEVEL SECURITY"
     )
     op.execute(
         "CREATE POLICY connection_capabilities_residence_isolation "

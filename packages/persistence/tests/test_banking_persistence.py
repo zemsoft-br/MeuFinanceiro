@@ -349,13 +349,15 @@ def test_rls_is_fail_closed_and_isolates_installations_and_residences(
     )
 
     with runtime_engine.begin() as connection:
-        assert connection.scalar(
-            select(func.count()).select_from(provider_configurations)
-        ) == 0
+        assert (
+            connection.scalar(select(func.count()).select_from(provider_configurations))
+            == 0
+        )
         assert connection.scalar(select(func.count()).select_from(connections)) == 0
-        assert connection.scalar(
-            select(func.count()).select_from(connection_capabilities)
-        ) == 0
+        assert (
+            connection.scalar(select(func.count()).select_from(connection_capabilities))
+            == 0
+        )
 
     with runtime_engine.begin() as connection:
         _set_context(
@@ -363,13 +365,15 @@ def test_rls_is_fail_closed_and_isolates_installations_and_residences(
             installation_id=installation_a,
             residence_id=residence_a,
         )
-        assert connection.scalar(
-            select(func.count()).select_from(provider_configurations)
-        ) == 1
+        assert (
+            connection.scalar(select(func.count()).select_from(provider_configurations))
+            == 1
+        )
         assert connection.scalar(select(func.count()).select_from(connections)) == 1
-        assert connection.scalar(
-            select(func.count()).select_from(connection_capabilities)
-        ) == 1
+        assert (
+            connection.scalar(select(func.count()).select_from(connection_capabilities))
+            == 1
+        )
         assert (
             connection.execute(
                 update(connections)

@@ -27,8 +27,7 @@ def test_configuration_database_failure_never_echoes_credentials(
     with engine.begin() as connection:
         quoted_role = connection.dialect.identifier_preparer.quote(app_database_user)
         connection.exec_driver_sql(
-            "REVOKE INSERT ON integrations.provider_configurations "
-            f"FROM {quoted_role}"
+            f"REVOKE INSERT ON integrations.provider_configurations FROM {quoted_role}"
         )
 
     try:
@@ -49,8 +48,7 @@ def test_configuration_database_failure_never_echoes_credentials(
                 app_database_user
             )
             connection.exec_driver_sql(
-                "GRANT INSERT ON integrations.provider_configurations "
-                f"TO {quoted_role}"
+                f"GRANT INSERT ON integrations.provider_configurations TO {quoted_role}"
             )
 
     assert str(captured.value) == "provider configuration could not be persisted"

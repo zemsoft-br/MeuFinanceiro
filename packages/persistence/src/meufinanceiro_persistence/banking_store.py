@@ -169,8 +169,7 @@ class BankingIntegrationStore:
                         select(*_PROVIDER_PUBLIC_COLUMNS).where(
                             provider_configurations.c.installation_id
                             == installation_id,
-                            provider_configurations.c.provider
-                            == normalized_provider,
+                            provider_configurations.c.provider == normalized_provider,
                         )
                     )
                     .mappings()
@@ -221,8 +220,7 @@ class BankingIntegrationStore:
                         .where(
                             provider_configurations.c.installation_id
                             == installation_id,
-                            provider_configurations.c.provider
-                            == normalized_provider,
+                            provider_configurations.c.provider == normalized_provider,
                             provider_configurations.c.configuration_revision
                             == expected_revision,
                         )
@@ -369,8 +367,7 @@ class BankingIntegrationStore:
                         ).where(
                             provider_configurations.c.installation_id
                             == installation_id,
-                            provider_configurations.c.provider
-                            == normalized_provider,
+                            provider_configurations.c.provider == normalized_provider,
                         )
                     )
                     .mappings()
@@ -380,10 +377,7 @@ class BankingIntegrationStore:
                     raise ConfigurationNotFoundError(
                         "provider configuration was not found"
                     )
-                if (
-                    configuration["state"]
-                    != ProviderConfigurationState.ENABLED.value
-                ):
+                if configuration["state"] != ProviderConfigurationState.ENABLED.value:
                     raise ProviderNotEnabledError("provider is not enabled")
 
                 statement = postgresql_insert(connections).values(
@@ -502,9 +496,7 @@ class BankingIntegrationStore:
                     )
                 )
                 if visible_connection is None:
-                    raise ConnectionNotFoundError(
-                        "banking connection was not found"
-                    )
+                    raise ConnectionNotFoundError("banking connection was not found")
 
                 if capabilities:
                     connection.execute(
@@ -543,9 +535,7 @@ class BankingIntegrationStore:
                             set_={
                                 "state": snapshot.state.value,
                                 "source": snapshot.source.value,
-                                "provider_reason_code": (
-                                    snapshot.provider_reason_code
-                                ),
+                                "provider_reason_code": (snapshot.provider_reason_code),
                                 "observed_at": snapshot.observed_at,
                                 "updated_at": func.transaction_timestamp(),
                             },
@@ -555,9 +545,7 @@ class BankingIntegrationStore:
                 rows = (
                     connection.execute(
                         select(*_CAPABILITY_PUBLIC_COLUMNS)
-                        .where(
-                            connection_capabilities.c.connection_id == connection_id
-                        )
+                        .where(connection_capabilities.c.connection_id == connection_id)
                         .order_by(connection_capabilities.c.capability)
                     )
                     .mappings()

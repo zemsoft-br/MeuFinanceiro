@@ -68,10 +68,14 @@ def app_database_user(database_url: str) -> Iterator[str]:
 
 @pytest.fixture(scope="session")
 def runtime_database_url(database_url: str, app_database_user: str) -> str:
-    return make_url(database_url).set(
-        username=app_database_user,
-        password=_RUNTIME_PASSWORD,
-    ).render_as_string(hide_password=False)
+    return (
+        make_url(database_url)
+        .set(
+            username=app_database_user,
+            password=_RUNTIME_PASSWORD,
+        )
+        .render_as_string(hide_password=False)
+    )
 
 
 @pytest.fixture(scope="session")
