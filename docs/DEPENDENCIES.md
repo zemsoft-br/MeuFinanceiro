@@ -105,12 +105,15 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 |---|---:|---|---|
 | meufinanceiro-banking | 0.1.0 | protocolo neutro, DTOs imutáveis e provider fake sem I/O | AGPL-3.0-only |
 | meufinanceiro-banking-pluggy | 0.1.0 | adapter e transporte HTTP opcional da Pluggy | AGPL-3.0-only |
+| meufinanceiro-banking-pluggy-execution | 0.1.0 | executor read-only contextual por residência | AGPL-3.0-only |
 | meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
 | meufinanceiro-persistence | 0.1.0 | engine, transações, Alembic, health e fila PostgreSQL | AGPL-3.0-only |
 
 `meufinanceiro-banking` usa somente a biblioteca padrão do Python 3.13. O pacote não adiciona SDK bancário, cliente HTTP, serialização, persistência ou dependência transitiva de runtime. `pytest` permanece apenas no extra de testes.
 
 `meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O transporte é opcional, permanece ausente da imagem e da composição da API, não lê configuração do ambiente e não executa chamadas externas nos gates.
+
+`meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote não é instalado na API, não adiciona dependência externa e usa somente factories injetadas nos testes.
 
 ## Ferramentas Python de qualidade
 

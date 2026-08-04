@@ -14,6 +14,7 @@ LOCAL_PACKAGES = {
     "meufinanceiro-api",
     "meufinanceiro-banking",
     "meufinanceiro-banking-pluggy",
+    "meufinanceiro-banking-pluggy-execution",
     "meufinanceiro-persistence",
     "meufinanceiro-security",
     "meufinanceiro-worker",
