@@ -20,19 +20,32 @@ HTTP, token ou payload específico da Pluggy atravessa essa fronteira.
 
 ### Transporte HTTP interno
 
-O módulo interno `meufinanceiro_banking_pluggy.transport` fornece:
+`PluggyGatewayHttpTransport` fornece:
 
 - autenticação server-side com `apiKey` e fallback legado `accessToken`;
 - API key somente em memória;
 - leitura allowlisted de Item, contas e transações;
+- paginação de transações pelo parâmetro oficial `after`;
+- filtro opcional `createdAtFrom` para registros criados após uma janela;
 - uma única renovação após `401/403`;
 - tratamento limitado de `429`, `5xx`, timeout e rede;
 - tamanho máximo de resposta;
 - rejeição de redirect, conteúdo não JSON e payload inválido;
 - erros sanitizados sem URL, headers, corpo HTTP ou identificadores.
 
-O transporte não implementa o `PluggyReadOnlyGateway` e não realiza parsing para os
-snapshots do adapter. Essa composição permanece para uma issue posterior.
+### Gateway concreto
+
+`PluggyHttpReadOnlyGateway` converte payloads JSON para snapshots imutáveis:
+
+- Item e estados de conexão;
+- capacidades conservadoras declaradas pelo conector;
+- contas com número reduzido a máscara;
+- transações, parcelas, vínculo de fatura e cursor opaco;
+- associações cross-item e cross-account rejeitadas;
+- erros de transporte traduzidos sem cadeia causal.
+
+O gateway encaminha `changed_since` como `createdAtFrom`. Esse filtro cobre registros
+criados na janela e não substitui reconciliação periódica de atualizações e exclusões.
 
 ## Operações bloqueadas
 
@@ -58,6 +71,5 @@ Este pacote:
 - não é instalado nem registrado no runtime da API;
 - não executa chamadas externas durante testes ou CI.
 
-A futura implementação concreta do gateway deverá receber o transporte por injeção,
-converter payloads allowlisted para snapshots imutáveis e permanecer desabilitada por
-padrão no runtime.
+O próximo recorte poderá registrar condicionalmente o provider, ainda desabilitado por
+padrão, sem iniciar sincronização ou importar dados financeiros.
