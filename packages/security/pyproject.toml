@@ -10,7 +10,7 @@ requires-python = ">=3.13,<3.14"
 license = "AGPL-3.0-only"
 dependencies = [
   "argon2-cffi==25.1.0",
-  "cryptography==49.0.0",
+  "cryptography==50.0.0",
 ]
 
 [project.optional-dependencies]

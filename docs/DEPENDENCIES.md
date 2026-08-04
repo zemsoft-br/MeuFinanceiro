@@ -93,7 +93,7 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 | SQLAlchemy | 2.0.51 | persistência e transações compartilhadas | MIT |
 | Alembic | 1.18.5 | migrações de schema | MIT |
 | Uvicorn | 0.51.0 | servidor ASGI | BSD-3-Clause |
-| cryptography | 49.0.0 | AES-256-GCM autenticado | Apache-2.0 OR BSD-3-Clause |
+| cryptography | 50.0.0 | AES-256-GCM autenticado | Apache-2.0 OR BSD-3-Clause |
 | argon2-cffi | 25.1.0 | hashing Argon2id de senhas | MIT |
 | httpx | 0.28.1 | testes da API e transporte Pluggy opcional | BSD-3-Clause |
 | pytest | 9.1.1 | testes Python | MIT |
