@@ -57,5 +57,4 @@ antes da exposição ao cliente.
 
 ## Runtime
 
-O pacote não é instalado na imagem da API, não é registrado no startup e não executa
-chamadas externas durante testes ou CI.
+O pacote é instalado na imagem da API, mas o executor somente é construído quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` são verdadeiros. As flags são falsas por padrão. O startup não lê credenciais, não cria transporte e não executa chamadas externas; o registry permanece vazio e nenhum endpoint expõe o serviço.

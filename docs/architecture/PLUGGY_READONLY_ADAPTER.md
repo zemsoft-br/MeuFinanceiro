@@ -154,18 +154,18 @@ resultam em `INTERNAL` sanitizado.
 
 ## Runtime
 
-O adapter não é instalado pela imagem da API e não é registrado no
-`BankingProviderRegistry`.
+O adapter é instalado na imagem da API como dependência do executor, mas não é registrado no `BankingProviderRegistry`.
 
-A composição da API permanece:
+A composição da API permanece fail-closed:
 
 ```text
 registry vazio
 registry congelado
 APP_BANKING_ENABLED=false por padrão
+APP_BANKING_PLUGGY_ENABLED=false por padrão
 ```
 
-Portanto, esta issue não cria qualquer caminho de execução externa.
+Mesmo quando ambas as flags são ativadas, o startup apenas constrói o executor contextual. Credenciais e rede continuam restritas a uma operação explícita futura.
 
 ## Próximos recortes
 

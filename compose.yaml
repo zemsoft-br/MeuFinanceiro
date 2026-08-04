@@ -74,6 +74,7 @@ services:
       APP_LOG_LEVEL: INFO
       APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
       APP_BANKING_ENABLED: ${APP_BANKING_ENABLED:-false}
+      APP_BANKING_PLUGGY_ENABLED: ${APP_BANKING_PLUGGY_ENABLED:-false}
       APP_KEYRING_FILE: /run/secrets/app_keyring
       DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
     secrets:

@@ -10,6 +10,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
   "fastapi==0.139.2",
   "meufinanceiro-banking==0.1.0",
+  "meufinanceiro-banking-pluggy-execution==0.1.0",
   "meufinanceiro-persistence==0.1.0",
   "meufinanceiro-security==0.1.0",
   "pydantic-settings==2.14.2",

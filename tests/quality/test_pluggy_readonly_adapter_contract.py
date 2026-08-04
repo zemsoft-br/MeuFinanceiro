@@ -94,13 +94,11 @@ def test_transport_tests_use_only_mocked_loopback_http() -> None:
     assert "socket" not in TRANSPORT_TEST_TEXT
 
 
-def test_api_runtime_does_not_install_or_register_adapter() -> None:
-    package_name = "meufinanceiro-banking-pluggy"
-    module_name = "meufinanceiro_banking_pluggy"
-
-    assert package_name not in API_PYPROJECT_TEXT
-    assert "packages/banking-pluggy" not in API_DOCKERFILE_TEXT
-    assert module_name not in API_MAIN_TEXT
+def test_api_runtime_installs_adapter_without_direct_registration() -> None:
+    assert '"meufinanceiro-banking-pluggy==0.1.0"' not in API_PYPROJECT_TEXT
+    assert "COPY packages/banking-pluggy/pyproject.toml" in API_DOCKERFILE_TEXT
+    assert "./packages/banking-pluggy" in API_DOCKERFILE_TEXT
+    assert "from meufinanceiro_banking_pluggy import" not in API_MAIN_TEXT
     assert 'register("pluggy"' not in API_MAIN_TEXT
 
 

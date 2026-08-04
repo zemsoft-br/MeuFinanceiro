@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import NoReturn, Protocol
 from uuid import UUID
@@ -86,14 +87,24 @@ class BankingAdministrationService:
         registry: BankingProviderRegistry,
         *,
         feature_enabled: bool,
+        available_providers: Iterable[str] | None = None,
     ) -> None:
         self._store = store
         self._registry = registry
         self._feature_enabled = feature_enabled
+        self._available_providers = self._normalize_available_providers(
+            available_providers
+        )
 
     @property
     def feature_enabled(self) -> bool:
         return self._feature_enabled
+
+    @property
+    def available_providers(self) -> tuple[str, ...]:
+        if self._available_providers is None:
+            return self._registry.names()
+        return tuple(sorted(self._available_providers))
 
     def configure_provider(
         self,
@@ -103,7 +114,7 @@ class BankingAdministrationService:
         client_id: str,
         client_secret: str,
     ) -> ProviderConfigurationRecord:
-        normalized_provider = self._require_registered(provider)
+        normalized_provider = self._require_available(provider)
         try:
             return self._store.create_configuration(
                 installation_id=installation_id,
@@ -138,7 +149,7 @@ class BankingAdministrationService:
         client_id: str,
         client_secret: str,
     ) -> ProviderConfigurationRecord:
-        normalized_provider = self._require_registered(provider)
+        normalized_provider = self._require_available(provider)
         try:
             return self._store.replace_credentials(
                 installation_id=installation_id,
@@ -165,9 +176,9 @@ class BankingAdministrationService:
                     BankingAdministrationErrorCode.FEATURE_DISABLED,
                     "banking integration is disabled",
                 )
-            normalized_provider = self._require_registered(normalized_provider)
+            normalized_provider = self._require_available(normalized_provider)
         elif state is ProviderConfigurationState.CONFIGURED:
-            normalized_provider = self._require_registered(normalized_provider)
+            normalized_provider = self._require_available(normalized_provider)
 
         try:
             return self._store.set_configuration_state(
@@ -178,6 +189,21 @@ class BankingAdministrationService:
             )
         except BankingPersistenceError as error:
             self._raise_persistence_error(error)
+
+    @staticmethod
+    def _normalize_available_providers(
+        available_providers: Iterable[str] | None,
+    ) -> frozenset[str] | None:
+        if available_providers is None:
+            return None
+        try:
+            return frozenset(
+                normalize_provider_name(provider) for provider in available_providers
+            )
+        except (TypeError, ValueError):
+            raise ValueError(
+                "available providers contain an invalid provider"
+            ) from None
 
     @staticmethod
     def _provider_unavailable() -> NoReturn:
@@ -192,9 +218,14 @@ class BankingAdministrationService:
         except (TypeError, ValueError):
             self._provider_unavailable()
 
-    def _require_registered(self, provider: str) -> str:
+    def _require_available(self, provider: str) -> str:
+        normalized = self._normalize_provider(provider)
+        if self._available_providers is not None:
+            if normalized not in self._available_providers:
+                self._provider_unavailable()
+            return normalized
         try:
-            return self._registry.require_registered(provider)
+            return self._registry.require_registered(normalized)
         except (ProviderNotRegisteredError, TypeError, ValueError):
             self._provider_unavailable()
 

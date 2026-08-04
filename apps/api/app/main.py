@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from meufinanceiro_banking import BankingProviderRegistry
+from meufinanceiro_banking_pluggy_execution import PluggyReadOnlyExecutionService
 from meufinanceiro_persistence import BankingIntegrationStore
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
@@ -28,14 +29,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         secret_cipher = SecretCipher(keyring)
         provider_registry = BankingProviderRegistry().freeze()
         banking_store = BankingIntegrationStore(database.engine, secret_cipher)
+        available_providers = (
+            ("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()
+        )
+        banking_pluggy_execution: PluggyReadOnlyExecutionService | None = None
+        if (
+            resolved_settings.app_banking_enabled
+            and resolved_settings.app_banking_pluggy_enabled
+        ):
+            banking_pluggy_execution = PluggyReadOnlyExecutionService(banking_store)
+
         app.state.secret_cipher = secret_cipher
         app.state.database = database
         app.state.settings = resolved_settings
         app.state.banking_provider_registry = provider_registry
+        app.state.banking_pluggy_execution = banking_pluggy_execution
         app.state.banking_administration = BankingAdministrationService(
             banking_store,
             provider_registry,
             feature_enabled=resolved_settings.app_banking_enabled,
+            available_providers=available_providers,
         )
         try:
             yield

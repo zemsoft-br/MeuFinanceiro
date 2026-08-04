@@ -12,16 +12,22 @@ WORKDIR /workspace
 
 COPY packages/banking/pyproject.toml ./packages/banking/
 COPY packages/banking/src ./packages/banking/src
+COPY packages/banking-pluggy/pyproject.toml ./packages/banking-pluggy/
+COPY packages/banking-pluggy/src ./packages/banking-pluggy/src
 COPY packages/security/pyproject.toml ./packages/security/
 COPY packages/security/src ./packages/security/src
 COPY packages/persistence/pyproject.toml ./packages/persistence/
 COPY packages/persistence/src ./packages/persistence/src
+COPY packages/banking-pluggy-execution/pyproject.toml ./packages/banking-pluggy-execution/
+COPY packages/banking-pluggy-execution/src ./packages/banking-pluggy-execution/src
 COPY apps/api/pyproject.toml ./apps/api/
 COPY apps/api/app ./apps/api/app
 RUN python -m pip install \
     ./packages/banking \
+    ./packages/banking-pluggy \
     ./packages/security \
     ./packages/persistence \
+    ./packages/banking-pluggy-execution \
     ./apps/api
 
 WORKDIR /app
