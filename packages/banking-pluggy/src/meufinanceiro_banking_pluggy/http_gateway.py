@@ -6,7 +6,7 @@ import re
 from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Protocol, TypeAlias, cast, runtime_checkable
+from typing import NoReturn, Protocol, TypeAlias, cast, runtime_checkable
 from urllib.parse import parse_qs, urlsplit
 
 from .gateway import (
@@ -119,9 +119,9 @@ class PluggyGatewayHttpTransport(PluggyHttpTransport):
             ):
                 raise ValueError("created_at_from must be timezone-aware")
             normalized = created_at_from.astimezone(UTC)
-            params["createdAtFrom"] = (
-                normalized.isoformat(timespec="milliseconds").replace("+00:00", "Z")
-            )
+            params["createdAtFrom"] = normalized.isoformat(
+                timespec="milliseconds"
+            ).replace("+00:00", "Z")
         return self._authenticated_get("v2/transactions", params=params)
 
 
@@ -152,9 +152,7 @@ def _utc_now() -> datetime:
 
 
 def _mapping(value: object, reason_code: str) -> Mapping[str, object]:
-    if not isinstance(value, dict) or not all(
-        isinstance(key, str) for key in value
-    ):
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise _PayloadError(reason_code)
     return cast(Mapping[str, object], value)
 
@@ -633,9 +631,7 @@ def _parse_transactions(
         return PluggyTransactionPageSnapshot(
             records=parsed,
             next_cursor=_next_cursor(payload.get("next"), expected_account_id),
-            source_window=(
-                "CREATED_AT_FROM" if changed_since is not None else "FULL"
-            ),
+            source_window=("CREATED_AT_FROM" if changed_since is not None else "FULL"),
             retrieved_at=retrieved_at.astimezone(UTC),
         )
     except _PayloadError:
@@ -666,7 +662,7 @@ _TRANSPORT_CATEGORIES = {
 }
 
 
-def _raise_transport_error(error: PluggyTransportError) -> None:
+def _raise_transport_error(error: PluggyTransportError) -> NoReturn:
     category = _TRANSPORT_CATEGORIES.get(
         error.category,
         PluggyGatewayErrorCategory.INTERNAL,
@@ -678,7 +674,7 @@ def _raise_transport_error(error: PluggyTransportError) -> None:
     ) from None
 
 
-def _raise_payload_error(error: _PayloadError) -> None:
+def _raise_payload_error(error: _PayloadError) -> NoReturn:
     raise PluggyGatewayError(
         PluggyGatewayErrorCategory.INTERNAL,
         retryable=False,

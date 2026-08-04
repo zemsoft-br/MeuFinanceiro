@@ -175,9 +175,7 @@ def test_item_success_maps_state_timestamps_and_capabilities() -> None:
 
     assert snapshot.phase is PluggyConnectionPhase.AVAILABLE
     assert snapshot.last_attempt_at == datetime(2026, 8, 4, 2, 59, tzinfo=UTC)
-    assert snapshot.last_successful_update_at == datetime(
-        2026, 8, 4, 2, 58, tzinfo=UTC
-    )
+    assert snapshot.last_successful_update_at == datetime(2026, 8, 4, 2, 58, tzinfo=UTC)
     assert snapshot.next_refresh_allowed_at is None
     capabilities = capability_map(snapshot)
     assert capabilities[PluggyCapability.IDENTITY].availability is (
@@ -229,16 +227,18 @@ def test_item_status_mapping(
     expected: PluggyConnectionPhase,
 ) -> None:
     snapshot = gateway(
-        FakeTransport(item=item_payload(status=status, execution_status=execution_status))
+        FakeTransport(
+            item=item_payload(status=status, execution_status=execution_status)
+        )
     ).get_item("item-1")
     assert snapshot.phase is expected
 
 
 def test_item_without_connector_products_is_conservative() -> None:
     snapshot = gateway().get_item("item-1")
-    assert {
-        capability.availability for capability in snapshot.capabilities
-    } == {PluggyCapabilityAvailability.UNKNOWN}
+    assert {capability.availability for capability in snapshot.capabilities} == {
+        PluggyCapabilityAvailability.UNKNOWN
+    }
 
 
 def test_item_association_mismatch_fails_without_identifier_leak() -> None:
@@ -329,9 +329,7 @@ def test_changed_since_is_forwarded_as_created_window() -> None:
         changed_since,
     )
 
-    assert transport.transaction_calls == [
-        ("account-card", "cursor-1", changed_since)
-    ]
+    assert transport.transaction_calls == [("account-card", "cursor-1", changed_since)]
     assert page.source_window == "CREATED_AT_FROM"
 
 
