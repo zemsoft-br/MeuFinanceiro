@@ -1,0 +1,150 @@
+name: Temporary Banking Execution Integration
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Apply quality and dependency integration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str, count: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(
+                      f"{path}: expected {count} occurrence(s), found {actual}: {old!r}"
+                  )
+              file.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace_exact(
+              ".github/workflows/quality.yml",
+              "            packages/banking-pluggy/pyproject.toml\n"
+              "            packages/security/pyproject.toml",
+              "            packages/banking-pluggy/pyproject.toml\n"
+              "            packages/banking-pluggy-execution/pyproject.toml\n"
+              "            packages/security/pyproject.toml",
+          )
+          replace_exact(
+              ".github/workflows/quality.yml",
+              "            -e './packages/banking-pluggy[test]' \\\n"
+              "            -e './packages/security[test]'",
+              "            -e './packages/banking-pluggy[test]' \\\n"
+              "            -e './packages/banking-pluggy-execution[test]' \\\n"
+              "            -e './packages/security[test]'",
+          )
+          replace_exact(
+              ".github/workflows/quality.yml",
+              "          packages/banking packages/banking-pluggy packages/security packages/persistence",
+              "          packages/banking packages/banking-pluggy packages/banking-pluggy-execution\n"
+              "          packages/security packages/persistence",
+              count=2,
+          )
+          replace_exact(
+              ".github/workflows/quality.yml",
+              "          packages/banking/src packages/banking-pluggy/src packages/security/src",
+              "          packages/banking/src packages/banking-pluggy/src\n"
+              "          packages/banking-pluggy-execution/src packages/security/src",
+          )
+          replace_exact(
+              ".github/workflows/quality.yml",
+              "            packages/banking/tests packages/banking-pluggy/tests \\\n"
+              "            packages/security/tests packages/persistence/tests \\\n",
+              "            packages/banking/tests packages/banking-pluggy/tests \\\n"
+              "            packages/banking-pluggy-execution/tests \\\n"
+              "            packages/security/tests packages/persistence/tests \\\n",
+          )
+
+          replace_exact(
+              "infra/scripts/run-quality.py",
+              '    "packages/banking-pluggy",\n    "packages/security",',
+              '    "packages/banking-pluggy",\n'
+              '    "packages/banking-pluggy-execution",\n'
+              '    "packages/security",',
+          )
+          replace_exact(
+              "infra/scripts/run-quality.py",
+              '            "./packages/banking-pluggy[test]",\n'
+              '            "-e",\n'
+              '            "./packages/security[test]",',
+              '            "./packages/banking-pluggy[test]",\n'
+              '            "-e",\n'
+              '            "./packages/banking-pluggy-execution[test]",\n'
+              '            "-e",\n'
+              '            "./packages/security[test]",',
+          )
+          replace_exact(
+              "infra/scripts/run-quality.py",
+              '            "packages/banking-pluggy/src",\n'
+              '            "packages/security/src",',
+              '            "packages/banking-pluggy/src",\n'
+              '            "packages/banking-pluggy-execution/src",\n'
+              '            "packages/security/src",',
+          )
+          replace_exact(
+              "infra/scripts/run-quality.py",
+              '            "packages/banking-pluggy/tests",\n'
+              '            "packages/security/tests",',
+              '            "packages/banking-pluggy/tests",\n'
+              '            "packages/banking-pluggy-execution/tests",\n'
+              '            "packages/security/tests",',
+          )
+
+          replace_exact(
+              "infra/scripts/check-python-licenses.py",
+              '    "meufinanceiro-banking-pluggy",\n'
+              '    "meufinanceiro-persistence",',
+              '    "meufinanceiro-banking-pluggy",\n'
+              '    "meufinanceiro-banking-pluggy-execution",\n'
+              '    "meufinanceiro-persistence",',
+          )
+
+          replace_exact(
+              "docs/DEPENDENCIES.md",
+              "| meufinanceiro-banking-pluggy | 0.1.0 | adapter e transporte HTTP opcional da Pluggy | AGPL-3.0-only |\n"
+              "| meufinanceiro-security |",
+              "| meufinanceiro-banking-pluggy | 0.1.0 | adapter e transporte HTTP opcional da Pluggy | AGPL-3.0-only |\n"
+              "| meufinanceiro-banking-pluggy-execution | 0.1.0 | executor read-only contextual por residência | AGPL-3.0-only |\n"
+              "| meufinanceiro-security |",
+          )
+          replace_exact(
+              "docs/DEPENDENCIES.md",
+              "`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O transporte é opcional, permanece ausente da imagem e da composição da API, não lê configuração do ambiente e não executa chamadas externas nos gates.\n\n"
+              "## Ferramentas Python de qualidade",
+              "`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O transporte é opcional, permanece ausente da imagem e da composição da API, não lê configuração do ambiente e não executa chamadas externas nos gates.\n\n"
+              "`meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote não é instalado na API, não adiciona dependência externa e usa somente factories injetadas nos testes.\n\n"
+              "## Ferramentas Python de qualidade",
+          )
+          PY
+          rm .github/workflows/temporary-banking-execution-integration.yml
+      - name: Commit integration changes
+        shell: bash
+        run: |
+          git config user.name "zemsoft-br"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -s -m "chore(quality): integrate Pluggy execution package"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
