@@ -58,7 +58,6 @@ O lockfile também registra dependências transitivas e hashes dos pacotes hospe
 
 Não foram adicionados nesta etapa:
 
-- biblioteca HTTP adicional;
 - serialização ou geração de código;
 - SQLite/WASM;
 - armazenamento seguro;
@@ -94,9 +93,9 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 | SQLAlchemy | 2.0.51 | persistência e transações compartilhadas | MIT |
 | Alembic | 1.18.5 | migrações de schema | MIT |
 | Uvicorn | 0.51.0 | servidor ASGI | BSD-3-Clause |
-| cryptography | 49.0.0 | AES-256-GCM autenticado | Apache-2.0 OR BSD-3-Clause |
+| cryptography | 50.0.0 | AES-256-GCM autenticado | Apache-2.0 OR BSD-3-Clause |
 | argon2-cffi | 25.1.0 | hashing Argon2id de senhas | MIT |
-| httpx | 0.28.1 | testes da API | BSD-3-Clause |
+| httpx | 0.28.1 | testes da API e transporte Pluggy opcional | BSD-3-Clause |
 | pytest | 9.1.1 | testes Python | MIT |
 | setuptools | 80.9.0 | build dos pacotes locais | MIT |
 
@@ -105,10 +104,13 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 | Pacote | Versão | Uso | Licença |
 |---|---:|---|---|
 | meufinanceiro-banking | 0.1.0 | protocolo neutro, DTOs imutáveis e provider fake sem I/O | AGPL-3.0-only |
+| meufinanceiro-banking-pluggy | 0.1.0 | adapter e transporte HTTP opcional da Pluggy | AGPL-3.0-only |
 | meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
 | meufinanceiro-persistence | 0.1.0 | engine, transações, Alembic, health e fila PostgreSQL | AGPL-3.0-only |
 
 `meufinanceiro-banking` usa somente a biblioteca padrão do Python 3.13. O pacote não adiciona SDK bancário, cliente HTTP, serialização, persistência ou dependência transitiva de runtime. `pytest` permanece apenas no extra de testes.
+
+`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O transporte é opcional, permanece ausente da imagem e da composição da API, não lê configuração do ambiente e não executa chamadas externas nos gates.
 
 ## Ferramentas Python de qualidade
 
@@ -125,6 +127,8 @@ Essas ferramentas são instaladas em `.quality-venv` pelo script local e não fa
 Não foi identificada incompatibilidade direta que impeça a combinação das dependências atuais com `AGPL-3.0-only`. A LGPL do psycopg permite uso e distribuição nas condições da própria licença; seus avisos e código-fonte correspondente devem ser tratados no inventário de terceiros aplicável.
 
 Flutter, `go_router` e `flutter_lints` declaram BSD-3-Clause. `flutter_riverpod` declara MIT. O uso dessas dependências permanece sujeito ao inventário transitivo e à inclusão dos notices aplicáveis na distribuição.
+
+`httpx` declara BSD-3-Clause e é utilizado pelo transporte Pluggy isolado. A dependência não torna a integração obrigatória nem altera o runtime da API enquanto o pacote específico permanecer não instalado e não registrado.
 
 Caddy declara Apache-2.0 e atua como servidor estático interno do artefato Flutter, sem runtime Node na imagem final.
 

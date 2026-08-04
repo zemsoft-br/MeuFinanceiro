@@ -5,8 +5,13 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PACKAGE_ROOT = REPOSITORY_ROOT / "packages/banking-pluggy"
 SOURCE_ROOT = PACKAGE_ROOT / "src/meufinanceiro_banking_pluggy"
-SOURCE_TEXT = "\n".join(
-    path.read_text(encoding="utf-8") for path in sorted(SOURCE_ROOT.glob("*.py"))
+BOUNDARY_SOURCE_TEXT = "\n".join(
+    (SOURCE_ROOT / name).read_text(encoding="utf-8")
+    for name in ("__init__.py", "adapter.py", "gateway.py")
+)
+TRANSPORT_SOURCE_TEXT = (SOURCE_ROOT / "transport.py").read_text(encoding="utf-8")
+TRANSPORT_TEST_TEXT = (PACKAGE_ROOT / "tests/test_transport.py").read_text(
+    encoding="utf-8"
 )
 PYPROJECT_TEXT = (PACKAGE_ROOT / "pyproject.toml").read_text(encoding="utf-8")
 API_MAIN_TEXT = (REPOSITORY_ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
@@ -24,8 +29,8 @@ LOCAL_QUALITY_TEXT = (REPOSITORY_ROOT / "infra/scripts/run-quality.py").read_tex
 )
 
 
-def test_adapter_source_has_no_transport_or_secret_surface() -> None:
-    lowered = SOURCE_TEXT.casefold()
+def test_adapter_boundary_has_no_transport_or_secret_surface() -> None:
+    lowered = BOUNDARY_SOURCE_TEXT.casefold()
 
     for forbidden in (
         "httpx",
@@ -44,11 +49,49 @@ def test_adapter_source_has_no_transport_or_secret_surface() -> None:
     ):
         assert forbidden not in lowered
 
+    assert "PluggyHttpTransport" not in BOUNDARY_SOURCE_TEXT
+    assert "PluggyApplicationCredentials" not in BOUNDARY_SOURCE_TEXT
 
-def test_adapter_package_has_only_neutral_internal_dependency() -> None:
+
+def test_transport_is_internal_bounded_and_does_not_read_configuration() -> None:
+    lowered = TRANSPORT_SOURCE_TEXT.casefold()
+
+    assert "import httpx" in TRANSPORT_SOURCE_TEXT
+    assert '"https://api.pluggy.ai"' in TRANSPORT_SOURCE_TEXT
+    assert "_MAX_ATTEMPTS: Final = 3" in TRANSPORT_SOURCE_TEXT
+    assert "follow_redirects=False" in TRANSPORT_SOURCE_TEXT
+    assert "trust_env=False" in TRANSPORT_SOURCE_TEXT
+    assert "X-API-KEY" in TRANSPORT_SOURCE_TEXT
+    assert "RateLimit-Reset" in TRANSPORT_SOURCE_TEXT
+    assert "Retry-After" in TRANSPORT_SOURCE_TEXT
+    assert "apiKey" in TRANSPORT_SOURCE_TEXT
+    assert "accessToken" in TRANSPORT_SOURCE_TEXT
+
+    for forbidden in (
+        "os.environ",
+        "load_dotenv",
+        "dotenv",
+        "argparse",
+        "response.text",
+        "response.json()",
+        "raise_for_status",
+        "print(",
+    ):
+        assert forbidden not in lowered
+
+
+def test_transport_package_pins_only_reviewed_dependencies() -> None:
     assert '"meufinanceiro-banking==0.1.0"' in PYPROJECT_TEXT
-    assert "httpx" not in PYPROJECT_TEXT.casefold()
+    assert '"httpx==0.28.1"' in PYPROJECT_TEXT
     assert "requests" not in PYPROJECT_TEXT.casefold()
+
+
+def test_transport_tests_use_only_mocked_loopback_http() -> None:
+    assert "httpx.MockTransport" in TRANSPORT_TEST_TEXT
+    assert "http://127.0.0.1" in TRANSPORT_TEST_TEXT
+    assert "http://localhost" in TRANSPORT_TEST_TEXT
+    assert "https://api.pluggy.ai" not in TRANSPORT_TEST_TEXT
+    assert "socket" not in TRANSPORT_TEST_TEXT
 
 
 def test_api_runtime_does_not_install_or_register_adapter() -> None:

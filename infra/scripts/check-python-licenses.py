@@ -13,6 +13,7 @@ DENIED = re.compile(
 LOCAL_PACKAGES = {
     "meufinanceiro-api",
     "meufinanceiro-banking",
+    "meufinanceiro-banking-pluggy",
     "meufinanceiro-persistence",
     "meufinanceiro-security",
     "meufinanceiro-worker",

@@ -1,23 +1,42 @@
 # Banking Pluggy
 
-Pacote específico que converte snapshots sanitizados da Pluggy para o contrato neutro
-`BankingProvider` do MeuFinanceiro.
+Pacote específico da integração bancária opcional com a Pluggy.
 
-## Recorte atual
+A fronteira pública continua sendo o contrato neutro `BankingProvider`. Nenhum tipo
+HTTP, token ou payload específico da Pluggy atravessa essa fronteira.
 
-O adapter implementa somente:
+## Componentes atuais
 
-- leitura de estado da conexão;
-- leitura de capacidades observadas;
-- listagem de contas;
-- listagem paginada de transações.
+### Adapter read-only
 
-O adapter recebe um `PluggyReadOnlyGateway` por injeção. O gateway desta issue é
-apenas um protocolo tipado; não existe implementação de rede.
+`PluggyBankingProvider` converte snapshots sanitizados do
+`PluggyReadOnlyGateway` para DTOs neutros:
+
+- estado da conexão;
+- capacidades observadas;
+- contas;
+- transações paginadas;
+- estados `POSTED` e `PENDING` preservados separadamente.
+
+### Transporte HTTP interno
+
+O módulo interno `meufinanceiro_banking_pluggy.transport` fornece:
+
+- autenticação server-side com `apiKey` e fallback legado `accessToken`;
+- API key somente em memória;
+- leitura allowlisted de Item, contas e transações;
+- uma única renovação após `401/403`;
+- tratamento limitado de `429`, `5xx`, timeout e rede;
+- tamanho máximo de resposta;
+- rejeição de redirect, conteúdo não JSON e payload inválido;
+- erros sanitizados sem URL, headers, corpo HTTP ou identificadores.
+
+O transporte não implementa o `PluggyReadOnlyGateway` e não realiza parsing para os
+snapshots do adapter. Essa composição permanece para uma issue posterior.
 
 ## Operações bloqueadas
 
-As operações abaixo retornam `UNSUPPORTED` antes de acessar o gateway:
+As operações abaixo continuam retornando `UNSUPPORTED` antes do gateway:
 
 - criação de intenção de conexão;
 - reautenticação;
@@ -31,13 +50,14 @@ As operações abaixo retornam `UNSUPPORTED` antes de acessar o gateway:
 
 Este pacote:
 
-- depende apenas de `meufinanceiro-banking` e da biblioteca padrão;
-- não contém cliente HTTP ou SDK externo;
-- não lê ambiente ou arquivos de configuração;
-- não recebe credenciais ou tokens;
-- não persiste respostas ou identificadores;
+- depende de `meufinanceiro-banking` e `httpx` com versões fixadas;
+- não lê ambiente, `.env`, argumentos CLI ou arquivos de configuração;
+- não persiste Client ID, Client Secret, API key ou respostas;
+- aceita HTTP sem TLS somente para hosts loopback usados por testes;
+- fixa o host produtivo em `https://api.pluggy.ai`;
 - não é instalado nem registrado no runtime da API;
-- não executa chamadas externas.
+- não executa chamadas externas durante testes ou CI.
 
-Uma implementação futura de transporte deverá produzir os snapshots sanitizados
-exigidos pelo gateway sem expor resposta HTTP bruta ao adapter ou ao domínio.
+A futura implementação concreta do gateway deverá receber o transporte por injeção,
+converter payloads allowlisted para snapshots imutáveis e permanecer desabilitada por
+padrão no runtime.

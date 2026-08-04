@@ -5,11 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "meufinanceiro-banking-pluggy"
 version = "0.1.0"
-description = "Read-only Pluggy adapter boundary for MeuFinanceiro"
+description = "Read-only Pluggy adapter and HTTP transport for MeuFinanceiro"
 requires-python = ">=3.13,<3.14"
 license = "AGPL-3.0-only"
 dependencies = [
   "meufinanceiro-banking==0.1.0",
+  "httpx==0.28.1",
 ]
 
 [project.optional-dependencies]
