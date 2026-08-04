@@ -111,9 +111,9 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 
 `meufinanceiro-banking` usa somente a biblioteca padrão do Python 3.13. O pacote não adiciona SDK bancário, cliente HTTP, serialização, persistência ou dependência transitiva de runtime. `pytest` permanece apenas no extra de testes.
 
-`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O transporte é opcional, permanece ausente da imagem e da composição da API, não lê configuração do ambiente e não executa chamadas externas nos gates.
+`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O pacote é instalado na imagem da API como dependência do executor, mas permanece inativo por padrão, não lê configuração do ambiente e não executa chamadas externas no startup ou nos gates.
 
-`meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote não é instalado na API, não adiciona dependência externa e usa somente factories injetadas nos testes.
+`meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote é instalado na API, mas o serviço somente é composto quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` estão ativos; nenhuma credencial ou rede é acessada no startup.
 
 ## Ferramentas Python de qualidade
 
@@ -131,7 +131,7 @@ Não foi identificada incompatibilidade direta que impeça a combinação das de
 
 Flutter, `go_router` e `flutter_lints` declaram BSD-3-Clause. `flutter_riverpod` declara MIT. O uso dessas dependências permanece sujeito ao inventário transitivo e à inclusão dos notices aplicáveis na distribuição.
 
-`httpx` declara BSD-3-Clause e é utilizado pelo transporte Pluggy isolado. A dependência não torna a integração obrigatória nem altera o runtime da API enquanto o pacote específico permanecer não instalado e não registrado.
+`httpx` declara BSD-3-Clause e é utilizado pelo transporte Pluggy isolado. A presença da dependência na imagem não torna a integração obrigatória: as duas flags permanecem falsas por padrão, o registry continua vazio e nenhuma chamada externa ocorre no startup.
 
 Caddy declara Apache-2.0 e atua como servidor estático interno do artefato Flutter, sem runtime Node na imagem final.
 

@@ -201,7 +201,9 @@ class BankingAdministrationService:
                 normalize_provider_name(provider) for provider in available_providers
             )
         except (TypeError, ValueError):
-            raise ValueError("available providers contain an invalid provider") from None
+            raise ValueError(
+                "available providers contain an invalid provider"
+            ) from None
 
     @staticmethod
     def _provider_unavailable() -> NoReturn:

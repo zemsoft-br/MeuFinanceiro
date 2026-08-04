@@ -1,6 +1,6 @@
 # Executor Pluggy read-only contextual por residência
 
-Status: **implementação inicial da issue #80**.
+Status: **integrado ao runtime fail-closed pelas issues #80 e #82**.
 
 ## Objetivo
 
@@ -120,15 +120,6 @@ TRANSPORT_CLOSE_FAILED
 
 Nenhum deles inclui Item ID, Account ID, credencial, URL, header ou payload.
 
-## Runtime preservado
+## Runtime fail-closed
 
-O recorte não:
-
-- instala o pacote na API ou Worker;
-- registra provider no `BankingProviderRegistry`;
-- altera `APP_BANKING_ENABLED=false`;
-- cria endpoint;
-- executa chamada real nos testes;
-- persiste contas ou transações;
-- cria migration;
-- executa deploy, HML ou produção.
+A imagem da API instala o pacote, mas o executor só é construído quando `APP_BANKING_ENABLED=true` e `APP_BANKING_PLUGGY_ENABLED=true`. Com qualquer outra combinação, `app.state.banking_pluggy_execution` é `None`. Mesmo com ambas as flags ativas, o startup não decripta credenciais, não cria transporte e não executa rede. O registry permanece vazio e congelado, e nenhum endpoint expõe o executor.

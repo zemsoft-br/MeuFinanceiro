@@ -32,7 +32,9 @@ def test_registry_remains_provider_neutral() -> None:
         assert forbidden not in lowered
 
 
-def test_administration_service_does_not_define_http_routes_or_provider_details() -> None:
+def test_administration_service_does_not_define_http_routes_or_provider_details() -> (
+    None
+):
     lowered = ADMIN_SOURCE.lower()
 
     for forbidden in (
@@ -66,13 +68,17 @@ def test_banking_flags_are_disabled_by_default_and_forwarded() -> None:
 
 def test_runtime_composes_executor_only_when_both_flags_are_enabled() -> None:
     assert "PluggyReadOnlyExecutionService" in MAIN_SOURCE
-    assert "app.state.banking_pluggy_execution = banking_pluggy_execution" in MAIN_SOURCE
+    assert (
+        "app.state.banking_pluggy_execution = banking_pluggy_execution" in MAIN_SOURCE
+    )
     assert (
         "resolved_settings.app_banking_enabled\n"
-        "            and resolved_settings.app_banking_pluggy_enabled"
+        "            and resolved_settings.app_banking_pluggy_enabled" in MAIN_SOURCE
+    )
+    assert (
+        '("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()'
         in MAIN_SOURCE
     )
-    assert '("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()' in MAIN_SOURCE
 
 
 def test_startup_does_not_perform_provider_io() -> None:
