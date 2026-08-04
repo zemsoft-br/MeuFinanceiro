@@ -1,0 +1,129 @@
+name: Temporary Pluggy Runtime Integration
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+      - name: Apply runtime integration
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              content = target.read_text(encoding="utf-8")
+              count = content.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one occurrence, found {count}")
+              target.write_text(content.replace(old, new), encoding="utf-8")
+
+          compose = Path("compose.yaml")
+          compose_text = compose.read_text(encoding="utf-8")
+          if "APP_BANKING_PLUGGY_ENABLED" not in compose_text:
+              replace_exact(
+                  "compose.yaml",
+                  "      APP_BANKING_ENABLED: ${APP_BANKING_ENABLED:-false}\n",
+                  "      APP_BANKING_ENABLED: ${APP_BANKING_ENABLED:-false}\n"
+                  "      APP_BANKING_PLUGGY_ENABLED: ${APP_BANKING_PLUGGY_ENABLED:-false}\n",
+              )
+
+          dependencies = Path("docs/DEPENDENCIES.md")
+          dependency_text = dependencies.read_text(encoding="utf-8")
+          if "é instalado na imagem da API como dependência" not in dependency_text:
+              replace_exact(
+                  "docs/DEPENDENCIES.md",
+                  "`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O transporte é opcional, permanece ausente da imagem e da composição da API, não lê configuração do ambiente e não executa chamadas externas nos gates.\n",
+                  "`meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O pacote é instalado na imagem da API como dependência do executor, mas permanece inativo por padrão, não lê configuração do ambiente e não executa chamadas externas no startup ou nos gates.\n",
+              )
+              replace_exact(
+                  "docs/DEPENDENCIES.md",
+                  "`meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote não é instalado na API, não adiciona dependência externa e usa somente factories injetadas nos testes.\n",
+                  "`meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote é instalado na API, mas o serviço somente é composto quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` estão ativos; nenhuma credencial ou rede é acessada no startup.\n",
+              )
+              replace_exact(
+                  "docs/DEPENDENCIES.md",
+                  "`httpx` declara BSD-3-Clause e é utilizado pelo transporte Pluggy isolado. A dependência não torna a integração obrigatória nem altera o runtime da API enquanto o pacote específico permanecer não instalado e não registrado.\n",
+                  "`httpx` declara BSD-3-Clause e é utilizado pelo transporte Pluggy isolado. A presença da dependência na imagem não torna a integração obrigatória: as duas flags permanecem falsas por padrão, o registry continua vazio e nenhuma chamada externa ocorre no startup.\n",
+              )
+
+          adapter = Path("docs/architecture/PLUGGY_READONLY_ADAPTER.md")
+          adapter_text = adapter.read_text(encoding="utf-8")
+          if "APP_BANKING_PLUGGY_ENABLED=false por padrão" not in adapter_text:
+              replace_exact(
+                  "docs/architecture/PLUGGY_READONLY_ADAPTER.md",
+                  "O adapter não é instalado pela imagem da API e não é registrado no\n`BankingProviderRegistry`.\n\nA composição da API permanece:\n\n```text\nregistry vazio\nregistry congelado\nAPP_BANKING_ENABLED=false por padrão\n```\n\nPortanto, esta issue não cria qualquer caminho de execução externa.\n",
+                  "O adapter é instalado na imagem da API como dependência do executor, mas não é registrado no `BankingProviderRegistry`.\n\nA composição da API permanece fail-closed:\n\n```text\nregistry vazio\nregistry congelado\nAPP_BANKING_ENABLED=false por padrão\nAPP_BANKING_PLUGGY_ENABLED=false por padrão\n```\n\nMesmo quando ambas as flags são ativadas, o startup apenas constrói o executor contextual. Credenciais e rede continuam restritas a uma operação explícita futura.\n",
+              )
+
+          execution = Path("docs/architecture/PLUGGY_READONLY_EXECUTION.md")
+          execution_text = execution.read_text(encoding="utf-8")
+          execution_text = execution_text.replace(
+              "Status: **implementação inicial da issue #80**.",
+              "Status: **integrado ao runtime fail-closed pelas issues #80 e #82**.",
+          )
+          old_runtime = "## Runtime preservado\n\nO recorte não:\n\n- instala o pacote na API ou Worker;\n- registra provider no `BankingProviderRegistry`;\n- altera `APP_BANKING_ENABLED=false`;\n- cria endpoint;\n- executa chamada real nos testes;\n- persiste contas ou transações;\n- cria migration;\n- executa deploy, HML ou produção.\n"
+          new_runtime = "## Runtime fail-closed\n\nA imagem da API instala o pacote, mas o executor só é construído quando `APP_BANKING_ENABLED=true` e `APP_BANKING_PLUGGY_ENABLED=true`. Com qualquer outra combinação, `app.state.banking_pluggy_execution` é `None`. Mesmo com ambas as flags ativas, o startup não decripta credenciais, não cria transporte e não executa rede. O registry permanece vazio e congelado, e nenhum endpoint expõe o executor.\n"
+          if old_runtime in execution_text:
+              execution_text = execution_text.replace(old_runtime, new_runtime)
+          execution.write_text(execution_text, encoding="utf-8")
+
+          package_readme = Path("packages/banking-pluggy-execution/README.md")
+          package_text = package_readme.read_text(encoding="utf-8")
+          old_package_runtime = "## Runtime\n\nO pacote não é instalado na imagem da API, não é registrado no startup e não executa\nchamadas externas durante testes ou CI.\n"
+          new_package_runtime = "## Runtime\n\nO pacote é instalado na imagem da API, mas o executor somente é construído quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` são verdadeiros. As flags são falsas por padrão. O startup não lê credenciais, não cria transporte e não executa chamadas externas; o registry permanece vazio e nenhum endpoint expõe o serviço.\n"
+          if old_package_runtime in package_text:
+              package_text = package_text.replace(old_package_runtime, new_package_runtime)
+          package_readme.write_text(package_text, encoding="utf-8")
+
+          Path("docs/architecture/PLUGGY_RUNTIME_FLAGS.md").write_text(
+              "# Composição runtime Pluggy atrás de flags fail-closed\n\n"
+              "Status: **issue #82**.\n\n"
+              "A API instala o executor, mas mantém `APP_BANKING_ENABLED=false` e `APP_BANKING_PLUGGY_ENABLED=false` por padrão. O provider fica administrativamente disponível somente com a flag Pluggy; a ativação exige também a flag global. O executor só é construído com ambas as flags, sem ler credenciais, criar transporte ou executar rede no startup. O `BankingProviderRegistry` continua vazio e congelado, e nenhum endpoint foi criado neste recorte.\n",
+              encoding="utf-8",
+          )
+          PY
+
+          python -m ruff format \
+            apps/api/app/core/config.py \
+            apps/api/app/main.py \
+            apps/api/app/services/banking_admin.py \
+            apps/api/tests/test_banking_provider_availability.py \
+            apps/api/tests/test_banking_pluggy_runtime.py \
+            tests/quality/test_banking_admin_registry_contract.py \
+            tests/quality/test_banking_pluggy_execution_contract.py \
+            tests/quality/test_pluggy_readonly_adapter_contract.py
+      - name: Commit runtime integration
+        shell: bash
+        run: |
+          git config user.name "zemsoft-br"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -s -m "feat(banking): compose Pluggy executor behind runtime flags"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi

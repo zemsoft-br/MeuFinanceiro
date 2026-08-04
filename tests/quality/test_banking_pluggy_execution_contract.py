@@ -48,13 +48,18 @@ def test_execution_package_has_no_api_or_environment_dependency() -> None:
         assert forbidden not in lowered
 
 
-def test_api_runtime_does_not_install_or_register_execution_package() -> None:
-    package_name = "meufinanceiro-banking-pluggy-execution"
+def test_api_runtime_installs_and_composes_execution_package_fail_closed() -> None:
+    package_name = '"meufinanceiro-banking-pluggy-execution==0.1.0"'
     module_name = "meufinanceiro_banking_pluggy_execution"
-    assert package_name not in API_PYPROJECT
-    assert "packages/banking-pluggy-execution" not in API_DOCKERFILE
-    assert module_name not in API_MAIN
+
+    assert package_name in API_PYPROJECT
+    assert "packages/banking-pluggy-execution/pyproject.toml" in API_DOCKERFILE
+    assert "./packages/banking-pluggy-execution" in API_DOCKERFILE
+    assert module_name in API_MAIN
+    assert "app_banking_pluggy_enabled" in API_MAIN
+    assert "app.state.banking_pluggy_execution" in API_MAIN
     assert 'register("pluggy"' not in API_MAIN
+    assert "use_enabled_credentials(" not in API_MAIN
 
 
 def test_quality_gates_include_execution_package() -> None:
