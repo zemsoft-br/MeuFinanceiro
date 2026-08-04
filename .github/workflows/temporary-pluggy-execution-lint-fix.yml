@@ -1,0 +1,48 @@
+name: Temporary Pluggy Execution Lint Fix
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Remove unused import
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/banking-pluggy-execution/tests/test_service.py")
+          text = path.read_text(encoding="utf-8")
+          old = "from uuid import UUID, uuid4"
+          new = "from uuid import UUID"
+          if old in text:
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          elif new not in text:
+              raise SystemExit("expected UUID import was not found")
+          PY
+      - name: Commit lint correction
+        shell: bash
+        run: |
+          git config user.name "zemsoft-br"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add packages/banking-pluggy-execution/tests/test_service.py
+          if ! git diff --cached --quiet; then
+            git commit -s -m "fix(banking): remove unused execution test import"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
