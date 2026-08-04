@@ -21,6 +21,19 @@ from meufinanceiro_persistence import (
 from meufinanceiro_persistence.schema import provider_configurations
 
 
+@pytest.fixture
+def cipher() -> SecretCipher:
+    return SecretCipher(create_keyring())
+
+
+@pytest.fixture
+def store(
+    runtime_engine: Engine,
+    cipher: SecretCipher,
+) -> BankingIntegrationStore:
+    return BankingIntegrationStore(runtime_engine, cipher)
+
+
 def create_configuration(
     store: BankingIntegrationStore,
     *,
