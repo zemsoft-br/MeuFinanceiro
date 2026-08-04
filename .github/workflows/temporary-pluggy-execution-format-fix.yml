@@ -1,0 +1,48 @@
+name: Temporary Pluggy Execution Format Fix
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+      - name: Format execution package files
+        run: >-
+          python -m ruff format
+          packages/banking-pluggy-execution/src/meufinanceiro_banking_pluggy_execution/service.py
+          packages/banking-pluggy-execution/tests/test_service.py
+          tests/quality/test_banking_pluggy_execution_contract.py
+      - name: Commit formatting
+        shell: bash
+        run: |
+          git config user.name "zemsoft-br"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add \
+            packages/banking-pluggy-execution/src/meufinanceiro_banking_pluggy_execution/service.py \
+            packages/banking-pluggy-execution/tests/test_service.py \
+            tests/quality/test_banking_pluggy_execution_contract.py
+          if ! git diff --cached --quiet; then
+            git commit -s -m "style(banking): format Pluggy execution package"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
