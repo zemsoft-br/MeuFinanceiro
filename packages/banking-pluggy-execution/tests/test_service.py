@@ -89,9 +89,7 @@ class FakeStore:
         residence_id: UUID,
         connection_id: UUID,
     ) -> BankingConnectionRecord:
-        self.connection_calls.append(
-            (installation_id, residence_id, connection_id)
-        )
+        self.connection_calls.append((installation_id, residence_id, connection_id))
         if (
             not self.allow_residence
             or installation_id != self.connection.installation_id
@@ -199,9 +197,7 @@ class RecordingFactory:
         self,
         credentials: PluggyApplicationCredentials,
     ) -> PluggyExecutionTransport:
-        self.credential_pairs.append(
-            (credentials.client_id, credentials.client_secret)
-        )
+        self.credential_pairs.append((credentials.client_id, credentials.client_secret))
         if self.failure is not None:
             raise self.failure
         return self.transport
@@ -251,9 +247,7 @@ def test_connection_state_uses_internal_context_and_closes_transport() -> None:
     state = executor.get_connection_state(**context())
 
     assert state.status is ConnectionStatus.AVAILABLE
-    assert store.connection_calls == [
-        (INSTALLATION_ID, RESIDENCE_ID, CONNECTION_ID)
-    ]
+    assert store.connection_calls == [(INSTALLATION_ID, RESIDENCE_ID, CONNECTION_ID)]
     assert store.credential_calls == [(INSTALLATION_ID, "pluggy")]
     assert transport.item_calls == [ITEM_ID]
     assert transport.closed is True
@@ -285,9 +279,7 @@ def test_transactions_validate_membership_and_forward_window() -> None:
 
     assert page.records[0].status is TransactionStatus.CONFIRMED
     assert transport.account_calls == [ITEM_ID]
-    assert transport.transaction_calls == [
-        (ACCOUNT_ID, "opaque-cursor", changed_since)
-    ]
+    assert transport.transaction_calls == [(ACCOUNT_ID, "opaque-cursor", changed_since)]
     assert transport.closed is True
 
 

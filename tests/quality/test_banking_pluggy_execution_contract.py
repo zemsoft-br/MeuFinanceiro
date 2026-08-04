@@ -14,9 +14,7 @@ SOURCE_TEXT = "\n".join(
 API_MAIN = (ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
 API_DOCKERFILE = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
 API_PYPROJECT = (ROOT / "apps/api/pyproject.toml").read_text(encoding="utf-8")
-QUALITY_WORKFLOW = (ROOT / ".github/workflows/quality.yml").read_text(
-    encoding="utf-8"
-)
+QUALITY_WORKFLOW = (ROOT / ".github/workflows/quality.yml").read_text(encoding="utf-8")
 LOCAL_QUALITY = (ROOT / "infra/scripts/run-quality.py").read_text(encoding="utf-8")
 
 
@@ -27,7 +25,9 @@ def test_public_methods_do_not_accept_item_id() -> None:
         "list_accounts",
         "list_transactions",
     ):
-        signature = inspect.signature(getattr(PluggyReadOnlyExecutionService, method_name))
+        signature = inspect.signature(
+            getattr(PluggyReadOnlyExecutionService, method_name)
+        )
         assert "item_id" not in signature.parameters
         assert "external_connection_id" not in signature.parameters
         for required in ("installation_id", "residence_id", "connection_id"):

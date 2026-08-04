@@ -208,7 +208,9 @@ class PluggyReadOnlyExecutionService:
             connection_id=connection_id,
         )
 
-        def read_transactions(provider: BankingProvider) -> ExternalPage[ExternalTransaction]:
+        def read_transactions(
+            provider: BankingProvider,
+        ) -> ExternalPage[ExternalTransaction]:
             accounts = provider.list_accounts(connection.external_connection_id)
             if not any(
                 account.external_account_id == account_id
