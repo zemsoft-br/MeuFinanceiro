@@ -18,6 +18,7 @@ from .gateway import (
     PluggyTransactionSnapshot,
     PluggyTransactionState,
 )
+from .http_gateway import PluggyGatewayHttpTransport, PluggyHttpReadOnlyGateway
 
 __all__ = [
     "PluggyAccountKind",
@@ -30,6 +31,8 @@ __all__ = [
     "PluggyConnectionPhase",
     "PluggyGatewayError",
     "PluggyGatewayErrorCategory",
+    "PluggyGatewayHttpTransport",
+    "PluggyHttpReadOnlyGateway",
     "PluggyInstallmentSnapshot",
     "PluggyItemSnapshot",
     "PluggyReadOnlyGateway",
