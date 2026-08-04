@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meufinanceiro-banking-pluggy-execution"
+version = "0.1.0"
+description = "Residence-scoped one-shot Pluggy read-only execution"
+requires-python = ">=3.13,<3.14"
+license = "AGPL-3.0-only"
+dependencies = [
+  "meufinanceiro-banking==0.1.0",
+  "meufinanceiro-banking-pluggy==0.1.0",
+  "meufinanceiro-persistence==0.1.0",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+meufinanceiro_banking_pluggy_execution = ["py.typed"]
