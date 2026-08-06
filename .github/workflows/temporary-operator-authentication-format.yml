@@ -1,0 +1,52 @@
+name: Temporary Operator Authentication Format
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+      - name: Format operator authentication files
+        run: >-
+          python -m ruff format
+          apps/api/app/main.py
+          apps/api/app/services/operator_auth.py
+          apps/api/tests/test_operator_auth.py
+          packages/persistence/src/meufinanceiro_persistence/migrations/versions/0004_operator_authentication.py
+          tests/quality/test_operator_auth_contract.py
+      - name: Commit formatting
+        shell: bash
+        run: |
+          git config user.name "zemsoft-br"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add \
+            apps/api/app/main.py \
+            apps/api/app/services/operator_auth.py \
+            apps/api/tests/test_operator_auth.py \
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0004_operator_authentication.py \
+            tests/quality/test_operator_auth_contract.py
+          if ! git diff --cached --quiet; then
+            git commit -s -m "style(identity): format operator authentication"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
