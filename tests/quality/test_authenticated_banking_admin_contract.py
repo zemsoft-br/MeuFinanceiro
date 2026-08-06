@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-ROUTE_SOURCE = (
-    ROOT / "apps/api/app/api/routes/banking_admin.py"
-).read_text(encoding="utf-8")
+ROUTE_SOURCE = (ROOT / "apps/api/app/api/routes/banking_admin.py").read_text(
+    encoding="utf-8"
+)
 AUTH_SOURCE = (ROOT / "apps/api/app/api/auth.py").read_text(encoding="utf-8")
 MAIN_SOURCE = (ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
 
@@ -17,9 +17,10 @@ def test_banking_administration_routes_require_installation_admin() -> None:
 
 
 def test_installation_context_is_only_derived_from_authenticated_principal() -> None:
-    assert ROUTE_SOURCE.count(
-        "installation_id=authenticated.principal.installation_id"
-    ) == 4
+    assert (
+        ROUTE_SOURCE.count("installation_id=authenticated.principal.installation_id")
+        == 4
+    )
     assert "installation_id:" not in ROUTE_SOURCE
     assert 'Field(alias="installation_id")' not in ROUTE_SOURCE
 
@@ -51,6 +52,6 @@ def test_credentials_are_request_only_and_responses_are_metadata_only() -> None:
 
 def test_admin_routes_are_no_store_and_registered_once() -> None:
     assert '"/api/v1/admin/banking/"' in AUTH_SOURCE
-    assert MAIN_SOURCE.count(
-        'include_router(banking_admin_router, prefix="/api/v1")'
-    ) == 1
+    assert (
+        MAIN_SOURCE.count('include_router(banking_admin_router, prefix="/api/v1")') == 1
+    )
