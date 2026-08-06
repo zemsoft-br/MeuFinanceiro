@@ -62,6 +62,13 @@ def _forbidden() -> HTTPException:
     )
 
 
+def _primary_residence_required() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="primary residence is required",
+    )
+
+
 def _unavailable() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -98,4 +105,15 @@ def require_installation_admin(
 ) -> AuthenticatedOperatorRequest:
     if authenticated.principal.role is not OperatorRole.INSTALLATION_ADMIN:
         raise _forbidden()
+    return authenticated
+
+
+def require_primary_residence(
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_operator_session),
+    ],
+) -> AuthenticatedOperatorRequest:
+    if authenticated.principal.primary_residence_id is None:
+        raise _primary_residence_required()
     return authenticated

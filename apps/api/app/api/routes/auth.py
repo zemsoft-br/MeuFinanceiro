@@ -30,6 +30,7 @@ class SessionLoginRequest(BaseModel):
 class OperatorPrincipalResponse(BaseModel):
     operator_id: UUID
     installation_id: UUID
+    primary_residence_id: UUID | None
     login: str
     role: OperatorRole
     expires_at: datetime
@@ -48,6 +49,7 @@ def _principal_response(
     return OperatorPrincipalResponse(
         operator_id=principal.operator_id,
         installation_id=principal.installation_id,
+        primary_residence_id=principal.primary_residence_id,
         login=principal.login_name,
         role=principal.role,
         expires_at=principal.expires_at,

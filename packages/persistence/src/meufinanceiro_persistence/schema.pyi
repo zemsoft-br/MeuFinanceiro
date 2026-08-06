@@ -10,3 +10,5 @@ connection_capabilities: Table
 identity_installation: Table
 identity_operators: Table
 identity_sessions: Table
+household_residences: Table
+household_memberships: Table

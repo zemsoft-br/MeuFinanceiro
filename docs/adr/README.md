@@ -11,6 +11,8 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0006 — Persistência e fila de tarefas no PostgreSQL](0006-postgresql-persistence-and-task-queue.md)
 - [ADR-0008 — Flutter como cliente canônico multiplataforma](0008-flutter-multiplatform-client.md)
 - [ADR-0012 — Persistência, segurança e feature flag da integração bancária](0012-banking-integration-persistence-security-and-feature-flag.md)
+- [ADR-0013 — Autenticação local de operador e sessões opacas](0013-local-operator-authentication.md)
+- [ADR-0014 — Residência primária derivada da associação do operador](0014-primary-residence-context.md)
 
 ## Decisões propostas
 
