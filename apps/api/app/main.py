@@ -6,16 +6,19 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from meufinanceiro_banking import BankingProviderRegistry
 from meufinanceiro_banking_pluggy_execution import PluggyReadOnlyExecutionService
-from meufinanceiro_persistence import BankingIntegrationStore
+from meufinanceiro_persistence import BankingIntegrationStore, OperatorIdentityStore
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
 
+from app.api.auth import AuthenticationNoStoreMiddleware
+from app.api.routes.auth import router as auth_router
 from app.api.routes.demo import router as demo_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.database import create_database
 from app.services.banking_admin import BankingAdministrationService
+from app.services.operator_auth import OperatorAuthenticationService
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -29,6 +32,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         secret_cipher = SecretCipher(keyring)
         provider_registry = BankingProviderRegistry().freeze()
         banking_store = BankingIntegrationStore(database.engine, secret_cipher)
+        operator_identity_store = OperatorIdentityStore(database.engine)
+        operator_authentication = OperatorAuthenticationService(operator_identity_store)
         available_providers = (
             ("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()
         )
@@ -44,6 +49,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.settings = resolved_settings
         app.state.banking_provider_registry = provider_registry
         app.state.banking_pluggy_execution = banking_pluggy_execution
+        app.state.operator_identity_store = operator_identity_store
+        app.state.operator_authentication = operator_authentication
         app.state.banking_administration = BankingAdministrationService(
             banking_store,
             provider_registry,
@@ -63,6 +70,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/v1/openapi.json",
         lifespan=lifespan,
     )
+    application.add_middleware(AuthenticationNoStoreMiddleware)
+    application.include_router(auth_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application
