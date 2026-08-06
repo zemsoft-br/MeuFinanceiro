@@ -68,9 +68,7 @@ class InstallationOperatorRecord:
     def __post_init__(self) -> None:
         normalize_operator_login(self.login_name)
         require_aware(self.created_at, "created_at")
-        if (self.primary_residence_id is None) != (
-            self.primary_residence_name is None
-        ):
+        if (self.primary_residence_id is None) != (self.primary_residence_name is None):
             raise ValueError("primary residence context is incomplete")
 
 

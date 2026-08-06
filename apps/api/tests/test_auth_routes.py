@@ -85,9 +85,8 @@ def test_login_returns_derived_residence_and_no_store_headers(
     assert response.status_code == 200
     assert response.json()["access_token"] == TOKEN
     assert response.json()["operator"]["role"] == "installation_admin"
-    assert (
-        response.json()["operator"]["primary_residence_id"]
-        == str(PRIMARY_RESIDENCE_ID)
+    assert response.json()["operator"]["primary_residence_id"] == str(
+        PRIMARY_RESIDENCE_ID
     )
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
@@ -147,9 +146,12 @@ def test_primary_residence_dependency_fails_closed_without_membership() -> None:
 
     assert captured.value.status_code == 409
     assert captured.value.detail == "primary residence is required"
-    assert require_primary_residence(
-        AuthenticatedOperatorRequest(token=TOKEN, principal=PRINCIPAL)
-    ).principal.primary_residence_id == PRIMARY_RESIDENCE_ID
+    assert (
+        require_primary_residence(
+            AuthenticatedOperatorRequest(token=TOKEN, principal=PRINCIPAL)
+        ).principal.primary_residence_id
+        == PRIMARY_RESIDENCE_ID
+    )
 
 
 def test_missing_or_invalid_bearer_is_unauthorized(

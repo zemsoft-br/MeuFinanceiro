@@ -145,8 +145,7 @@ def downgrade() -> None:
         f"REVOKE SELECT, INSERT, UPDATE ON TABLES FROM {role}"
     )
     op.execute(
-        f"REVOKE SELECT, INSERT, UPDATE "
-        f"ON ALL TABLES IN SCHEMA household FROM {role}"
+        f"REVOKE SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA household FROM {role}"
     )
     op.execute(f"REVOKE USAGE ON SCHEMA household FROM {role}")
     op.drop_index(
