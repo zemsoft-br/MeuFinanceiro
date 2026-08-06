@@ -1,0 +1,330 @@
+name: Temporary Operator Authentication Integration
+
+on:
+  pull_request:
+    branches:
+      - develop
+    types:
+      - opened
+      - synchronize
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout pull request branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+      - name: Integrate identity runtime and schema
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one occurrence, found {count}")
+              target.write_text(text.replace(old, new), encoding="utf-8")
+
+          schema_path = Path(
+              "packages/persistence/src/meufinanceiro_persistence/schema.py"
+          )
+          schema = schema_path.read_text(encoding="utf-8")
+          if "identity_installation = Table(" not in schema:
+              schema += '''
+
+
+identity_installation = Table(
+    "installation",
+    metadata,
+    Column("singleton", Boolean, primary_key=True),
+    Column("id", UUID(as_uuid=True), nullable=False, unique=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("singleton", name="ck_identity_installation_singleton"),
+    schema="identity",
+)
+
+
+identity_operators = Table(
+    "operators",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("installation_id", UUID(as_uuid=True), nullable=False),
+    Column("login_name", String(64), nullable=False),
+    Column("password_hash", Text, nullable=False),
+    Column("role", String(32), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("failed_attempts", Integer, nullable=False),
+    Column("locked_until", DateTime(timezone=True), nullable=True),
+    Column("last_authenticated_at", DateTime(timezone=True), nullable=True),
+    Column("password_changed_at", DateTime(timezone=True), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "login_name ~ '^[a-z0-9][a-z0-9._-]{2,63}$'",
+        name="ck_identity_operators_login",
+    ),
+    CheckConstraint(
+        "role = 'installation_admin'",
+        name="ck_identity_operators_role",
+    ),
+    CheckConstraint(
+        "status IN ('active', 'disabled')",
+        name="ck_identity_operators_status",
+    ),
+    CheckConstraint(
+        "failed_attempts >= 0",
+        name="ck_identity_operators_failed_attempts",
+    ),
+    CheckConstraint(
+        "length(password_hash) BETWEEN 32 AND 1024",
+        name="ck_identity_operators_password_hash_length",
+    ),
+    ForeignKey(
+        "identity.installation.id",
+        name="fk_identity_operators_installation",
+        ondelete="RESTRICT",
+    ),
+    UniqueConstraint("login_name", name="uq_identity_operators_login"),
+    UniqueConstraint(
+        "id",
+        "installation_id",
+        name="uq_identity_operators_installation_scope",
+    ),
+    schema="identity",
+)
+
+
+identity_sessions = Table(
+    "sessions",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("installation_id", UUID(as_uuid=True), nullable=False),
+    Column("operator_id", UUID(as_uuid=True), nullable=False),
+    Column("token_hash", String(64), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False),
+    Column("revoked_at", DateTime(timezone=True), nullable=True),
+    CheckConstraint(
+        "token_hash ~ '^[0-9a-f]{64}$'",
+        name="ck_identity_sessions_token_hash",
+    ),
+    CheckConstraint(
+        "expires_at > created_at",
+        name="ck_identity_sessions_expiration",
+    ),
+    CheckConstraint(
+        "last_seen_at >= created_at",
+        name="ck_identity_sessions_last_seen",
+    ),
+    CheckConstraint(
+        "revoked_at IS NULL OR revoked_at >= created_at",
+        name="ck_identity_sessions_revoked_at",
+    ),
+    ForeignKeyConstraint(
+        ["operator_id", "installation_id"],
+        ["identity.operators.id", "identity.operators.installation_id"],
+        ondelete="CASCADE",
+        name="fk_identity_sessions_operator_scope",
+    ),
+    UniqueConstraint("token_hash", name="uq_identity_sessions_token_hash"),
+    schema="identity",
+)
+
+Index(
+    "ix_identity_sessions_operator_expiration",
+    identity_sessions.c.operator_id,
+    identity_sessions.c.expires_at,
+)
+'''
+              schema_path.write_text(schema, encoding="utf-8")
+
+          init_path = Path(
+              "packages/persistence/src/meufinanceiro_persistence/__init__.py"
+          )
+          init_text = init_path.read_text(encoding="utf-8")
+          if "from meufinanceiro_persistence.identity import" not in init_text:
+              replace_exact(
+                  str(init_path),
+                  "from meufinanceiro_persistence.health import (\n"
+                  "    PersistenceHealth,\n"
+                  "    inspect_persistence_health,\n"
+                  ")\n",
+                  "from meufinanceiro_persistence.health import (\n"
+                  "    PersistenceHealth,\n"
+                  "    inspect_persistence_health,\n"
+                  ")\n"
+                  "from meufinanceiro_persistence.identity import (\n"
+                  "    IdentityBootstrapConflictError,\n"
+                  "    IdentityPersistenceError,\n"
+                  "    InstallationOperatorRecord,\n"
+                  "    OperatorAuthenticationMaterial,\n"
+                  "    OperatorIdentityStore,\n"
+                  "    OperatorRole,\n"
+                  "    OperatorSessionPrincipal,\n"
+                  "    OperatorStatus,\n"
+                  "    normalize_operator_login,\n"
+                  "    validate_token_hash,\n"
+                  ")\n",
+              )
+              replace_exact(
+                  str(init_path),
+                  '    "LostLeaseError",\n',
+                  '    "IdentityBootstrapConflictError",\n'
+                  '    "IdentityPersistenceError",\n'
+                  '    "InstallationOperatorRecord",\n'
+                  '    "LostLeaseError",\n',
+              )
+              replace_exact(
+                  str(init_path),
+                  '    "PersistenceHealth",\n',
+                  '    "OperatorAuthenticationMaterial",\n'
+                  '    "OperatorIdentityStore",\n'
+                  '    "OperatorRole",\n'
+                  '    "OperatorSessionPrincipal",\n'
+                  '    "OperatorStatus",\n'
+                  '    "PersistenceHealth",\n',
+              )
+              replace_exact(
+                  str(init_path),
+                  '    "inspect_persistence_health",\n',
+                  '    "inspect_persistence_health",\n'
+                  '    "normalize_operator_login",\n'
+                  '    "validate_token_hash",\n',
+              )
+
+          conftest_path = Path("packages/persistence/tests/conftest.py")
+          conftest = conftest_path.read_text(encoding="utf-8")
+          if "identity_installation" not in conftest:
+              replace_exact(
+                  str(conftest_path),
+                  "    demo_task_effects,\n"
+                  "    provider_configurations,\n",
+                  "    demo_task_effects,\n"
+                  "    identity_installation,\n"
+                  "    identity_operators,\n"
+                  "    identity_sessions,\n"
+                  "    provider_configurations,\n",
+              )
+              replace_exact(
+                  str(conftest_path),
+                  "    with engine.begin() as connection:\n"
+                  "        connection.execute(delete(connection_capabilities))\n",
+                  "    with engine.begin() as connection:\n"
+                  "        connection.execute(delete(identity_sessions))\n"
+                  "        connection.execute(delete(identity_operators))\n"
+                  "        connection.execute(delete(identity_installation))\n"
+                  "        connection.execute(delete(connection_capabilities))\n",
+              )
+
+          main_path = Path("apps/api/app/main.py")
+          main = main_path.read_text(encoding="utf-8")
+          if "OperatorAuthenticationService" not in main:
+              replace_exact(
+                  str(main_path),
+                  "from meufinanceiro_persistence import BankingIntegrationStore\n",
+                  "from meufinanceiro_persistence import (\n"
+                  "    BankingIntegrationStore,\n"
+                  "    OperatorIdentityStore,\n"
+                  ")\n",
+              )
+              replace_exact(
+                  str(main_path),
+                  "from app.api.routes.demo import router as demo_router\n",
+                  "from app.api.auth import AuthenticationNoStoreMiddleware\n"
+                  "from app.api.routes.auth import router as auth_router\n"
+                  "from app.api.routes.demo import router as demo_router\n",
+              )
+              replace_exact(
+                  str(main_path),
+                  "from app.services.banking_admin import BankingAdministrationService\n",
+                  "from app.services.banking_admin import BankingAdministrationService\n"
+                  "from app.services.operator_auth import OperatorAuthenticationService\n",
+              )
+              replace_exact(
+                  str(main_path),
+                  "        banking_store = BankingIntegrationStore(database.engine, secret_cipher)\n",
+                  "        banking_store = BankingIntegrationStore(database.engine, secret_cipher)\n"
+                  "        operator_identity_store = OperatorIdentityStore(database.engine)\n"
+                  "        operator_authentication = OperatorAuthenticationService(\n"
+                  "            operator_identity_store\n"
+                  "        )\n",
+              )
+              replace_exact(
+                  str(main_path),
+                  "        app.state.banking_provider_registry = provider_registry\n",
+                  "        app.state.banking_provider_registry = provider_registry\n"
+                  "        app.state.operator_identity_store = operator_identity_store\n"
+                  "        app.state.operator_authentication = operator_authentication\n",
+              )
+              replace_exact(
+                  str(main_path),
+                  "    application.include_router(health_router, prefix=\"/api/v1\")\n",
+                  "    application.add_middleware(AuthenticationNoStoreMiddleware)\n"
+                  "    application.include_router(auth_router, prefix=\"/api/v1\")\n"
+                  "    application.include_router(health_router, prefix=\"/api/v1\")\n",
+              )
+
+          adr_index = Path("docs/adr/README.md")
+          if "ADR-0013" not in adr_index.read_text(encoding="utf-8"):
+              replace_exact(
+                  str(adr_index),
+                  "- [ADR-0012 — Persistência, segurança e feature flag da integração bancária](0012-banking-integration-persistence-security-and-feature-flag.md)\n",
+                  "- [ADR-0012 — Persistência, segurança e feature flag da integração bancária](0012-banking-integration-persistence-security-and-feature-flag.md)\n"
+                  "- [ADR-0013 — Autenticação local de operador e sessões opacas](0013-local-operator-authentication.md)\n",
+              )
+
+          architecture = Path("docs/ARCHITECTURE.md")
+          if "ADR-0013" not in architecture.read_text(encoding="utf-8"):
+              replace_exact(
+                  str(architecture),
+                  "Todo recurso financeiro pertence a uma residência. Recursos pessoais também possuem proprietário explícito. A autorização é aplicada nos casos de uso e na persistência; controles visuais não constituem proteção.\n",
+                  "Todo recurso financeiro pertence a uma residência. Recursos pessoais também possuem proprietário explícito. A autorização é aplicada nos casos de uso e na persistência; controles visuais não constituem proteção.\n\nA primeira identidade executável é um operador administrador local, criado somente por CLI. Senhas usam Argon2id e sessões HTTP são tokens opacos revogáveis, com apenas SHA-256 persistido, conforme o ADR-0013. Health e status demo permanecem públicos; endpoints administrativos exigirão o principal autenticado.\n",
+              )
+          PY
+
+          python -m ruff format \
+            packages/persistence/src/meufinanceiro_persistence/schema.py \
+            packages/persistence/src/meufinanceiro_persistence/__init__.py \
+            packages/persistence/src/meufinanceiro_persistence/identity.py \
+            packages/persistence/src/meufinanceiro_persistence/identity_models.py \
+            packages/persistence/src/meufinanceiro_persistence/identity_store.py \
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0004_operator_authentication.py \
+            packages/persistence/tests/conftest.py \
+            packages/persistence/tests/test_identity_store.py \
+            apps/api/app/main.py \
+            apps/api/app/operator_cli.py \
+            apps/api/app/api/auth.py \
+            apps/api/app/api/routes/auth.py \
+            apps/api/app/services/operator_auth.py \
+            apps/api/tests/test_auth_routes.py \
+            apps/api/tests/test_operator_auth.py \
+            tests/quality/test_operator_auth_contract.py
+      - name: Commit integration
+        shell: bash
+        run: |
+          git config user.name "zemsoft-br"
+          git config user.email "291430811+zemsoft-br@users.noreply.github.com"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -s -m "feat(identity): integrate local operator authentication"
+            git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
+          fi
