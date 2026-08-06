@@ -7,9 +7,10 @@ MIGRATION = (
     ROOT
     / "packages/persistence/src/meufinanceiro_persistence/migrations/versions/0004_operator_authentication.py"
 ).read_text(encoding="utf-8")
-SCHEMA = (ROOT / "packages/persistence/src/meufinanceiro_persistence/schema.py").read_text(
-    encoding="utf-8"
-)
+IDENTITY_SCHEMA = (
+    ROOT
+    / "packages/persistence/src/meufinanceiro_persistence/identity_schema.py"
+).read_text(encoding="utf-8")
 AUTH_SERVICE = (ROOT / "apps/api/app/services/operator_auth.py").read_text(
     encoding="utf-8"
 )
@@ -21,7 +22,9 @@ MAIN = (ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
 
 
 def test_authentication_uses_opaque_hashed_sessions_without_jwt() -> None:
-    combined = "\n".join((MIGRATION, SCHEMA, AUTH_SERVICE, AUTH_ROUTES, MAIN)).casefold()
+    combined = "\n".join(
+        (MIGRATION, IDENTITY_SCHEMA, AUTH_SERVICE, AUTH_ROUTES, MAIN)
+    ).casefold()
     assert "token_hash" in combined
     assert "sha256" in AUTH_SERVICE.casefold()
     assert "token_urlsafe" in AUTH_SERVICE
@@ -37,7 +40,7 @@ def test_authentication_uses_opaque_hashed_sessions_without_jwt() -> None:
 
 
 def test_database_schema_does_not_persist_raw_password_or_bearer_token() -> None:
-    lowered = "\n".join((MIGRATION, SCHEMA)).casefold()
+    lowered = "\n".join((MIGRATION, IDENTITY_SCHEMA)).casefold()
     assert "password_hash" in lowered
     assert "token_hash" in lowered
     for forbidden in (

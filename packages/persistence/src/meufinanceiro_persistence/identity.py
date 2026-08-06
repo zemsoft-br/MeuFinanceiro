@@ -1,5 +1,6 @@
 """Public identity persistence contracts."""
 
+from meufinanceiro_persistence import identity_schema as _identity_schema
 from meufinanceiro_persistence.identity_models import (
     IdentityBootstrapConflictError,
     IdentityPersistenceError,

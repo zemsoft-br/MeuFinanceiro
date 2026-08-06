@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 
@@ -22,6 +23,19 @@ from meufinanceiro_persistence.schema import (
 
 NOW = datetime(2026, 8, 5, 20, 0, tzinfo=UTC)
 PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=4$test$not-a-real-hash-value"
+
+
+@pytest.fixture(autouse=True)
+def clean_identity(engine: Engine) -> Iterator[None]:
+    with engine.begin() as connection:
+        connection.execute(delete(identity_sessions))
+        connection.execute(delete(identity_operators))
+        connection.execute(delete(identity_installation))
+    yield
+    with engine.begin() as connection:
+        connection.execute(delete(identity_sessions))
+        connection.execute(delete(identity_operators))
+        connection.execute(delete(identity_installation))
 
 
 def test_bootstrap_creates_single_installation_admin(

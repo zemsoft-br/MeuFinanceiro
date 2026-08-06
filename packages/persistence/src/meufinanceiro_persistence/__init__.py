@@ -39,6 +39,18 @@ from meufinanceiro_persistence.health import (
     PersistenceHealth,
     inspect_persistence_health,
 )
+from meufinanceiro_persistence.identity import (
+    IdentityBootstrapConflictError,
+    IdentityPersistenceError,
+    InstallationOperatorRecord,
+    OperatorAuthenticationMaterial,
+    OperatorIdentityStore,
+    OperatorRole,
+    OperatorSessionPrincipal,
+    OperatorStatus,
+    normalize_operator_login,
+    validate_token_hash,
+)
 from meufinanceiro_persistence.queue import (
     LostLeaseError,
     TaskQueue,
@@ -69,7 +81,15 @@ __all__ = [
     "DemoFixtureStore",
     "DemoModeDisabledError",
     "EnabledProviderCredentials",
+    "IdentityBootstrapConflictError",
+    "IdentityPersistenceError",
+    "InstallationOperatorRecord",
     "LostLeaseError",
+    "OperatorAuthenticationMaterial",
+    "OperatorIdentityStore",
+    "OperatorRole",
+    "OperatorSessionPrincipal",
+    "OperatorStatus",
     "PersistenceHealth",
     "ProviderConfigurationRecord",
     "ProviderConfigurationState",
@@ -83,5 +103,7 @@ __all__ = [
     "TaskStatus",
     "credential_aad",
     "inspect_persistence_health",
+    "normalize_operator_login",
     "unloaded_demo_status",
+    "validate_token_hash",
 ]
