@@ -93,10 +93,7 @@ class IssuedOperatorSession:
     principal: OperatorSessionPrincipal
 
     def __repr__(self) -> str:
-        return (
-            "IssuedOperatorSession("
-            f"principal={self.principal!r}, token=<redacted>)"
-        )
+        return f"IssuedOperatorSession(principal={self.principal!r}, token=<redacted>)"
 
 
 def validate_operator_password(password: str) -> str:

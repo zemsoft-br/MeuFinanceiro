@@ -8,15 +8,12 @@ MIGRATION = (
     / "packages/persistence/src/meufinanceiro_persistence/migrations/versions/0004_operator_authentication.py"
 ).read_text(encoding="utf-8")
 IDENTITY_SCHEMA = (
-    ROOT
-    / "packages/persistence/src/meufinanceiro_persistence/identity_schema.py"
+    ROOT / "packages/persistence/src/meufinanceiro_persistence/identity_schema.py"
 ).read_text(encoding="utf-8")
 AUTH_SERVICE = (ROOT / "apps/api/app/services/operator_auth.py").read_text(
     encoding="utf-8"
 )
-AUTH_ROUTES = (ROOT / "apps/api/app/api/routes/auth.py").read_text(
-    encoding="utf-8"
-)
+AUTH_ROUTES = (ROOT / "apps/api/app/api/routes/auth.py").read_text(encoding="utf-8")
 CLI = (ROOT / "apps/api/app/operator_cli.py").read_text(encoding="utf-8")
 MAIN = (ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
 

@@ -33,9 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         provider_registry = BankingProviderRegistry().freeze()
         banking_store = BankingIntegrationStore(database.engine, secret_cipher)
         operator_identity_store = OperatorIdentityStore(database.engine)
-        operator_authentication = OperatorAuthenticationService(
-            operator_identity_store
-        )
+        operator_authentication = OperatorAuthenticationService(operator_identity_store)
         available_providers = (
             ("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()
         )

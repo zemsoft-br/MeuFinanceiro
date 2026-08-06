@@ -126,9 +126,7 @@ def test_wrong_password_records_failure_and_returns_generic_error() -> None:
         service(store).login(login_name="admin", password="incorrect password")
 
     assert str(captured.value) == "operator credentials are invalid"
-    assert store.failed_calls == [
-        (OPERATOR_ID, LOCK_THRESHOLD, NOW + LOCK_DURATION)
-    ]
+    assert store.failed_calls == [(OPERATOR_ID, LOCK_THRESHOLD, NOW + LOCK_DURATION)]
 
 
 def test_unknown_and_invalid_login_return_same_error_without_failure_update() -> None:
