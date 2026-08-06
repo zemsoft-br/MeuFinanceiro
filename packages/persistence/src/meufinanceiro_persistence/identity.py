@@ -14,6 +14,10 @@ from meufinanceiro_persistence.identity_models import (
 )
 from meufinanceiro_persistence.identity_store import OperatorIdentityStore
 
+# Importing the schema module registers its tables on the shared metadata and schema
+# module before the store resolves those attributes.
+del _identity_schema
+
 __all__ = [
     "IdentityBootstrapConflictError",
     "IdentityPersistenceError",
