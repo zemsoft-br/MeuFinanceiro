@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, NoReturn
+from typing import Annotated, NoReturn, cast
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -85,7 +85,7 @@ def _raise_administration_error(error: BankingAdministrationError) -> NoReturn:
 
 
 def _service(request: Request) -> BankingAdministrationService:
-    return request.app.state.banking_administration
+    return cast(BankingAdministrationService, request.app.state.banking_administration)
 
 
 @router.post(
