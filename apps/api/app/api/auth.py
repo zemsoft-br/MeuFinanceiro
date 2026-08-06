@@ -1,12 +1,12 @@
-"""FastAPI dependency and cache policy for opaque operator sessions."""
+"""FastAPI dependencies and cache policy for operator-protected APIs."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Header, HTTPException, Request, status
-from meufinanceiro_persistence import OperatorSessionPrincipal
+from fastapi import Depends, Header, HTTPException, Request, status
+from meufinanceiro_persistence import OperatorRole, OperatorSessionPrincipal
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
@@ -14,6 +14,11 @@ from app.services.operator_auth import (
     InvalidOperatorSessionError,
     OperatorAuthenticationService,
     OperatorAuthenticationUnavailableError,
+)
+
+_NO_STORE_PREFIXES = (
+    "/api/v1/auth/",
+    "/api/v1/admin/banking/",
 )
 
 
@@ -36,7 +41,7 @@ class AuthenticationNoStoreMiddleware(BaseHTTPMiddleware):
         call_next: RequestResponseEndpoint,
     ) -> Response:
         response = await call_next(request)
-        if request.url.path.startswith("/api/v1/auth/"):
+        if request.url.path.startswith(_NO_STORE_PREFIXES):
             response.headers["Cache-Control"] = "no-store"
             response.headers["Pragma"] = "no-cache"
         return response
@@ -47,6 +52,13 @@ def _unauthorized() -> HTTPException:
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="operator authentication is required",
         headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="operator permission is required",
     )
 
 
@@ -76,3 +88,14 @@ def require_operator_session(
     except OperatorAuthenticationUnavailableError:
         raise _unavailable() from None
     return AuthenticatedOperatorRequest(token=token, principal=principal)
+
+
+def require_installation_admin(
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_operator_session),
+    ],
+) -> AuthenticatedOperatorRequest:
+    if authenticated.principal.role is not OperatorRole.INSTALLATION_ADMIN:
+        raise _forbidden()
+    return authenticated
