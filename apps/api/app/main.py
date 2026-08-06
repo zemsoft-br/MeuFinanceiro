@@ -13,6 +13,7 @@ from meufinanceiro_security.redaction import install_log_redaction
 
 from app.api.auth import AuthenticationNoStoreMiddleware
 from app.api.routes.auth import router as auth_router
+from app.api.routes.banking_admin import router as banking_admin_router
 from app.api.routes.demo import router as demo_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
@@ -72,6 +73,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.add_middleware(AuthenticationNoStoreMiddleware)
     application.include_router(auth_router, prefix="/api/v1")
+    application.include_router(banking_admin_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application
