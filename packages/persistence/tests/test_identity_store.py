@@ -88,7 +88,9 @@ def test_ensure_primary_residence_repairs_legacy_identity_idempotently(
     installation_id = uuid4()
     operator_id = uuid4()
     with engine.begin() as connection:
-        created_at = connection.execute(select(func.transaction_timestamp())).scalar_one()
+        created_at = connection.execute(
+            select(func.transaction_timestamp())
+        ).scalar_one()
         connection.execute(
             identity_installation.insert().values(
                 singleton=True,
@@ -123,12 +125,18 @@ def test_ensure_primary_residence_repairs_legacy_identity_idempotently(
     assert first.operator_id == operator_id
     assert first.residence_name == "Casa antiga"
     with engine.connect() as connection:
-        assert connection.execute(
-            select(func.count()).select_from(household_residences)
-        ).scalar_one() == 1
-        assert connection.execute(
-            select(func.count()).select_from(household_memberships)
-        ).scalar_one() == 1
+        assert (
+            connection.execute(
+                select(func.count()).select_from(household_residences)
+            ).scalar_one()
+            == 1
+        )
+        assert (
+            connection.execute(
+                select(func.count()).select_from(household_memberships)
+            ).scalar_one()
+            == 1
+        )
 
 
 def test_only_one_active_primary_membership_is_allowed(

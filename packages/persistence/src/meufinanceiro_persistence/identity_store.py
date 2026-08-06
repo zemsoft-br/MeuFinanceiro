@@ -495,8 +495,7 @@ class OperatorIdentityStore:
                         household_memberships.c.operator_id,
                     ).where(
                         household_memberships.c.is_primary.is_(True),
-                        household_memberships.c.status
-                        == MembershipStatus.ACTIVE.value,
+                        household_memberships.c.status == MembershipStatus.ACTIVE.value,
                     )
                 )
                 .mappings()
@@ -582,8 +581,7 @@ class OperatorIdentityStore:
                     household_memberships.c.installation_id == installation_id,
                     household_memberships.c.operator_id == operator_id,
                     household_memberships.c.is_primary.is_(True),
-                    household_memberships.c.status
-                    == MembershipStatus.ACTIVE.value,
+                    household_memberships.c.status == MembershipStatus.ACTIVE.value,
                     household_residences.c.status == ResidenceStatus.ACTIVE.value,
                 )
             )

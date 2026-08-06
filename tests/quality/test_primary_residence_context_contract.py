@@ -8,15 +8,14 @@ MIGRATION = (
     / "packages/persistence/src/meufinanceiro_persistence/migrations/versions/0005_household_residences.py"
 ).read_text(encoding="utf-8")
 STORE = (
-    ROOT
-    / "packages/persistence/src/meufinanceiro_persistence/identity_store.py"
+    ROOT / "packages/persistence/src/meufinanceiro_persistence/identity_store.py"
 ).read_text(encoding="utf-8")
 CLI = (ROOT / "apps/api/app/operator_cli.py").read_text(encoding="utf-8")
 AUTH = (ROOT / "apps/api/app/api/auth.py").read_text(encoding="utf-8")
 AUTH_ROUTE = (ROOT / "apps/api/app/api/routes/auth.py").read_text(encoding="utf-8")
-BANKING_ADMIN_ROUTE = (
-    ROOT / "apps/api/app/api/routes/banking_admin.py"
-).read_text(encoding="utf-8")
+BANKING_ADMIN_ROUTE = (ROOT / "apps/api/app/api/routes/banking_admin.py").read_text(
+    encoding="utf-8"
+)
 
 
 def test_household_schema_has_scoped_foreign_keys_and_no_delete_grant() -> None:
