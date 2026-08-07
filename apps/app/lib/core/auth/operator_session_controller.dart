@@ -41,9 +41,10 @@ class OperatorSessionController extends Notifier<OperatorSessionState> {
 
   @override
   OperatorSessionState build() {
+    final vault = ref.read(sessionTokenVaultProvider);
     ref.onDispose(() {
       _operationGeneration += 1;
-      ref.read(sessionTokenVaultProvider).clear();
+      vault.clear();
     });
     return const OperatorSessionState.signedOut();
   }
