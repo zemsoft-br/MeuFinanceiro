@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from uuid import uuid4
+from collections.abc import Callable
+from uuid import UUID, uuid4
 
 import pytest
 from meufinanceiro_security.envelope import SecretCipher
@@ -59,6 +60,7 @@ def test_configuration_database_failure_never_echoes_credentials(
 
 def test_cross_residence_conflict_never_echoes_external_identifier(
     runtime_engine: Engine,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
 ) -> None:
     store = BankingIntegrationStore(
         runtime_engine,
@@ -68,6 +70,7 @@ def test_cross_residence_conflict_never_echoes_external_identifier(
     residence_a = uuid4()
     residence_b = uuid4()
     external_id = "sensitive-external-connection-id"
+    create_canonical_residences(installation_id, (residence_a, residence_b))
 
     configured = store.create_configuration(
         installation_id=installation_id,
@@ -102,4 +105,43 @@ def test_cross_residence_conflict_never_echoes_external_identifier(
 
     assert str(captured.value) == "external connection is already assigned"
     assert external_id not in str(captured.value)
+    assert captured.value.__cause__ is None
+
+
+def test_missing_canonical_residence_failure_is_sanitized(
+    runtime_engine: Engine,
+) -> None:
+    store = BankingIntegrationStore(
+        runtime_engine,
+        SecretCipher(create_keyring()),
+    )
+    installation_id = uuid4()
+    missing_residence_id = uuid4()
+    external_id = "sensitive-orphan-connection-id"
+    configured = store.create_configuration(
+        installation_id=installation_id,
+        provider="pluggy",
+        client_id="synthetic-client-id",
+        client_secret="synthetic-client-secret",
+    )
+    store.set_configuration_state(
+        installation_id=installation_id,
+        provider="pluggy",
+        expected_revision=configured.configuration_revision,
+        state=ProviderConfigurationState.ENABLED,
+    )
+
+    with pytest.raises(BankingPersistenceError) as captured:
+        store.register_connection(
+            installation_id=installation_id,
+            residence_id=missing_residence_id,
+            provider="pluggy",
+            external_connection_id=external_id,
+            status=StoredConnectionStatus.AVAILABLE,
+            requires_user_action=False,
+        )
+
+    assert str(captured.value) == "banking connection could not be persisted"
+    assert external_id not in str(captured.value)
+    assert str(missing_residence_id) not in str(captured.value)
     assert captured.value.__cause__ is None
