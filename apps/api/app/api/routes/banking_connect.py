@@ -31,7 +31,13 @@ class PluggyConnectTokenResponse(BaseModel):
     )
 
 
-async def _reject_client_parameters(request: Request) -> None:
+async def _require_connect_token_request(
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_installation_admin_primary_residence),
+    ],
+) -> AuthenticatedOperatorRequest:
     if request.query_params:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -42,6 +48,7 @@ async def _reject_client_parameters(request: Request) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="request body is not allowed",
         )
+    return authenticated
 
 
 def _service(request: Request) -> PluggyConnectTokenService:
@@ -75,13 +82,12 @@ def _raise_connect_token_error(error: PluggyConnectTokenError) -> NoReturn:
 @router.post(
     "/connect-token",
     response_model=PluggyConnectTokenResponse,
-    dependencies=[Depends(_reject_client_parameters)],
 )
 def issue_connect_token(
     request: Request,
     authenticated: Annotated[
         AuthenticatedOperatorRequest,
-        Depends(require_installation_admin_primary_residence),
+        Depends(_require_connect_token_request),
     ],
 ) -> PluggyConnectTokenResponse:
     residence_id = authenticated.principal.primary_residence_id
