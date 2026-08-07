@@ -12,12 +12,16 @@ Responsabilidades:
 - configuração bancária cifrada por instalação;
 - uso efêmero de credenciais somente para configuração habilitada;
 - conexões e capacidades bancárias isoladas por RLS de residência;
+- conexões bancárias vinculadas por FK à residência canônica da mesma instalação;
 - CLI operacional mínima para o smoke test.
 
 A persistência bancária usa o schema `integrations`, envelopes autenticados do pacote
 `meufinanceiro-security`, compare-and-swap por revisão e contexto transacional
-fail-closed. A API instancia o store para o serviço administrativo interno, mas o
-provider Pluggy continua não registrado e nenhuma chamada externa é executada.
+fail-closed. Toda linha de `integrations.connections` referencia
+`household.residences(id, installation_id)` com `ON DELETE RESTRICT`; upgrades com
+referências órfãs são recusados sem sintetizar ou remapear residências. A API instancia
+o store para o serviço administrativo interno, mas nenhuma conexão HTTP bancária aceita
+`residence_id` arbitrário do cliente.
 
 O acesso ao plaintext usa `use_enabled_credentials`: envelopes são lidos em transação,
 decriptados com AAD contextual e entregues somente a um callback interno depois do
