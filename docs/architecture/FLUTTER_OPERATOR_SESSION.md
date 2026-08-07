@@ -6,6 +6,8 @@ O cliente Flutter consome a autenticação local já exposta pela API sem transf
 
 A sessão existe somente em memória durante a execução atual do aplicativo. Recarregar a página encerra a sessão do ponto de vista do cliente e exige novo login.
 
+A experiência `/login` reconstrói semanticamente a referência Stitch canônica `login_meufinanceiro`; nenhum HTML do protótipo é incorporado ao cliente.
+
 ## Contrato HTTP
 
 A autenticação usa exclusivamente:
@@ -38,7 +40,7 @@ HTTP 403 não apaga uma sessão válida: representa autorização insuficiente p
 
 `AuthenticatedApiClient` injeta `Authorization: Bearer ...` apenas no instante do request e não possui retry automático.
 
-Rotas protegidas futuras devem usar essa fronteira em vez de receber ou montar tokens diretamente.
+Rotas protegidas futuras devem usar essa fronteira em vez de receber ou montar tokens diretamente. Caminhos do cliente autenticado precisam permanecer relativos à base `/api/v1/`; esquema, autoridade, fragmento, barra inicial, backslash e segmentos `.`/`..` são rejeitados antes do transporte.
 
 Erros são reduzidos a categorias locais e status HTTP. Corpo de resposta e bearer não são incorporados em exceptions.
 
@@ -52,9 +54,11 @@ Logout remove o token local antes de aguardar a API. Assim, novos requests prote
 
 `/login` é pública.
 
-`AuthRouteGuard` é a fronteira reutilizável para rotas funcionais protegidas. Um deep link sem sessão é redirecionado para `/login?redirect=...`; somente destinos internos relativos são aceitos para evitar open redirect.
+`AuthRouteGuard` protege o namespace funcional `/app` e `/app/*`. Um deep link protegido sem sessão é redirecionado para `/login?redirect=...`; somente destinos internos relativos são aceitos para evitar open redirect.
 
 As rotas de fundação existentes (`/`, `/componentes` e `/sistema`) permanecem públicas neste recorte.
+
+Mudanças de sessão notificam o `GoRouter`. Portanto, um HTTP 401 recebido enquanto o usuário está em uma rota `/app/*` limpa o bearer, invalida o principal local e provoca nova avaliação da guarda, levando o usuário de volta ao login sem depender da tela funcional que originou a chamada.
 
 ## PWA
 
