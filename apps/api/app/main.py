@@ -5,7 +5,10 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from meufinanceiro_banking import BankingProviderRegistry
-from meufinanceiro_banking_pluggy_execution import PluggyReadOnlyExecutionService
+from meufinanceiro_banking_pluggy_execution import (
+    PluggyConnectTokenService,
+    PluggyReadOnlyExecutionService,
+)
 from meufinanceiro_persistence import BankingIntegrationStore, OperatorIdentityStore
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
@@ -14,6 +17,7 @@ from meufinanceiro_security.redaction import install_log_redaction
 from app.api.auth import AuthenticationNoStoreMiddleware
 from app.api.routes.auth import router as auth_router
 from app.api.routes.banking_admin import router as banking_admin_router
+from app.api.routes.banking_connect import router as banking_connect_router
 from app.api.routes.demo import router as demo_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
@@ -39,17 +43,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()
         )
         banking_pluggy_execution: PluggyReadOnlyExecutionService | None = None
+        banking_pluggy_connect_token: PluggyConnectTokenService | None = None
         if (
             resolved_settings.app_banking_enabled
             and resolved_settings.app_banking_pluggy_enabled
         ):
             banking_pluggy_execution = PluggyReadOnlyExecutionService(banking_store)
+            banking_pluggy_connect_token = PluggyConnectTokenService(banking_store)
 
         app.state.secret_cipher = secret_cipher
         app.state.database = database
         app.state.settings = resolved_settings
         app.state.banking_provider_registry = provider_registry
         app.state.banking_pluggy_execution = banking_pluggy_execution
+        app.state.banking_pluggy_connect_token = banking_pluggy_connect_token
         app.state.operator_identity_store = operator_identity_store
         app.state.operator_authentication = operator_authentication
         app.state.banking_administration = BankingAdministrationService(
@@ -74,6 +81,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.add_middleware(AuthenticationNoStoreMiddleware)
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(banking_admin_router, prefix="/api/v1")
+    application.include_router(banking_connect_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application

@@ -1,5 +1,14 @@
-"""Contextual one-shot Pluggy read-only execution."""
+"""Contextual one-shot Pluggy execution services."""
 
+from .connect_token import (
+    ConnectTokenBankingStore,
+    ConnectTokenTransport,
+    ConnectTokenTransportFactory,
+    IssuedPluggyConnectToken,
+    PluggyConnectTokenError,
+    PluggyConnectTokenErrorCode,
+    PluggyConnectTokenService,
+)
 from .service import (
     ContextualBankingStore,
     PluggyExecutionTransport,
@@ -8,7 +17,14 @@ from .service import (
 )
 
 __all__ = [
+    "ConnectTokenBankingStore",
+    "ConnectTokenTransport",
+    "ConnectTokenTransportFactory",
     "ContextualBankingStore",
+    "IssuedPluggyConnectToken",
+    "PluggyConnectTokenError",
+    "PluggyConnectTokenErrorCode",
+    "PluggyConnectTokenService",
     "PluggyExecutionTransport",
     "PluggyReadOnlyExecutionService",
     "TransportFactory",

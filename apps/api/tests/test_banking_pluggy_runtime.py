@@ -4,10 +4,14 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from meufinanceiro_banking_pluggy_execution import PluggyReadOnlyExecutionService
+from meufinanceiro_banking_pluggy_execution import (
+    PluggyConnectTokenService,
+    PluggyReadOnlyExecutionService,
+)
 from meufinanceiro_persistence import BankingIntegrationStore
 from meufinanceiro_security.keyring import initialize_keyring_file
 
+import meufinanceiro_banking_pluggy_execution.connect_token as connect_token_module
 import meufinanceiro_banking_pluggy_execution.service as execution_module
 from app.core.config import Settings
 from app.main import create_app
@@ -34,7 +38,7 @@ def runtime_settings(
         "banking_enabled",
         "pluggy_enabled",
         "expected_available",
-        "expected_executor",
+        "expected_runtime_services",
     ),
     [
         (False, False, (), False),
@@ -49,7 +53,7 @@ def test_runtime_composition_is_controlled_by_both_flags(
     banking_enabled: bool,
     pluggy_enabled: bool,
     expected_available: tuple[str, ...],
-    expected_executor: bool,
+    expected_runtime_services: bool,
 ) -> None:
     settings = runtime_settings(
         tmp_path,
@@ -61,12 +65,20 @@ def test_runtime_composition_is_controlled_by_both_flags(
         registry = client.app.state.banking_provider_registry
         administration = client.app.state.banking_administration
         executor = client.app.state.banking_pluggy_execution
+        connect_token_service = client.app.state.banking_pluggy_connect_token
 
         assert registry.names() == ()
         assert registry.frozen is True
         assert administration.feature_enabled is banking_enabled
         assert administration.available_providers == expected_available
-        assert isinstance(executor, PluggyReadOnlyExecutionService) is expected_executor
+        assert (
+            isinstance(executor, PluggyReadOnlyExecutionService)
+            is expected_runtime_services
+        )
+        assert (
+            isinstance(connect_token_service, PluggyConnectTokenService)
+            is expected_runtime_services
+        )
 
 
 def test_banking_flags_are_disabled_by_default(tmp_path: Path) -> None:
@@ -103,6 +115,11 @@ def test_startup_with_both_flags_does_not_read_credentials_or_create_transport(
         "PluggyGatewayHttpTransport",
         unexpected_transport,
     )
+    monkeypatch.setattr(
+        connect_token_module,
+        "PluggyConnectTokenHttpTransport",
+        unexpected_transport,
+    )
     settings = runtime_settings(
         tmp_path,
         banking_enabled=True,
@@ -113,4 +130,8 @@ def test_startup_with_both_flags_does_not_read_credentials_or_create_transport(
         assert isinstance(
             client.app.state.banking_pluggy_execution,
             PluggyReadOnlyExecutionService,
+        )
+        assert isinstance(
+            client.app.state.banking_pluggy_connect_token,
+            PluggyConnectTokenService,
         )

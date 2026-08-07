@@ -19,6 +19,7 @@ from app.services.operator_auth import (
 _NO_STORE_PREFIXES = (
     "/api/v1/auth/",
     "/api/v1/admin/banking/",
+    "/api/v1/banking/",
 )
 
 
@@ -112,6 +113,17 @@ def require_primary_residence(
     authenticated: Annotated[
         AuthenticatedOperatorRequest,
         Depends(require_operator_session),
+    ],
+) -> AuthenticatedOperatorRequest:
+    if authenticated.principal.primary_residence_id is None:
+        raise _primary_residence_required()
+    return authenticated
+
+
+def require_installation_admin_primary_residence(
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_installation_admin),
     ],
 ) -> AuthenticatedOperatorRequest:
     if authenticated.principal.primary_residence_id is None:
