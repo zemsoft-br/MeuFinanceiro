@@ -36,6 +36,8 @@ def test_connection_metadata_requires_canonical_household_residence() -> None:
 def test_migration_fails_closed_without_synthesizing_residences() -> None:
     content = MIGRATION.read_text(encoding="utf-8")
 
+    assert "context.is_offline_mode()" in content
+    assert "requires online validation" in content
     assert "LOCK TABLE household.residences, integrations.connections" in content
     assert "IN SHARE ROW EXCLUSIVE MODE" in content
     assert "SELECT EXISTS" in content
