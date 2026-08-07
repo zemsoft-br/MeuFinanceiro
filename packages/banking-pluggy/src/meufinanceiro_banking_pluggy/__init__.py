@@ -2,6 +2,7 @@
 
 from .adapter import PluggyBankingProvider
 from .connect_token import PluggyConnectTokenHttpTransport
+from .connected_item import parse_connected_item
 from .gateway import (
     PluggyAccountKind,
     PluggyAccountSnapshot,
@@ -41,6 +42,7 @@ __all__ = [
     "PluggyTransactionPageSnapshot",
     "PluggyTransactionSnapshot",
     "PluggyTransactionState",
+    "parse_connected_item",
 ]
 
 __version__ = "0.1.0"
