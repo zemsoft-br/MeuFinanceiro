@@ -175,6 +175,7 @@ class PluggyItemSnapshot:
     item_id: str
     phase: PluggyConnectionPhase
     capabilities: tuple[PluggyCapabilitySnapshot, ...]
+    client_user_id: str | None = None
     last_successful_update_at: datetime | None = None
     last_attempt_at: datetime | None = None
     next_refresh_allowed_at: datetime | None = None
@@ -183,6 +184,15 @@ class PluggyItemSnapshot:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "item_id", _clean_identifier(self.item_id, "item_id"))
+        object.__setattr__(
+            self,
+            "client_user_id",
+            _clean_optional_text(
+                self.client_user_id,
+                "client_user_id",
+                max_length=_IDENTIFIER_MAX_LENGTH,
+            ),
+        )
         object.__setattr__(self, "capabilities", tuple(self.capabilities))
         names = [snapshot.capability for snapshot in self.capabilities]
         if len(names) != len(set(names)):

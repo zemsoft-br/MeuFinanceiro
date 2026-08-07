@@ -26,6 +26,16 @@ BankingIntegrationStore.use_enabled_credentials
     -> Connect Token efêmero
 ```
 
+Após o sucesso do Connect Widget, o registro local segue outra fronteira explícita:
+
+```text
+itemId não confiável
+    -> GET /items/{itemId}
+    -> prova de clientUserId da residência autenticada
+    -> register_connection
+    -> replace_capabilities
+```
+
 ## Operações read-only
 
 `PluggyReadOnlyExecutionService` oferece:
@@ -37,7 +47,7 @@ BankingIntegrationStore.use_enabled_credentials
 
 A API pública recebe somente installation ID, residence ID, connection ID interno e,
 na leitura de transações, account ID externo após validação de pertencimento à conexão.
-Item ID nunca é aceito como argumento público.
+Item ID nunca é aceito como argumento público nessas operações de leitura.
 
 ## Emissão de Connect Token
 
@@ -56,6 +66,25 @@ confiáveis. O serviço:
 O serviço não recebe `itemId`, webhook, OAuth redirect, connector ID, seleção de
 produtos ou dados bancários.
 
+## Registro de Item concluído
+
+`PluggyConnectionRegistrationService` recebe `itemId` somente como ponteiro para
+verificação. `installation_id` e `residence_id` continuam vindo de uma fronteira
+confiável.
+
+Antes de persistir, o serviço:
+
+- lê o Item diretamente do provider com credenciais efêmeras;
+- exige que o ID retornado corresponda ao solicitado;
+- exige `clientUserId=residence:<residence_id>`;
+- fecha o transporte;
+- somente depois registra/reutiliza a conexão sob RLS e FK canônica;
+- substitui o snapshot de capacidades observadas.
+
+Mismatch de ownership, Item inválido, erro de transporte e conflito cross-residence são
+convertidos para erros estáveis sem Item ID, clientUserId, payload bruto ou credenciais.
+A resposta pública usa apenas o UUID local da conexão e estado neutro.
+
 ## Segurança
 
 - conexão read-only resolvida pelo store sob RLS;
@@ -67,6 +96,7 @@ produtos ou dados bancários.
 - erros inesperados são convertidos em fronteiras sanitizadas;
 - conta é validada contra as contas da conexão antes das transações;
 - Connect Token e API key não são persistidos;
+- `clientUserId` é usado somente como prova transitória de ownership;
 - nenhum log ou payload bruto é produzido pelo pacote.
 
 Os DTOs read-only ainda contêm identificadores externos operacionais. Essa fronteira é
@@ -81,8 +111,9 @@ quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` são verdadeiros. As
 são falsas por padrão.
 
 Construir os serviços não lê credenciais, não cria transporte e não executa chamadas
-externas. O endpoint de Connect Token é a primeira fronteira HTTP capaz de iniciar I/O
-do provider, e somente após autenticação, papel administrativo e residência primária.
+externas. I/O do provider ocorre somente após uma operação autenticada explícita.
 
-Detalhes do endpoint e do payload server-side estão em
-`docs/architecture/PLUGGY_CONNECT_TOKEN.md`.
+Detalhes das fronteiras estão em:
+
+- `docs/architecture/PLUGGY_CONNECT_TOKEN.md`;
+- `docs/architecture/PLUGGY_CONNECTED_ITEM_REGISTRATION.md`.

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from meufinanceiro_banking_pluggy_execution import (
+    PluggyConnectionRegistrationService,
     PluggyConnectTokenService,
     PluggyReadOnlyExecutionService,
 )
@@ -12,6 +13,7 @@ from meufinanceiro_persistence import BankingIntegrationStore
 from meufinanceiro_security.keyring import initialize_keyring_file
 
 import meufinanceiro_banking_pluggy_execution.connect_token as connect_token_module
+import meufinanceiro_banking_pluggy_execution.registration as registration_module
 import meufinanceiro_banking_pluggy_execution.service as execution_module
 from app.core.config import Settings
 from app.main import create_app
@@ -66,6 +68,9 @@ def test_runtime_composition_is_controlled_by_both_flags(
         administration = client.app.state.banking_administration
         executor = client.app.state.banking_pluggy_execution
         connect_token_service = client.app.state.banking_pluggy_connect_token
+        registration_service = (
+            client.app.state.banking_pluggy_connection_registration
+        )
 
         assert registry.names() == ()
         assert registry.frozen is True
@@ -77,6 +82,10 @@ def test_runtime_composition_is_controlled_by_both_flags(
         )
         assert (
             isinstance(connect_token_service, PluggyConnectTokenService)
+            is expected_runtime_services
+        )
+        assert (
+            isinstance(registration_service, PluggyConnectionRegistrationService)
             is expected_runtime_services
         )
 
@@ -120,6 +129,11 @@ def test_startup_with_both_flags_does_not_read_credentials_or_create_transport(
         "PluggyConnectTokenHttpTransport",
         unexpected_transport,
     )
+    monkeypatch.setattr(
+        registration_module,
+        "PluggyGatewayHttpTransport",
+        unexpected_transport,
+    )
     settings = runtime_settings(
         tmp_path,
         banking_enabled=True,
@@ -134,4 +148,8 @@ def test_startup_with_both_flags_does_not_read_credentials_or_create_transport(
         assert isinstance(
             client.app.state.banking_pluggy_connect_token,
             PluggyConnectTokenService,
+        )
+        assert isinstance(
+            client.app.state.banking_pluggy_connection_registration,
+            PluggyConnectionRegistrationService,
         )
