@@ -1,18 +1,20 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/core/auth/operator_session.dart';
 
+const _token = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+
 void main() {
   test('parses canonical session without exposing bearer in repr', () {
     final issued = IssuedOperatorSession.fromJson(_validSession);
 
-    expect(issued.accessToken, 'A' * 43);
+    expect(issued.accessToken, _token);
     expect(issued.principal.login, 'admin');
     expect(issued.principal.isInstallationAdmin, isTrue);
     expect(
       issued.principal.primaryResidenceId,
       '30000000-0000-4000-8000-000000000003',
     );
-    expect(issued.toString(), isNot(contains('A' * 43)));
+    expect(issued.toString(), isNot(contains(_token)));
     expect(issued.principal.toString(), isNot(contains('admin')));
   });
 
@@ -48,9 +50,9 @@ void main() {
   });
 }
 
-final _validSession = '''
+const _validSession = '''
 {
-  "access_token":"${'A' * 43}",
+  "access_token":"$_token",
   "token_type":"bearer",
   "expires_at":"2026-08-08T00:00:00Z",
   "operator":{
