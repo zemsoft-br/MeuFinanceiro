@@ -1,6 +1,7 @@
 """Read-only Pluggy adapter contracts for MeuFinanceiro."""
 
 from .adapter import PluggyBankingProvider
+from .connect_token import PluggyConnectTokenHttpTransport
 from .gateway import (
     PluggyAccountKind,
     PluggyAccountSnapshot,
@@ -28,6 +29,7 @@ __all__ = [
     "PluggyCapabilityAvailability",
     "PluggyCapabilityEvidence",
     "PluggyCapabilitySnapshot",
+    "PluggyConnectTokenHttpTransport",
     "PluggyConnectionPhase",
     "PluggyGatewayError",
     "PluggyGatewayErrorCategory",
