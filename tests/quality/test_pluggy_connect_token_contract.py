@@ -61,7 +61,8 @@ def test_connect_token_scope_is_derived_from_authenticated_residence() -> None:
 def test_connect_token_route_accepts_no_client_controlled_parameters() -> None:
     assert "request.query_params" in ROUTE_SOURCE
     assert "query parameters are not allowed" in ROUTE_SOURCE
-    assert "await request.body()" in ROUTE_SOURCE
+    assert "request.stream()" in ROUTE_SOURCE
+    assert "request.body()" not in ROUTE_SOURCE
     assert "request body is not allowed" in ROUTE_SOURCE
     for forbidden in (
         "client_user_id:",
