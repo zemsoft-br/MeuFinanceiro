@@ -17,7 +17,7 @@ Item, não registra conexão e não inicia sincronização.
 POST /api/v1/banking/pluggy/connect-token
 ```
 
-O endpoint não possui body.
+O endpoint não possui body nem query parameters.
 
 Autorização atual:
 
@@ -28,8 +28,9 @@ Bearer session
 ```
 
 `installation_id` e `residence_id` são obtidos do `OperatorSessionPrincipal`. Qualquer
-body, inclusive `{}`, é rejeitado para evitar que futuras opções do provider apareçam
-acidentalmente como entrada controlada pelo cliente.
+body, inclusive `{}`, e qualquer query parameter são rejeitados para evitar que opções
+ou identificadores do provider apareçam acidentalmente como entrada controlada pelo
+cliente.
 
 A resposta contém somente:
 
