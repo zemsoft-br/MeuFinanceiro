@@ -26,6 +26,16 @@ class OperatorPrincipal {
 
   bool get isInstallationAdmin => role == 'installation_admin';
 
+  factory OperatorPrincipal.fromJson(String source) {
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(source);
+    } on FormatException {
+      throw const FormatException('Operator session response is not valid JSON.');
+    }
+    return OperatorPrincipal.fromPayload(decoded);
+  }
+
   factory OperatorPrincipal.fromPayload(Object? payload) {
     final values = _strictObject(
       payload,
