@@ -4,13 +4,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTH_ROOT = ROOT / "apps/app/lib/core/auth"
+PLATFORM_AUTH_ROOT = ROOT / "apps/app/lib/platform/auth"
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-AUTH_SOURCE = "\n".join(_read(path) for path in sorted(AUTH_ROOT.glob("*.dart")))
+AUTH_FILES = [
+    *sorted(AUTH_ROOT.glob("*.dart")),
+    *sorted(PLATFORM_AUTH_ROOT.glob("*.dart")),
+]
+AUTH_SOURCE = "\n".join(_read(path) for path in AUTH_FILES)
 LOGIN_SOURCE = _read(ROOT / "apps/app/lib/features/auth/login_screen.dart")
 ROUTER_SOURCE = _read(ROOT / "apps/app/lib/routing/app_router.dart")
 GUARD_SOURCE = _read(ROOT / "apps/app/lib/routing/auth_route_guard.dart")
