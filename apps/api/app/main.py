@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from meufinanceiro_banking import BankingProviderRegistry
 from meufinanceiro_banking_pluggy_execution import (
     PluggyConnectionRegistrationService,
@@ -14,6 +16,7 @@ from meufinanceiro_persistence import BankingIntegrationStore, OperatorIdentityS
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
+from starlette.responses import JSONResponse, Response
 
 from app.api.auth import AuthenticationNoStoreMiddleware
 from app.api.routes.auth import router as auth_router
@@ -26,6 +29,11 @@ from app.core.config import Settings, get_settings
 from app.core.database import create_database
 from app.services.banking_admin import BankingAdministrationService
 from app.services.operator_auth import OperatorAuthenticationService
+
+_BANKING_VALIDATION_PREFIXES = (
+    "/api/v1/admin/banking/",
+    "/api/v1/banking/",
+)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -89,6 +97,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         openapi_url="/api/v1/openapi.json",
         lifespan=lifespan,
     )
+
+    @application.exception_handler(RequestValidationError)
+    async def sanitize_banking_validation_error(
+        request: Request,
+        error: RequestValidationError,
+    ) -> Response:
+        if request.url.path.startswith(_BANKING_VALIDATION_PREFIXES):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "invalid banking request"},
+            )
+        return await request_validation_exception_handler(request, error)
+
     application.add_middleware(AuthenticationNoStoreMiddleware)
     application.include_router(auth_router, prefix="/api/v1")
     application.include_router(banking_admin_router, prefix="/api/v1")
