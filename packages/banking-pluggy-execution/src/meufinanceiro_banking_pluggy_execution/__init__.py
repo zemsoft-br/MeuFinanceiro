@@ -9,6 +9,15 @@ from .connect_token import (
     PluggyConnectTokenErrorCode,
     PluggyConnectTokenService,
 )
+from .registration import (
+    ConnectedItemTransport,
+    PluggyConnectionRegistrationError,
+    PluggyConnectionRegistrationErrorCode,
+    PluggyConnectionRegistrationService,
+    RegisteredPluggyConnection,
+    RegistrationBankingStore,
+    RegistrationTransportFactory,
+)
 from .service import (
     ContextualBankingStore,
     PluggyExecutionTransport,
@@ -17,16 +26,23 @@ from .service import (
 )
 
 __all__ = [
+    "ConnectedItemTransport",
     "ConnectTokenBankingStore",
     "ConnectTokenTransport",
     "ConnectTokenTransportFactory",
     "ContextualBankingStore",
     "IssuedPluggyConnectToken",
+    "PluggyConnectionRegistrationError",
+    "PluggyConnectionRegistrationErrorCode",
+    "PluggyConnectionRegistrationService",
     "PluggyConnectTokenError",
     "PluggyConnectTokenErrorCode",
     "PluggyConnectTokenService",
     "PluggyExecutionTransport",
     "PluggyReadOnlyExecutionService",
+    "RegisteredPluggyConnection",
+    "RegistrationBankingStore",
+    "RegistrationTransportFactory",
     "TransportFactory",
 ]
 
