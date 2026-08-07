@@ -1,10 +1,10 @@
 # Banking Pluggy Execution
 
-Pacote de orquestração read-only e contextual da integração Pluggy.
+Pacote de orquestração contextual da integração Pluggy.
 
 ## Fronteiras
 
-O pacote compõe:
+O pacote compõe o caminho read-only:
 
 ```text
 BankingIntegrationStore
@@ -16,17 +16,17 @@ PluggyGatewayHttpTransport
     -> DTOs neutros
 ```
 
-A API pública do serviço recebe somente:
+E o bootstrap de conexão:
 
-- installation ID;
-- residence ID;
-- connection ID interno;
-- account ID externo somente para a leitura de transações, após validação de
-  pertencimento à conexão.
+```text
+sessão autenticada
+    -> installation_id + primary_residence_id
+BankingIntegrationStore.use_enabled_credentials
+    -> PluggyConnectTokenHttpTransport
+    -> Connect Token efêmero
+```
 
-Item ID nunca é aceito como argumento público.
-
-## Operações
+## Operações read-only
 
 `PluggyReadOnlyExecutionService` oferece:
 
@@ -35,26 +35,54 @@ Item ID nunca é aceito como argumento público.
 - contas;
 - uma página de transações.
 
-Cada chamada cria uma sessão efêmera separada. O transporte é fechado no `finally` em
-sucesso ou falha.
+A API pública recebe somente installation ID, residence ID, connection ID interno e,
+na leitura de transações, account ID externo após validação de pertencimento à conexão.
+Item ID nunca é aceito como argumento público.
+
+## Emissão de Connect Token
+
+`PluggyConnectTokenService` recebe somente `installation_id` e `residence_id`
+confiáveis. O serviço:
+
+- valida os UUIDs;
+- deriva `clientUserId` como `residence:<residence_id>`;
+- exige configuração `pluggy` habilitada;
+- decripta credenciais somente dentro do callback efêmero do store;
+- cria um transporte por emissão;
+- fecha o transporte em sucesso e falha;
+- devolve `IssuedPluggyConnectToken` com `repr` redigido;
+- converte erros do provider e persistência em códigos estáveis e sanitizados.
+
+O serviço não recebe `itemId`, webhook, OAuth redirect, connector ID, seleção de
+produtos ou dados bancários.
 
 ## Segurança
 
-- conexão resolvida pelo store sob RLS;
-- provider diferente de `pluggy` é rejeitado antes da decriptação;
-- conexão desconectada é rejeitada antes da decriptação;
-- configuração deve estar `enabled`;
+- conexão read-only resolvida pelo store sob RLS;
+- provider diferente de `pluggy` é rejeitado nas operações contextualizadas;
+- conexão desconectada é rejeitada antes da decriptação nas leituras;
+- configuração deve estar `enabled` antes de qualquer I/O do provider;
 - credenciais existem somente dentro do callback do store;
-- factory e transporte são injetáveis nos testes;
-- erros inesperados são convertidos para `BankingProviderError` sanitizado;
+- factories e transportes são injetáveis nos testes;
+- erros inesperados são convertidos em fronteiras sanitizadas;
 - conta é validada contra as contas da conexão antes das transações;
-- nenhum log, payload bruto ou credencial é produzido pelo pacote.
+- Connect Token e API key não são persistidos;
+- nenhum log ou payload bruto é produzido pelo pacote.
 
-Os DTOs neutros ainda contêm identificadores externos operacionais. Este pacote é uma
-fronteira interna e não deve ser exposto diretamente por endpoint HTTP. A futura
-persistência de contas e transações deverá mapear esses identificadores para IDs locais
-antes da exposição ao cliente.
+Os DTOs read-only ainda contêm identificadores externos operacionais. Essa fronteira é
+interna e não deve ser exposta diretamente por endpoint HTTP. A futura persistência de
+contas e transações deverá mapear esses identificadores para IDs locais antes da
+exposição ao cliente.
 
 ## Runtime
 
-O pacote é instalado na imagem da API, mas o executor somente é construído quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` são verdadeiros. As flags são falsas por padrão. O startup não lê credenciais, não cria transporte e não executa chamadas externas; o registry permanece vazio e nenhum endpoint expõe o serviço.
+O pacote é instalado na imagem da API. Os serviços Pluggy somente são construídos
+quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` são verdadeiros. As flags
+são falsas por padrão.
+
+Construir os serviços não lê credenciais, não cria transporte e não executa chamadas
+externas. O endpoint de Connect Token é a primeira fronteira HTTP capaz de iniciar I/O
+do provider, e somente após autenticação, papel administrativo e residência primária.
+
+Detalhes do endpoint e do payload server-side estão em
+`docs/architecture/PLUGGY_CONNECT_TOKEN.md`.
