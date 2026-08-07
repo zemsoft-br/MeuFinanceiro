@@ -1,12 +1,12 @@
 # Implementação da persistência bancária mínima
 
-Status: **implementação inicial da issue #68**.
+Status: **implementação inicial da issue #68, reforçada pela issue #90**.
 
 Este documento descreve o primeiro subconjunto executável do contrato definido no
 ADR-0012 e em `BANKING_INTEGRATION_PERSISTENCE_MODEL.md`. O recorte cria somente a
 configuração administrativa, as conexões externas e as capacidades observadas.
 
-## Migration
+## Migrations
 
 A revisão Alembic `0003_banking_persistence` cria o schema PostgreSQL
 `integrations` com:
@@ -17,8 +17,18 @@ connections
 connection_capabilities
 ```
 
-O downgrade remove os objetos na ordem inversa, revoga os grants do runtime e remove
-o schema `integrations`.
+A revisão `0006_banking_residence_fk`, posterior à criação do schema `household`,
+fecha a integridade referencial entre a conexão bancária e a residência canônica. O
+upgrade recusa qualquer conexão existente cujo par `(residence_id, installation_id)`
+não corresponda a `household.residences(id, installation_id)`.
+
+O gate de upgrade não cria residência, não remapeia conexão para a residência primária
+e não registra identificadores externos na mensagem de falha. A FK usa
+`ON DELETE RESTRICT`. O downgrade da `0006` remove somente essa constraint e preserva
+as linhas de integração e household.
+
+O downgrade integral remove os objetos na ordem inversa, revoga os grants do runtime
+e remove o schema `integrations`.
 
 Não são criadas neste recorte tabelas de contas externas, transações, faturas,
 investimentos, empréstimos, sync runs, cursores, observações ou auditoria.
@@ -75,16 +85,19 @@ Regras:
 - ação do usuário, sincronização, refresh, consentimento e desconexão;
 - código limitado do provider, sem mensagem livre.
 
-A FK composta inclui:
+Existem duas FKs compostas relevantes:
 
 ```text
-provider_configuration_id
-installation_id
-provider
+(provider_configuration_id, installation_id, provider)
+  -> integrations.provider_configurations(id, installation_id, provider)
+
+(residence_id, installation_id)
+  -> household.residences(id, installation_id)
 ```
 
-Isso impede associar uma conexão à configuração de outra instalação ou de outro
-provider.
+A primeira impede associar uma conexão à configuração de outra instalação ou de outro
+provider. A segunda impede UUID de residência órfão e impede reutilizar uma residência
+canônica de outra instalação. Nenhuma delas usa cascade destrutivo.
 
 A unicidade por `(installation_id, provider, external_connection_id)` permite
 reutilizar uma conexão já conhecida sem criar duplicidade. A atualização só ocorre
@@ -129,7 +142,8 @@ app.current_residence_id
 ```
 
 A política de `connections` exige simultaneamente a instalação e a residência da
-linha.
+linha. A FK canônica é uma defesa adicional de integridade; ela não substitui RLS nem
+a derivação do contexto a partir do operador autenticado.
 
 ### Capacidades
 
@@ -162,13 +176,15 @@ replace_capabilities
 ```
 
 Cada operação abre uma transação curta e define o contexto antes de acessar tabelas
-com RLS.
+com RLS. `register_connection` não cria nem corrige uma residência: o PostgreSQL exige
+que o contexto informado já corresponda a uma linha canônica de household.
 
 Erros públicos são estáveis e não incluem:
 
 - plaintext;
 - envelope;
 - external connection ID;
+- residence ID inválido;
 - payload;
 - token;
 - resposta HTTP;
@@ -188,29 +204,35 @@ NOBYPASSRLS
 
 Os testes comprovam:
 
-- round-trip da migration pelo gate existente;
+- round-trip da migration e preservação de dados no downgrade da `0006`;
+- falha fechada do upgrade quando existe referência de residência órfã;
+- FK canônica com `ON DELETE RESTRICT`;
 - envelope válido e AAD contextual;
 - ausência dos envelopes nos records públicos;
 - compare-and-swap e substituição de credenciais;
 - reutilização idempotente de conexão;
 - snapshot idempotente de capacidades;
 - invisibilidade total sem contexto;
-- isolamento entre duas instalações e duas residências;
+- isolamento de configuração por instalação;
+- isolamento de conexões e capacidades entre residências da instalação;
 - bloqueio de update, delete e insert cruzados;
-- rejeição de FKs compostas fora do escopo;
+- rejeição de associações cross-installation e cross-residence;
 - ausência de privilégios administrativos na role de runtime.
+
+As fixtures de conexão criam instalação, operador e residência household legítimos antes
+de inserir dados bancários. UUIDs sintéticos sem linha canônica não são mais aceitos.
 
 ## Fora do escopo
 
-Continuam pendentes:
+Continuam fora deste recorte:
 
-- configuração por endpoint administrativo;
-- registry fail-closed de providers;
-- adaptador Pluggy;
-- autenticação externa e API key efêmera;
 - Connect Token e Connect Widget;
-- contas e dados financeiros externos;
-- sync runs, cursores e reconciliação;
-- auditoria persistente e rewrap em lote;
-- API, Worker e Flutter;
+- criação de Item real;
+- endpoint HTTP de conexão bancária;
+- leitura real de contas e dados financeiros;
+- sincronização manual ou worker;
+- múltiplas residências selecionáveis pela UI;
+- chamada real à Pluggy;
+- alteração de flags;
+- bootstrap real;
 - deploy, HML e produção.

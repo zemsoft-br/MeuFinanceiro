@@ -215,6 +215,12 @@ connections = Table(
         ondelete="RESTRICT",
         name="fk_connections_provider_configuration_scope",
     ),
+    ForeignKeyConstraint(
+        ["residence_id", "installation_id"],
+        ["household.residences.id", "household.residences.installation_id"],
+        ondelete="RESTRICT",
+        name="fk_connections_household_residence_scope",
+    ),
     UniqueConstraint(
         "installation_id",
         "provider",
