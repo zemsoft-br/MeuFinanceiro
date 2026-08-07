@@ -183,7 +183,12 @@ class PluggyConnectTokenService:
                 token = transport.create_connect_token(
                     client_user_id=client_user_id,
                 )
-                return IssuedPluggyConnectToken(token)
+                try:
+                    return IssuedPluggyConnectToken(token)
+                except (TypeError, ValueError):
+                    raise PluggyConnectTokenError(
+                        PluggyConnectTokenErrorCode.INVALID_PROVIDER_RESPONSE
+                    ) from None
             except PluggyConnectTokenError as error:
                 active_error = error
                 raise
