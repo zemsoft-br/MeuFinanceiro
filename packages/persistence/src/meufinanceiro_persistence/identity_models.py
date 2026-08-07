@@ -62,10 +62,14 @@ class InstallationOperatorRecord:
     role: OperatorRole
     status: OperatorStatus
     created_at: datetime
+    primary_residence_id: UUID | None = None
+    primary_residence_name: str | None = None
 
     def __post_init__(self) -> None:
         normalize_operator_login(self.login_name)
         require_aware(self.created_at, "created_at")
+        if (self.primary_residence_id is None) != (self.primary_residence_name is None):
+            raise ValueError("primary residence context is incomplete")
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -105,6 +109,7 @@ class OperatorSessionPrincipal:
     login_name: str
     role: OperatorRole
     expires_at: datetime
+    primary_residence_id: UUID | None = None
 
     def __post_init__(self) -> None:
         normalize_operator_login(self.login_name)
