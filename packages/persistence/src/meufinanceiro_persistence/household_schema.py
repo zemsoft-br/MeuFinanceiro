@@ -55,15 +55,6 @@ Index(
     household_residences.c.status,
 )
 
-_shared_schema.connections.append_constraint(
-    ForeignKeyConstraint(
-        ["residence_id", "installation_id"],
-        ["household.residences.id", "household.residences.installation_id"],
-        ondelete="RESTRICT",
-        name="fk_connections_household_residence_scope",
-    )
-)
-
 household_memberships = Table(
     "memberships",
     metadata,
