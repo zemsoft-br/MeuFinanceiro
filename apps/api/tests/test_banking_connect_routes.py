@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from meufinanceiro_banking_pluggy_execution import (
@@ -98,10 +99,9 @@ def headers() -> dict[str, str]:
     return {"Authorization": f"Bearer {TOKEN}"}
 
 
-def assert_no_store(response: object) -> None:
-    typed = cast(object, response)
-    assert getattr(typed, "headers")["cache-control"] == "no-store"
-    assert getattr(typed, "headers")["pragma"] == "no-cache"
+def assert_no_store(response: httpx.Response) -> None:
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
 
 
 def test_connect_token_derives_installation_and_residence_from_session(
