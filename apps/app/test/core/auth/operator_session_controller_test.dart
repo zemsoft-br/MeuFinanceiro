@@ -29,7 +29,10 @@ void main() {
     expect(container.read(sessionTokenVaultProvider).hasToken, isTrue);
     expect(state.toString(), isNot(contains(_token)));
     expect(transport.calls.single.body, contains('synthetic-password'));
-    expect(transport.calls.single.toString(), isNot(contains('synthetic-password')));
+    expect(
+      transport.calls.single.toString(),
+      isNot(contains('synthetic-password')),
+    );
   });
 
   test('invalid credentials do not retain password or bearer', () async {
@@ -65,12 +68,47 @@ void main() {
     await second;
 
     expect(transport.calls, hasLength(1));
-    response.complete(const AuthHttpResponse(statusCode: 200, body: _validSession));
+    response.complete(
+      const AuthHttpResponse(statusCode: 200, body: _validSession),
+    );
     await first;
     expect(
       container.read(operatorSessionControllerProvider).phase,
       OperatorSessionPhase.authenticated,
     );
+  });
+
+  test('late login response cannot restore a session after logout', () async {
+    final loginResponse = Completer<AuthHttpResponse>();
+    final transport = FakeAuthTransport(
+      (uri, method, timeout, headers, body) {
+        if (method == AuthHttpMethod.post) {
+          return loginResponse.future;
+        }
+        return Future.value(const AuthHttpResponse(statusCode: 204, body: ''));
+      },
+    );
+    final container = _container(transport);
+    addTearDown(container.dispose);
+    final controller = container.read(operatorSessionControllerProvider.notifier);
+
+    final login = controller.login(
+      login: 'admin',
+      password: 'synthetic-password',
+    );
+    await Future<void>.delayed(Duration.zero);
+    await controller.logout();
+
+    loginResponse.complete(
+      const AuthHttpResponse(statusCode: 200, body: _validSession),
+    );
+    await login;
+
+    expect(
+      container.read(operatorSessionControllerProvider).phase,
+      OperatorSessionPhase.signedOut,
+    );
+    expect(container.read(sessionTokenVaultProvider).hasToken, isFalse);
   });
 
   test('logout clears bearer before the revoke request completes', () async {
