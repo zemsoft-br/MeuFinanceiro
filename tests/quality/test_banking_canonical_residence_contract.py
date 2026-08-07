@@ -30,6 +30,7 @@ def test_connection_metadata_requires_canonical_household_residence() -> None:
         "household.residences.id",
         "household.residences.installation_id",
     )
+    assert constraint.referred_table.fullname == "household.residences"
     assert constraint.ondelete == "RESTRICT"
 
 
