@@ -10,6 +10,13 @@ class InvalidOperatorCredentials implements Exception {
   String toString() => 'Operator credentials are invalid.';
 }
 
+class OperatorSessionExpired implements Exception {
+  const OperatorSessionExpired();
+
+  @override
+  String toString() => 'Operator session is no longer valid.';
+}
+
 class OperatorAuthenticationUnavailable implements Exception {
   const OperatorAuthenticationUnavailable();
 
@@ -65,6 +72,36 @@ class OperatorSessionService {
     }
 
     return IssuedOperatorSession.fromJson(response.body);
+  }
+
+  Future<OperatorPrincipal> getCurrent(String token) async {
+    try {
+      final response = await transport.send(
+        _sessionEndpoint,
+        method: AuthHttpMethod.get,
+        timeout: timeout,
+        headers: {
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+          'Cache-Control': 'no-store',
+        },
+      );
+      if (response.statusCode == 401) {
+        throw const OperatorSessionExpired();
+      }
+      if (!response.isSuccessful) {
+        throw const OperatorAuthenticationUnavailable();
+      }
+      return OperatorPrincipal.fromJson(response.body);
+    } on OperatorSessionExpired {
+      rethrow;
+    } on OperatorAuthenticationUnavailable {
+      rethrow;
+    } on FormatException {
+      throw const OperatorAuthenticationUnavailable();
+    } catch (_) {
+      throw const OperatorAuthenticationUnavailable();
+    }
   }
 
   Future<void> logout(String token) async {
