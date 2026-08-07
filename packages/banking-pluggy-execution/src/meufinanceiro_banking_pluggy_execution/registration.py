@@ -20,7 +20,12 @@ from meufinanceiro_banking_pluggy import (
     PluggyItemSnapshot,
     parse_connected_item,
 )
-from meufinanceiro_banking_pluggy.transport import PluggyApplicationCredentials
+from meufinanceiro_banking_pluggy.transport import (
+    JsonObject,
+    PluggyApplicationCredentials,
+    PluggyTransportError,
+    PluggyTransportErrorCategory,
+)
 from meufinanceiro_persistence import (
     BankingConnectionRecord,
     BankingPersistenceError,
@@ -43,7 +48,9 @@ _PHASE_TO_STATUS = {
     PluggyConnectionPhase.SYNCING: StoredConnectionStatus.SYNCING,
     PluggyConnectionPhase.AVAILABLE: StoredConnectionStatus.AVAILABLE,
     PluggyConnectionPhase.PARTIAL: StoredConnectionStatus.PARTIAL,
-    PluggyConnectionPhase.USER_ACTION_REQUIRED: StoredConnectionStatus.PENDING_USER_ACTION,
+    PluggyConnectionPhase.USER_ACTION_REQUIRED: (
+        StoredConnectionStatus.PENDING_USER_ACTION
+    ),
     PluggyConnectionPhase.REAUTHENTICATION_REQUIRED: (
         StoredConnectionStatus.REAUTHENTICATION_REQUIRED
     ),
@@ -89,6 +96,7 @@ class PluggyConnectionRegistrationErrorCode(StrEnum):
     ITEM_NOT_ALLOWED = "ITEM_NOT_ALLOWED"
     ITEM_UNAVAILABLE = "ITEM_UNAVAILABLE"
     INVALID_PROVIDER_RESPONSE = "INVALID_PROVIDER_RESPONSE"
+    PROVIDER_REJECTED = "PROVIDER_REJECTED"
     TEMPORARILY_UNAVAILABLE = "TEMPORARILY_UNAVAILABLE"
     CONNECTION_CONFLICT = "CONNECTION_CONFLICT"
     INTERNAL = "INTERNAL"
@@ -109,6 +117,9 @@ _ERROR_MESSAGES = {
     ),
     PluggyConnectionRegistrationErrorCode.INVALID_PROVIDER_RESPONSE: (
         "banking provider returned an invalid response"
+    ),
+    PluggyConnectionRegistrationErrorCode.PROVIDER_REJECTED: (
+        "banking provider rejected connection verification"
     ),
     PluggyConnectionRegistrationErrorCode.TEMPORARILY_UNAVAILABLE: (
         "banking provider is temporarily unavailable"
@@ -178,7 +189,7 @@ class RegistrationBankingStore(Protocol):
 
 @runtime_checkable
 class ConnectedItemTransport(Protocol):
-    def get_item(self, item_id: str) -> dict[str, object]: ...
+    def get_item(self, item_id: str) -> JsonObject: ...
 
     def close(self) -> None: ...
 
@@ -207,8 +218,37 @@ def _map_gateway_error(error: PluggyGatewayError) -> PluggyConnectionRegistratio
         code = PluggyConnectionRegistrationErrorCode.TEMPORARILY_UNAVAILABLE
     elif error.category is PluggyGatewayErrorCategory.INTERNAL:
         code = PluggyConnectionRegistrationErrorCode.INVALID_PROVIDER_RESPONSE
+    elif error.category in {
+        PluggyGatewayErrorCategory.AUTHENTICATION,
+        PluggyGatewayErrorCategory.INVALID_REQUEST,
+        PluggyGatewayErrorCategory.CONFLICT,
+    }:
+        code = PluggyConnectionRegistrationErrorCode.PROVIDER_REJECTED
     else:
         code = PluggyConnectionRegistrationErrorCode.ITEM_UNAVAILABLE
+    return PluggyConnectionRegistrationError(code)
+
+
+def _map_transport_error(
+    error: PluggyTransportError,
+) -> PluggyConnectionRegistrationError:
+    if error.category is PluggyTransportErrorCategory.NOT_FOUND:
+        code = PluggyConnectionRegistrationErrorCode.ITEM_UNAVAILABLE
+    elif error.category in {
+        PluggyTransportErrorCategory.RATE_LIMITED,
+        PluggyTransportErrorCategory.TEMPORARILY_UNAVAILABLE,
+    }:
+        code = PluggyConnectionRegistrationErrorCode.TEMPORARILY_UNAVAILABLE
+    elif error.category is PluggyTransportErrorCategory.INVALID_RESPONSE:
+        code = PluggyConnectionRegistrationErrorCode.INVALID_PROVIDER_RESPONSE
+    elif error.category in {
+        PluggyTransportErrorCategory.AUTHENTICATION,
+        PluggyTransportErrorCategory.AUTHORIZATION,
+        PluggyTransportErrorCategory.INVALID_REQUEST,
+    }:
+        code = PluggyConnectionRegistrationErrorCode.PROVIDER_REJECTED
+    else:
+        code = PluggyConnectionRegistrationErrorCode.INTERNAL
     return PluggyConnectionRegistrationError(code)
 
 
@@ -295,6 +335,9 @@ class PluggyConnectionRegistrationService:
             except PluggyConnectionRegistrationError as error:
                 active_error = error
                 raise
+            except PluggyTransportError as error:
+                active_error = error
+                raise _map_transport_error(error) from None
             except PluggyGatewayError as error:
                 active_error = error
                 raise _map_gateway_error(error) from None
@@ -343,7 +386,9 @@ class PluggyConnectionRegistrationService:
             StoredConnectionStatus.PENDING_USER_ACTION,
             StoredConnectionStatus.REAUTHENTICATION_REQUIRED,
         }
-        disconnected_at = self._clock() if status is StoredConnectionStatus.DISCONNECTED else None
+        disconnected_at = (
+            self._clock() if status is StoredConnectionStatus.DISCONNECTED else None
+        )
         try:
             connection = self._store.register_connection(
                 installation_id=installation_id,
