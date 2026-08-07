@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
+from alembic import context, op
 
 revision: str = "0006_banking_residence_fk"
 down_revision: str | None = "0005_household_residences"
@@ -51,6 +51,10 @@ def _assert_no_orphan_connections() -> None:
 
 
 def upgrade() -> None:
+    if context.is_offline_mode():
+        raise RuntimeError(
+            "banking residence FK migration requires online validation"
+        )
     _lock_integrity_scope()
     _assert_no_orphan_connections()
     op.create_foreign_key(
