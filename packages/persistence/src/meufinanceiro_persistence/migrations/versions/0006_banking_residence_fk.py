@@ -21,6 +21,13 @@ depends_on: str | Sequence[str] | None = None
 _CONSTRAINT_NAME = "fk_connections_household_residence_scope"
 
 
+def _lock_integrity_scope() -> None:
+    op.execute(
+        "LOCK TABLE household.residences, integrations.connections "
+        "IN SHARE ROW EXCLUSIVE MODE"
+    )
+
+
 def _assert_no_orphan_connections() -> None:
     connection = op.get_bind()
     orphan_exists = connection.scalar(
@@ -44,6 +51,7 @@ def _assert_no_orphan_connections() -> None:
 
 
 def upgrade() -> None:
+    _lock_integrity_scope()
     _assert_no_orphan_connections()
     op.create_foreign_key(
         _CONSTRAINT_NAME,
