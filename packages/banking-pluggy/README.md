@@ -2,8 +2,9 @@
 
 Pacote específico da integração bancária opcional com a Pluggy.
 
-A fronteira pública continua sendo o contrato neutro `BankingProvider`. Nenhum tipo
-HTTP, token ou payload específico da Pluggy atravessa essa fronteira.
+A fronteira pública continua sendo o contrato neutro `BankingProvider`. Tipos HTTP e
+payloads específicos permanecem internos; o Connect Token é tratado por uma fronteira
+efêmera separada e não passa pelo contrato neutro de leitura.
 
 ## Componentes atuais
 
@@ -33,6 +34,22 @@ HTTP, token ou payload específico da Pluggy atravessa essa fronteira.
 - rejeição de redirect, conteúdo não JSON e payload inválido;
 - erros sanitizados sem URL, headers, corpo HTTP ou identificadores.
 
+### Connect Token
+
+`PluggyConnectTokenHttpTransport` reutiliza o núcleo autenticado e amplia a allowlist
+somente para:
+
+```text
+POST /connect_token
+```
+
+A operação recebe `clientUserId` já derivado pelo backend e fixa
+`avoidDuplicates=true`. `itemId`, `webhookUrl`, `oauthRedirectUri`, connector ID e
+produtos não são aceitos nesta etapa. `POST /items` continua bloqueado.
+
+O `accessToken` retornado é validado, permanece apenas em memória e nunca é armazenado
+no transporte.
+
 ### Gateway concreto
 
 `PluggyHttpReadOnlyGateway` converte payloads JSON para snapshots imutáveis:
@@ -49,9 +66,9 @@ criados na janela e não substitui reconciliação periódica de atualizações 
 
 ## Operações bloqueadas
 
-As operações abaixo continuam retornando `UNSUPPORTED` antes do gateway:
+Pelo contrato `BankingProvider`, continuam retornando `UNSUPPORTED` antes do gateway:
 
-- criação de intenção de conexão;
+- criação de intenção genérica de conexão;
 - reautenticação;
 - faturas;
 - investimentos;
@@ -59,17 +76,19 @@ As operações abaixo continuam retornando `UNSUPPORTED` antes do gateway:
 - atualização manual;
 - desconexão.
 
+A emissão específica de Connect Token não cria Item e não altera esse contrato.
+
 ## Restrições
 
 Este pacote:
 
 - depende de `meufinanceiro-banking` e `httpx` com versões fixadas;
 - não lê ambiente, `.env`, argumentos CLI ou arquivos de configuração;
-- não persiste Client ID, Client Secret, API key ou respostas;
+- não persiste Client ID, Client Secret, API key, Connect Token ou respostas;
 - aceita HTTP sem TLS somente para hosts loopback usados por testes;
 - fixa o host produtivo em `https://api.pluggy.ai`;
-- não é instalado nem registrado no runtime da API;
-- não executa chamadas externas durante testes ou CI.
+- é utilizado pelo pacote de execução apenas atrás das flags bancárias;
+- não executa chamadas externas no startup.
 
-O próximo recorte poderá registrar condicionalmente o provider, ainda desabilitado por
-padrão, sem iniciar sincronização ou importar dados financeiros.
+A composição runtime e a emissão autenticada por residência estão documentadas em
+`docs/architecture/PLUGGY_CONNECT_TOKEN.md`.
