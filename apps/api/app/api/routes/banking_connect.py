@@ -31,7 +31,12 @@ class PluggyConnectTokenResponse(BaseModel):
     )
 
 
-async def _reject_request_body(request: Request) -> None:
+async def _reject_client_parameters(request: Request) -> None:
+    if request.query_params:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="query parameters are not allowed",
+        )
     if await request.body():
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -70,7 +75,7 @@ def _raise_connect_token_error(error: PluggyConnectTokenError) -> NoReturn:
 @router.post(
     "/connect-token",
     response_model=PluggyConnectTokenResponse,
-    dependencies=[Depends(_reject_request_body)],
+    dependencies=[Depends(_reject_client_parameters)],
 )
 def issue_connect_token(
     request: Request,
