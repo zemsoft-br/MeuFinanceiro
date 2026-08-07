@@ -56,6 +56,7 @@ class OperatorSessionService {
       headers: const {
         'Accept': 'application/json',
         'Cache-Control': 'no-store',
+        'Pragma': 'no-cache',
         'Content-Type': 'application/json',
       },
       body: jsonEncode({'login': normalizedLogin, 'password': password}),
@@ -84,6 +85,7 @@ class OperatorSessionService {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
           'Cache-Control': 'no-store',
+          'Pragma': 'no-cache',
         },
       );
       if (response.statusCode == 401) {
@@ -114,6 +116,7 @@ class OperatorSessionService {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
           'Cache-Control': 'no-store',
+          'Pragma': 'no-cache',
         },
       );
       if (response.statusCode == 401 || response.statusCode == 204) {
