@@ -171,6 +171,26 @@ def test_connect_token_rejects_any_request_body(
     assert_no_store(response)
 
 
+def test_connect_token_rejects_query_scope_and_options(
+    client: tuple[TestClient, FakeAuthentication, FakeConnectTokenService],
+) -> None:
+    test_client, _, service = client
+
+    response = test_client.post(
+        PATH,
+        headers=headers(),
+        params={
+            "residence_id": str(uuid4()),
+            "clientUserId": "attacker-controlled",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json() == {"detail": "query parameters are not allowed"}
+    assert service.calls == []
+    assert_no_store(response)
+
+
 def test_connect_token_is_unavailable_when_runtime_service_is_not_composed(
     client: tuple[TestClient, FakeAuthentication, FakeConnectTokenService],
 ) -> None:
