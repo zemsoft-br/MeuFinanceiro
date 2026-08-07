@@ -41,6 +41,8 @@ class RegisterPluggyConnectionRequest(BaseModel):
             raise ValueError("itemId is invalid")
         if any(ord(character) < 32 or ord(character) == 127 for character in value):
             raise ValueError("itemId is invalid")
+        if any(character in value for character in ("/", "\\", "?", "#")):
+            raise ValueError("itemId is invalid")
         return value
 
 
