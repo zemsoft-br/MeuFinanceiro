@@ -39,9 +39,11 @@ def test_connect_token_payload_is_server_scoped_and_minimal() -> None:
         assert forbidden not in TRANSPORT_SOURCE
 
 
-def test_connect_token_transport_does_not_enable_item_creation() -> None:
+def test_connect_token_transport_does_not_enable_item_creation_or_post_replay() -> None:
     assert 'path == "connect_token"' in TRANSPORT_SOURCE
     assert '"POST",\n                "connect_token"' in TRANSPORT_SOURCE
+    assert "_request_connect_token_once" in TRANSPORT_SOURCE
+    assert "_handle_response(response, _MAX_ATTEMPTS)" in TRANSPORT_SOURCE
     assert 'path == "items"' not in TRANSPORT_SOURCE
     assert '"POST",\n                "items"' not in TRANSPORT_SOURCE
 
