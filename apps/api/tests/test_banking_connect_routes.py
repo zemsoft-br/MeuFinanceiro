@@ -136,6 +136,22 @@ def test_connect_token_requires_active_admin_session(
     assert_no_store(forbidden)
 
 
+def test_authentication_precedes_client_parameter_validation(
+    client: tuple[TestClient, FakeAuthentication, FakeConnectTokenService],
+) -> None:
+    test_client, _, service = client
+
+    response = test_client.post(
+        PATH,
+        json={"clientUserId": "attacker-controlled"},
+    )
+
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+    assert service.calls == []
+    assert_no_store(response)
+
+
 def test_connect_token_requires_primary_residence(
     client: tuple[TestClient, FakeAuthentication, FakeConnectTokenService],
 ) -> None:
