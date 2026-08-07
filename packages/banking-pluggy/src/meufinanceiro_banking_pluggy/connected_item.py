@@ -22,6 +22,8 @@ def _identifier(value: object, reason_code: str) -> str:
     if not isinstance(value, str):
         raise _PayloadError(reason_code)
     normalized = value.strip()
+    if value != normalized:
+        raise _PayloadError(reason_code)
     if not normalized or len(normalized) > _MAX_IDENTIFIER_LENGTH:
         raise _PayloadError(reason_code)
     if any(ord(character) < 32 or ord(character) == 127 for character in normalized):
@@ -47,6 +49,12 @@ def parse_connected_item(
             expected_client_user_id,
             "INVALID_EXPECTED_CLIENT_USER_ID",
         )
+        provider_item_id = _identifier(
+            payload.get("id"),
+            "INVALID_ITEM_ID",
+        )
+        if provider_item_id != normalized_expected_item_id:
+            raise _PayloadError("ITEM_ASSOCIATION_MISMATCH")
         snapshot = _parse_item(payload, normalized_expected_item_id, clock)
         client_user_id = _identifier(
             payload.get("clientUserId"),
