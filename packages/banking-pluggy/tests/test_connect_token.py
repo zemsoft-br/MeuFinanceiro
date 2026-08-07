@@ -108,6 +108,29 @@ def test_connect_token_second_auth_rejection_is_sanitized() -> None:
     assert "api-key-secret" not in str(error)
 
 
+def test_connect_token_post_is_not_replayed_after_server_failure() -> None:
+    token_requests = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal token_requests
+        if request.url.path == "/auth":
+            return _response(200, {"apiKey": "api-key"})
+        token_requests += 1
+        return _response(503, {"ignored": "sensitive"})
+
+    with _client(handler) as client:
+        with pytest.raises(PluggyTransportError) as captured:
+            client.create_connect_token(client_user_id="residence:synthetic")
+
+    assert token_requests == 1
+    assert (
+        captured.value.category
+        is PluggyTransportErrorCategory.TEMPORARILY_UNAVAILABLE
+    )
+    assert captured.value.retryable is True
+    assert "sensitive" not in str(captured.value)
+
+
 @pytest.mark.parametrize(
     "payload",
     [
