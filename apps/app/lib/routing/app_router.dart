@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/app/app_shell.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
+import 'package:meufinanceiro_app/features/auth/login_screen.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
 import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
+import 'package:meufinanceiro_app/routing/auth_route_guard.dart';
 
 final initialLocationProvider = Provider<String?>((ref) => null);
 
@@ -15,6 +17,18 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     initialLocation: ref.watch(initialLocationProvider),
     routes: [
+      GoRoute(
+        path: AppRoutes.loginPath,
+        name: AppRoutes.login,
+        pageBuilder: (context, state) {
+          final redirectTo = AuthRouteGuard.sanitizeRedirect(
+            state.uri.queryParameters['redirect'],
+          );
+          return NoTransitionPage(
+            child: LoginScreen(redirectTo: redirectTo),
+          );
+        },
+      ),
       ShellRoute(
         builder: (context, state, child) {
           return AppShell(currentLocation: state.uri.path, child: child);
