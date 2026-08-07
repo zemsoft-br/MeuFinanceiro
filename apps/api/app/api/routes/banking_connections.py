@@ -26,12 +26,12 @@ router = APIRouter(
 
 
 class RegisterPluggyConnectionRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid")
 
     item_id: str = Field(
+        alias="itemId",
         min_length=1,
         max_length=512,
-        validation_alias="itemId",
     )
 
 
@@ -79,7 +79,10 @@ def _raise_registration_error(error: PluggyConnectionRegistrationError) -> NoRet
         status_code = status.HTTP_403_FORBIDDEN
     elif error.code is PluggyConnectionRegistrationErrorCode.ITEM_UNAVAILABLE:
         status_code = status.HTTP_404_NOT_FOUND
-    elif error.code is PluggyConnectionRegistrationErrorCode.INVALID_PROVIDER_RESPONSE:
+    elif error.code in {
+        PluggyConnectionRegistrationErrorCode.INVALID_PROVIDER_RESPONSE,
+        PluggyConnectionRegistrationErrorCode.PROVIDER_REJECTED,
+    }:
         status_code = status.HTTP_502_BAD_GATEWAY
     else:
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
