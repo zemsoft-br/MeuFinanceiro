@@ -34,14 +34,14 @@ class PluggyConnectTokenResponse(BaseModel):
 async def _reject_request_body(request: Request) -> None:
     if await request.body():
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="request body is not allowed",
         )
 
 
 def _service(request: Request) -> PluggyConnectTokenService:
     service = getattr(request.app.state, "banking_pluggy_connect_token", None)
-    if not isinstance(service, PluggyConnectTokenService):
+    if service is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="banking provider is unavailable",
