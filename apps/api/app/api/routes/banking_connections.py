@@ -12,7 +12,7 @@ from meufinanceiro_banking_pluggy_execution import (
     PluggyConnectionRegistrationService,
 )
 from meufinanceiro_persistence import StoredConnectionStatus
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.api.auth import (
     AuthenticatedOperatorRequest,
@@ -33,6 +33,15 @@ class RegisterPluggyConnectionRequest(BaseModel):
         min_length=1,
         max_length=512,
     )
+
+    @field_validator("item_id")
+    @classmethod
+    def validate_item_id(cls, value: str) -> str:
+        if value != value.strip():
+            raise ValueError("itemId is invalid")
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("itemId is invalid")
+        return value
 
 
 class RegisteredPluggyConnectionResponse(BaseModel):
