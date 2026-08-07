@@ -25,6 +25,8 @@ class AppDestination {
 }
 
 abstract final class AppRoutes {
+  static const login = 'login';
+  static const loginPath = '/login';
   static const home = 'home';
   static const components = 'components';
   static const system = 'system';
