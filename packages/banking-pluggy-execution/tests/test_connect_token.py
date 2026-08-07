@@ -118,6 +118,25 @@ def test_issued_token_rejects_invalid_values_without_echoing_them() -> None:
     assert "invalid-token" not in str(captured.value)
 
 
+def test_invalid_transport_token_is_invalid_provider_response() -> None:
+    transport = FakeTransport(token=" invalid-token ")
+    service = PluggyConnectTokenService(
+        FakeStore(),
+        transport_factory=lambda _: transport,
+    )
+
+    with pytest.raises(PluggyConnectTokenError) as captured:
+        service.issue(
+            installation_id=INSTALLATION_ID,
+            residence_id=RESIDENCE_ID,
+        )
+
+    assert captured.value.code is PluggyConnectTokenErrorCode.INVALID_PROVIDER_RESPONSE
+    assert "invalid-token" not in str(captured.value)
+    assert captured.value.__cause__ is None
+    assert transport.close_calls == 1
+
+
 @pytest.mark.parametrize(
     ("store_error", "expected_code"),
     [
