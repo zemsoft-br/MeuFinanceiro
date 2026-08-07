@@ -56,7 +56,7 @@ class FakeAuthTransport implements AuthTransport {
         uri: uri,
         method: method,
         timeout: timeout,
-        headers: Map.unmodifiable(headers),
+        headers: Map<String, String>.unmodifiable(headers),
         body: body,
       ),
     );
