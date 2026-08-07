@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import fields
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -223,9 +224,11 @@ def test_configuration_compare_and_swap_and_credential_replacement(
 
 def test_connection_reuse_and_capability_snapshot_are_idempotent(
     store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
 ) -> None:
     installation_id = uuid4()
     residence_id = uuid4()
+    create_canonical_residences(installation_id, (residence_id,))
     _enable_configuration(store, installation_id=installation_id)
 
     created = store.register_connection(
@@ -294,11 +297,13 @@ def test_connection_reuse_and_capability_snapshot_are_idempotent(
 def test_rls_is_fail_closed_and_isolates_installations_and_residences(
     runtime_engine: Engine,
     store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
 ) -> None:
     installation_a = uuid4()
     installation_b = uuid4()
     residence_a = uuid4()
     residence_b = uuid4()
+    create_canonical_residences(installation_a, (residence_a, residence_b))
     configuration_a = _enable_configuration(
         store,
         installation_id=installation_a,
@@ -314,7 +319,7 @@ def test_rls_is_fail_closed_and_isolates_installations_and_residences(
         requires_user_action=False,
     )
     connection_b = store.register_connection(
-        installation_id=installation_b,
+        installation_id=installation_a,
         residence_id=residence_b,
         provider="pluggy",
         external_connection_id="connection-b",
@@ -335,7 +340,7 @@ def test_rls_is_fail_closed_and_isolates_installations_and_residences(
         ),
     )
     store.replace_capabilities(
-        installation_id=installation_b,
+        installation_id=installation_a,
         residence_id=residence_b,
         connection_id=connection_b.id,
         snapshots=(
@@ -391,6 +396,14 @@ def test_rls_is_fail_closed_and_isolates_installations_and_residences(
             == 0
         )
 
+    with runtime_engine.begin() as connection:
+        _set_context(connection, installation_id=installation_b)
+        assert (
+            connection.scalar(select(func.count()).select_from(provider_configurations))
+            == 1
+        )
+        assert connection.scalar(select(func.count()).select_from(connections)) == 0
+
     with pytest.raises(DBAPIError):
         with runtime_engine.begin() as connection:
             _set_context(
@@ -417,13 +430,15 @@ def test_rls_is_fail_closed_and_isolates_installations_and_residences(
 def test_composite_constraints_reject_cross_scope_associations(
     engine: Engine,
     store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
 ) -> None:
     installation_a = uuid4()
     installation_b = uuid4()
     residence_a = uuid4()
     residence_b = uuid4()
+    create_canonical_residences(installation_a, (residence_a, residence_b))
     _enable_configuration(store, installation_id=installation_a)
-    _enable_configuration(store, installation_id=installation_b)
+    configuration_b = _enable_configuration(store, installation_id=installation_b)
     connection_a = store.register_connection(
         installation_id=installation_a,
         residence_id=residence_a,
@@ -433,23 +448,15 @@ def test_composite_constraints_reject_cross_scope_associations(
         requires_user_action=False,
     )
 
-    with engine.connect() as connection:
-        configuration_a = connection.scalar(
-            select(provider_configurations.c.id).where(
-                provider_configurations.c.installation_id == installation_a
-            )
-        )
-    assert configuration_a is not None
-
     with pytest.raises(IntegrityError):
         with engine.begin() as connection:
             connection.execute(
                 insert(connections).values(
                     id=uuid4(),
                     installation_id=installation_b,
-                    residence_id=residence_b,
+                    residence_id=residence_a,
                     provider="pluggy",
-                    provider_configuration_id=configuration_a,
+                    provider_configuration_id=configuration_b.id,
                     external_connection_id="cross-installation",
                     status=StoredConnectionStatus.AVAILABLE.value,
                     requires_user_action=False,
