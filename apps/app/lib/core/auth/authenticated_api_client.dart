@@ -72,6 +72,7 @@ class AuthenticatedApiClient {
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
           'Cache-Control': 'no-store',
+          'Pragma': 'no-cache',
         };
         String? body;
         if (jsonBody != null) {
@@ -89,7 +90,7 @@ class AuthenticatedApiClient {
 
         if (response.statusCode == 401) {
           tokenVault.clear();
-          onUnauthorized();
+          _notifyUnauthorized();
           throw const AuthenticatedApiException(
             AuthenticatedApiFailure.authenticationRequired,
             statusCode: 401,
@@ -116,7 +117,7 @@ class AuthenticatedApiClient {
         return response;
       });
     } on OperatorAuthenticationRequired {
-      onUnauthorized();
+      _notifyUnauthorized();
       throw const AuthenticatedApiException(
         AuthenticatedApiFailure.authenticationRequired,
       );
@@ -130,15 +131,39 @@ class AuthenticatedApiClient {
   }
 
   Uri _resolveRelativePath(String relativePath) {
+    if (relativePath.isEmpty ||
+        relativePath.contains('\\') ||
+        relativePath.codeUnits.any((unit) => unit < 32 || unit == 127)) {
+      throw const FormatException('API path must be relative.');
+    }
     final parsed = Uri.tryParse(relativePath);
     if (parsed == null ||
         parsed.hasScheme ||
         parsed.hasAuthority ||
+        parsed.hasFragment ||
         relativePath.startsWith('/') ||
-        relativePath.startsWith('//')) {
+        parsed.pathSegments.any((segment) => segment == '.' || segment == '..')) {
       throw const FormatException('API path must be relative.');
     }
-    return apiBaseUri.resolve(relativePath);
+
+    final endpoint = apiBaseUri.resolveUri(parsed);
+    final basePath = apiBaseUri.path.endsWith('/')
+        ? apiBaseUri.path
+        : '${apiBaseUri.path}/';
+    if (endpoint.scheme != apiBaseUri.scheme ||
+        endpoint.authority != apiBaseUri.authority ||
+        !endpoint.path.startsWith(basePath)) {
+      throw const FormatException('API path escapes the configured API base.');
+    }
+    return endpoint;
+  }
+
+  void _notifyUnauthorized() {
+    try {
+      onUnauthorized();
+    } catch (_) {
+      // Local notification must not change the HTTP authentication semantics.
+    }
   }
 
   @override
