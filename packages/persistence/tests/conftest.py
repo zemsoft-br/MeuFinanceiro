@@ -5,7 +5,7 @@ import re
 import secrets
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import psycopg
 import pytest
@@ -107,7 +107,10 @@ def create_canonical_residences(
     engine: Engine,
 ) -> Callable[[UUID, tuple[UUID, ...]], None]:
     def _create(installation_id: UUID, residence_ids: tuple[UUID, ...]) -> None:
+        if not residence_ids:
+            raise ValueError("at least one canonical residence is required")
         now = datetime.now(UTC)
+        operator_id = uuid4()
         with engine.begin() as connection:
             current_installation = connection.scalar(select(identity_installation.c.id))
             if current_installation is None:
@@ -124,6 +127,22 @@ def create_canonical_residences(
                     "canonical residence fixture cannot cross installation singleton"
                 )
 
+            connection.execute(
+                insert(identity_operators).values(
+                    id=operator_id,
+                    installation_id=installation_id,
+                    login_name="test-admin",
+                    password_hash="synthetic-password-hash-material-000000000000",
+                    role="installation_admin",
+                    status="active",
+                    failed_attempts=0,
+                    locked_until=None,
+                    last_authenticated_at=None,
+                    password_changed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
             for index, residence_id in enumerate(residence_ids, start=1):
                 connection.execute(
                     insert(household_residences).values(
@@ -131,6 +150,19 @@ def create_canonical_residences(
                         installation_id=installation_id,
                         name=f"Test residence {index}",
                         status="active",
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+                connection.execute(
+                    insert(household_memberships).values(
+                        id=uuid4(),
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        operator_id=operator_id,
+                        role="owner",
+                        status="active",
+                        is_primary=index == 1,
                         created_at=now,
                         updated_at=now,
                     )
