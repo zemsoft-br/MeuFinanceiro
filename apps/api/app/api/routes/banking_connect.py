@@ -43,11 +43,12 @@ async def _require_connect_token_request(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="query parameters are not allowed",
         )
-    if await request.body():
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="request body is not allowed",
-        )
+    async for chunk in request.stream():
+        if chunk:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="request body is not allowed",
+            )
     return authenticated
 
 
