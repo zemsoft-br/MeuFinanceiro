@@ -32,7 +32,7 @@ def test_persistence_query_selects_only_allowlisted_local_metadata() -> None:
     assert "connections.c.residence_id == residence_id" in QUERY_SOURCE
 
 
-def test_public_response_never_contains_provider_item_or_diagnostic_ids() -> None:
+def test_public_response_never_contains_provider_item_or_secret_fields() -> None:
     for forbidden in (
         "external_connection_id",
         "externalConnectionId",
@@ -42,9 +42,13 @@ def test_public_response_never_contains_provider_item_or_diagnostic_ids() -> Non
         "provider_reason_code",
         "providerReasonCode",
         "configuration_id",
-        "credential",
+        "client_id",
+        "client_secret",
+        "api_key",
         "apiKey",
+        "access_token",
         "accessToken",
+        "EnabledProviderCredentials",
     ):
         assert forbidden not in ROUTE_SOURCE
         assert forbidden not in SERVICE_SOURCE
