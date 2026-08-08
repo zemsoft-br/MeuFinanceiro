@@ -10,7 +10,8 @@ não recebe funcionalidades novas.
 
 O cliente contém:
 
-- rotas nomeadas `/login`, `/`, `/componentes` e `/sistema`;
+- rotas nomeadas `/login`, `/`, `/componentes`, `/sistema` e o deep link
+  protegido `/app/integracoes/pluggy/conectar`;
 - shell responsivo com sidebar desktop, drawer e navegação inferior móvel;
 - tema e tokens locais, sem fontes ou assets remotos;
 - catálogo de componentes, formulário demonstrativo e estados comuns;
@@ -18,6 +19,8 @@ O cliente contém:
   indisponível;
 - autenticação local com bearer token mantido exclusivamente em memória;
 - transporte autenticado reutilizável e guarda para rotas protegidas;
+- Pluggy Connect Web atrás de adaptador de plataforma, carregado somente após
+  ação explícita do usuário;
 - dependências de plataforma atrás de interfaces;
 - manifesto PWA, carregador e service worker próprios;
 - cache exclusivamente de shell, com `/api` e `/api/` fora da interceptação;
@@ -33,8 +36,12 @@ WEB_RUNTIME_TARGET=flutter-runtime
 ```
 
 O build é gerado pela toolchain exata registrada em `/.flutter-version` e
-`/.flutter-revision`, sem recursos Web carregados de CDN. O container final usa
-Caddy não-root e serve somente o artefato estático em `/srv`.
+`/.flutter-revision`, sem recursos Web do Flutter carregados de CDN. O container
+final usa Caddy não-root e serve somente o artefato estático em `/srv`.
+
+A integração Pluggy é uma dependência externa opcional em runtime: a CDN do
+Connect não participa do bootstrap do Flutter e só é acessada depois que o
+usuário autenticado inicia explicitamente uma conexão bancária.
 
 O rollback React permanece disponível durante a validação:
 
@@ -55,7 +62,7 @@ ou lentidão do worker nunca bloqueia indefinidamente a inicialização do app.
 O worker:
 
 - ignora métodos diferentes de `GET`;
-- ignora recursos de outra origem;
+- ignora recursos de outra origem, incluindo os recursos externos da Pluggy;
 - ignora o caminho exato `/api` e todos os caminhos iniciados por `/api/`;
 - usa rede primeiro para navegação e recursos executáveis;
 - utiliza `index.html` armazenado apenas como fallback offline de navegação;
@@ -96,6 +103,40 @@ O logout remove primeiro a referência local do token e depois chama
 
 Rotas funcionais protegidas devem usar `AuthRouteGuard`. A especificação
 completa está em `../../docs/architecture/FLUTTER_OPERATOR_SESSION.md`.
+
+## Pluggy Connect Web
+
+A rota protegida `/app/integracoes/pluggy/conectar` implementa a primeira
+experiência bancária online do Flutter Web/PWA.
+
+O cliente não cria identidade Pluggy nem calcula escopo de residência. O fluxo
+é:
+
+```text
+sessão local
+  -> POST /api/v1/banking/pluggy/connect-token
+  -> Connect Token efêmero em memória
+  -> Pluggy Connect Web carregado de forma lazy
+  -> item.id transitório do callback
+  -> POST /api/v1/banking/pluggy/connections
+  -> connectionId/status locais
+```
+
+O callback do widget é tratado como entrada não confiável. O Flutter extrai
+somente o `item.id` e o backend comprova ownership diretamente na Pluggy antes
+de persistir/reutilizar a conexão local. Connect Token e Item ID não entram em
+storage, URL, cache, logs ou estado observável durável.
+
+No runtime Web não é usado o pacote `flutter_pluggy_connect`: a versão avaliada
+para este recorte não declara suporte Web. O adaptador JavaScript fica isolado
+em `lib/platform/pluggy/` e fixa a versão da biblioteca oficial carregada pela
+CDN; nenhum script Pluggy é colocado em `index.html` ou no bootstrap.
+
+No modo demonstração a integração externa é bloqueada antes da emissão de
+Connect Token. Não existe fila offline nem retry automático das mutações.
+
+A especificação e as referências oficiais estão em
+`../../docs/architecture/FLUTTER_PLUGGY_CONNECT.md`.
 
 ## Comandos
 
