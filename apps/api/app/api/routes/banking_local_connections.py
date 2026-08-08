@@ -33,7 +33,9 @@ class LocalBankingConnectionResponse(BaseModel):
     next_refresh_allowed_at: datetime | None = Field(
         serialization_alias="nextRefreshAllowedAt"
     )
-    consent_expires_at: datetime | None = Field(serialization_alias="consentExpiresAt")
+    consent_expires_at: datetime | None = Field(
+        serialization_alias="consentExpiresAt"
+    )
     disconnected_at: datetime | None = Field(serialization_alias="disconnectedAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
     reauthentication_available: bool = Field(
