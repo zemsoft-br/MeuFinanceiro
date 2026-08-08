@@ -74,7 +74,10 @@ void main() {
     );
     await _pumpCallbacks(tester);
 
-    expect(find.text('Instituição conectada e validada pelo MeuFinanceiro.'), findsOneWidget);
+    expect(
+      find.text('Instituição conectada e validada pelo MeuFinanceiro.'),
+      findsOneWidget,
+    );
     expect(find.byKey(PluggyConnectScreen.localConnectionKey), findsOneWidget);
     expect(
       find.text('30000000-0000-4000-8000-000000000003'),
@@ -125,6 +128,13 @@ Future<void> _pumpScreen(
     throw StateError('unexpected synthetic route');
   });
 
+  Widget home = const Scaffold(
+    body: SingleChildScrollView(child: PluggyConnectScreen()),
+  );
+  if (mediaQuery != null) {
+    home = MediaQuery(data: mediaQuery, child: home);
+  }
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -137,15 +147,7 @@ Future<void> _pumpScreen(
           AsyncValue.data(_demoStatus(enabled: demoEnabled)),
         ),
       ],
-      child: MaterialApp(
-        theme: buildAppTheme(),
-        home: mediaQuery == null
-            ? const Scaffold(body: PluggyConnectScreen())
-            : MediaQuery(
-                data: mediaQuery,
-                child: const Scaffold(body: PluggyConnectScreen()),
-              ),
-      ),
+      child: MaterialApp(theme: buildAppTheme(), home: home),
     ),
   );
   await tester.pumpAndSettle();
