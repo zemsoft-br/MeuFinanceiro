@@ -230,7 +230,10 @@ def test_reauthentication_openapi_has_only_local_connection_path_parameter(
 ) -> None:
     test_client, _, _ = client
     schema = test_client.get("/api/v1/openapi.json").json()
-    template = "/api/v1/banking/pluggy/connections/{connection_id}/reauthentication-token"
+    template = (
+        "/api/v1/banking/pluggy/connections/{connection_id}/"
+        "reauthentication-token"
+    )
     operation = schema["paths"][template]["post"]
 
     assert "requestBody" not in operation
