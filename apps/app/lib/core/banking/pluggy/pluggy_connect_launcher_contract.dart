@@ -41,6 +41,7 @@ class PluggyConnectLaunchException implements Exception {
 abstract interface class PluggyConnectLauncher {
   Future<void> launch({
     required String connectToken,
+    String? updateItem,
     required void Function(PluggyConnectCallback callback) onCallback,
   });
 }

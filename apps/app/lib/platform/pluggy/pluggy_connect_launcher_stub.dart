@@ -9,6 +9,7 @@ class UnsupportedPluggyConnectLauncher implements PluggyConnectLauncher {
   @override
   Future<void> launch({
     required String connectToken,
+    String? updateItem,
     required void Function(PluggyConnectCallback callback) onCallback,
   }) {
     throw const PluggyConnectLaunchException();

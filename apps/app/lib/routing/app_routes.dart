@@ -29,9 +29,15 @@ abstract final class AppRoutes {
   static const loginPath = '/login';
   static const pluggyConnect = 'pluggy-connect';
   static const pluggyConnectPath = '/app/integracoes/pluggy/conectar';
+  static const pluggyReauthentication = 'pluggy-reauthentication';
+  static const pluggyReauthenticationPath =
+      '/app/integracoes/pluggy/conexoes/:connectionId/reautenticar';
   static const home = 'home';
   static const components = 'components';
   static const system = 'system';
+
+  static String pluggyReauthenticationLocation(String connectionId) =>
+      '/app/integracoes/pluggy/conexoes/$connectionId/reautenticar';
 
   static const destinations = <AppDestination>[
     AppDestination(

@@ -6,7 +6,7 @@ O cliente Flutter Web/PWA abre o Pluggy Connect sem transformar o navegador em
 fronteira de autorização e sem persistir identificadores transitórios do
 provider.
 
-A rota canônica é:
+A rota canônica de **nova conexão** é:
 
 ```text
 /app/integracoes/pluggy/conectar
@@ -18,6 +18,10 @@ Ela é protegida pelo namespace `/app/*` e depende da sessão local descrita em
 A experiência reconstrói semanticamente a referência Stitch
 `conectar_institui_o_assistente`; nenhum HTML do protótipo é incorporado ao
 runtime Flutter.
+
+A reautenticação/update de uma conexão existente usa o mesmo adapter em modo
+controlado e está especificada separadamente em
+`FLUTTER_PLUGGY_REAUTHENTICATION.md`.
 
 ## Referências oficiais verificadas
 
@@ -68,7 +72,7 @@ A biblioteca Pluggy não participa do startup do MeuFinanceiro:
 O service worker do MeuFinanceiro ignora requests cross-origin, portanto os
 recursos externos da Pluggy não entram no cache do shell.
 
-## Fronteira de confiança
+## Fronteira de confiança da nova conexão
 
 O fluxo é:
 
@@ -102,9 +106,9 @@ descartados.
 O backend continua sendo a única fronteira que comprova a associação do Item à
 residência autenticada.
 
-## Configuração do widget
+## Configuração do widget na nova conexão
 
-A configuração Web controlada pelo cliente contém somente:
+O modo de criação usa:
 
 ```text
 connectToken: <efêmero>
@@ -113,11 +117,15 @@ countries: [BR]
 includeSandbox: false
 ```
 
-Não são enviados pelo Flutter:
+O fluxo de nova conexão **não** fornece `updateItem`. O adapter aceita essa
+propriedade somente quando o fluxo separado de reautenticação recebeu o Item
+transitório diretamente do backend autenticado.
+
+Não são enviados pelo Flutter em nenhum dos dois modos:
 
 - `clientUserId`;
 - residência ou instalação;
-- `updateItem`;
+- `forceAskForCredentials` neste recorte;
 - webhook URL;
 - OAuth redirect customizado;
 - connector IDs arbitrários;
@@ -125,8 +133,7 @@ Não são enviados pelo Flutter:
 - CPF/CNPJ;
 - credenciais bancárias ou MFA.
 
-O `clientUserId` canônico continua sendo definido pelo backend durante a
-emissão do Connect Token.
+O `clientUserId` canônico continua sendo definido e validado pelo backend.
 
 ## Callbacks
 
@@ -148,7 +155,7 @@ automático.
 
 ### Connect Token
 
-O token retornado por `/connect-token`:
+O token retornado pelo backend:
 
 - fica em wrapper efêmero em memória;
 - é consumido uma única vez para abrir o launcher;
@@ -159,13 +166,16 @@ O token retornado por `/connect-token`:
 
 ### Item ID
 
-O Item ID:
+Na criação, o Item ID:
 
 - existe somente no callback normalizado e durante o POST de registro;
 - não aparece na UI;
 - não é gravado em storage/cache;
 - não entra em `toString`/diagnóstico;
 - é descartado depois do registro.
+
+No update, ele também existe temporariamente entre a resposta autenticada e a
+abertura do launcher; as regras de não persistência e redaction são as mesmas.
 
 Após sucesso, a UI mantém somente o `connectionId` local, o status local e o
 booleano `requiresUserAction` retornados pelo backend.
@@ -181,12 +191,16 @@ booleano `requiresUserAction` retornados pelo backend.
 - o controller mantém uma geração monotônica para invalidar trabalho antigo;
 - não existe retry automático dos POSTs de token ou registro.
 
+O controller de reautenticação preserva as mesmas garantias e ainda exige que o
+Item do callback seja exatamente o Item transitório entregue pelo backend para
+o update atual.
+
 O retorno de foco ao botão é sinalizado pela camada de estado após o fechamento
 do widget.
 
 ## Demo e offline
 
-O status de demonstração é verificado antes de emitir Connect Token. Em demo:
+O status de demonstração é verificado antes de emitir material Pluggy. Em demo:
 
 - nenhum POST bancário é iniciado;
 - o script Pluggy não é carregado;
@@ -197,7 +211,7 @@ usuário. Não existe fila offline para conexão bancária.
 
 ## Respostas aceitas
 
-### Connect Token
+### Connect Token de criação
 
 O cliente aceita estritamente:
 
@@ -205,7 +219,15 @@ O cliente aceita estritamente:
 {"accessToken":"..."}
 ```
 
-Campos adicionais ou forma incompatível falham fechado.
+### Reautenticação
+
+O modo update aceita estritamente:
+
+```json
+{"accessToken":"...","itemId":"..."}
+```
+
+Os dois campos são efêmeros e existem somente para inicializar o widget.
 
 ### Registro
 
@@ -225,7 +247,7 @@ O Item ID não faz parte do resultado permanente.
 
 - SDK Connect para Android/iOS/macOS;
 - lista de conexões existentes;
-- reautenticação/update de Item;
+- `forceAskForCredentials`;
 - OAuth redirect customizado;
 - webhooks no cliente;
 - polling automático;

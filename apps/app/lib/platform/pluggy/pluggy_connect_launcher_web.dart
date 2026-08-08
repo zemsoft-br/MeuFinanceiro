@@ -22,9 +22,13 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
   @override
   Future<void> launch({
     required String connectToken,
+    String? updateItem,
     required void Function(PluggyConnectCallback callback) onCallback,
   }) async {
     _validateSecret(connectToken);
+    final normalizedUpdateItem = updateItem == null
+        ? null
+        : _validateItemId(updateItem);
     await _ensureScriptLoaded();
 
     final constructor = js.context['PluggyConnect'];
@@ -40,11 +44,12 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
       }
     }
 
-    final options = js.JsObject.jsify({
+    final options = <String, Object?>{
       'connectToken': connectToken,
       'language': 'pt',
       'countries': ['BR'],
       'includeSandbox': false,
+      if (normalizedUpdateItem != null) 'updateItem': normalizedUpdateItem,
       'onOpen': js.allowInterop(() {
         emit(const PluggyConnectCallback.opened());
       }),
@@ -69,10 +74,10 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
           emit(const PluggyConnectCallback.invalidPayload());
         }
       }),
-    });
+    };
 
     try {
-      final widget = js.JsObject(constructor, [options]);
+      final widget = js.JsObject(constructor, [js.JsObject.jsify(options)]);
       widget.callMethod('init');
     } catch (_) {
       throw const PluggyConnectLaunchException();
@@ -187,8 +192,18 @@ String? _extractBoundedItemId(dynamic item) {
     return null;
   }
   final value = item['id'];
-  if (value is! String ||
-      value.isEmpty ||
+  if (value is! String) {
+    return null;
+  }
+  try {
+    return _validateItemId(value);
+  } on PluggyConnectLaunchException {
+    return null;
+  }
+}
+
+String _validateItemId(String value) {
+  if (value.isEmpty ||
       value.length > 512 ||
       value != value.trim() ||
       value.codeUnits.any((unit) => unit < 32 || unit == 127) ||
@@ -196,7 +211,7 @@ String? _extractBoundedItemId(dynamic item) {
       value.contains('\\') ||
       value.contains('?') ||
       value.contains('#')) {
-    return null;
+    throw const PluggyConnectLaunchException();
   }
   return value;
 }

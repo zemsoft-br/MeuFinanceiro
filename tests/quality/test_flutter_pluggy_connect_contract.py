@@ -7,8 +7,10 @@ APP = ROOT / "apps/app"
 LIB = APP / "lib"
 WEB = APP / "web"
 PLUGGY_ROOT = LIB / "features/banking/pluggy/connect"
+REAUTH_ROOT = LIB / "features/banking/pluggy/reauthentication"
 ADAPTER = LIB / "platform/pluggy/pluggy_connect_launcher_web.dart"
 CONTROLLER = PLUGGY_ROOT / "pluggy_connect_controller.dart"
+REAUTH_CONTROLLER = REAUTH_ROOT / "pluggy_reauthentication_controller.dart"
 API = PLUGGY_ROOT / "pluggy_connect_api.dart"
 PUBSPEC = APP / "pubspec.yaml"
 PUBSPEC_LOCK = APP / "pubspec.lock"
@@ -34,10 +36,12 @@ def test_web_adapter_uses_exact_lazy_allowlisted_pluggy_asset() -> None:
     assert "'language': 'pt'" in source
     assert "'countries': ['BR']" in source
     assert "'includeSandbox': false" in source
+    assert "if (normalizedUpdateItem != null) 'updateItem': normalizedUpdateItem" in source
+    assert "_validateItemId(updateItem)" in source
 
     for forbidden in (
         "clientUserId",
-        "updateItem",
+        "forceAskForCredentials",
         "webhookUrl",
         "oauthRedirectUri",
         "selectedConnectorId",
@@ -45,6 +49,15 @@ def test_web_adapter_uses_exact_lazy_allowlisted_pluggy_asset() -> None:
         "products",
     ):
         assert forbidden not in source
+
+
+def test_create_flow_never_supplies_update_item() -> None:
+    controller = _read(CONTROLLER)
+    reauthentication = _read(REAUTH_CONTROLLER)
+
+    assert "updateItem:" not in controller
+    assert "updateItem: launchMaterial.updateItem" in reauthentication
+    assert "issueReauthenticationMaterial(connectionId)" in reauthentication
 
 
 def test_pluggy_script_is_not_a_static_bootstrap_dependency() -> None:
@@ -70,6 +83,7 @@ def test_callback_is_reduced_to_transient_item_id_before_backend() -> None:
     api = _read(API)
     adapter = _read(ADAPTER)
     controller = _read(CONTROLLER)
+    reauthentication = _read(REAUTH_CONTROLLER)
 
     assert "payload['item']" in adapter
     assert "data['item']" in adapter
@@ -78,27 +92,38 @@ def test_callback_is_reduced_to_transient_item_id_before_backend() -> None:
     assert "PluggyConnectCallback.itemAvailable(extraction.itemId)" in on_error
     assert "jsonBody: {'itemId': normalizedItemId}" in api
     assert "banking/pluggy/connections" in api
+    assert "itemId != expectedItem" in reauthentication
 
-    for forbidden in (
-        "clientUserId",
-        "executionStatus",
-        "connector",
-        "account",
-        "institution",
-    ):
-        assert forbidden not in controller
+    for source in (controller, reauthentication):
+        for forbidden in (
+            "clientUserId",
+            "executionStatus",
+            "connector",
+            "account",
+            "institution",
+        ):
+            assert forbidden not in source
 
     state_source = controller.split("class PluggyConnectState", 1)[1].split(
         "final pluggyConnectLauncherProvider", 1
     )[0]
+    reauth_state = reauthentication.split(
+        "class PluggyReauthenticationState", 1
+    )[1].split("final pluggyReauthenticationLauncherProvider", 1)[0]
     assert "connectToken" not in state_source
     assert "itemId" not in state_source
+    assert "connectToken" not in reauth_state
+    assert "itemId" not in reauth_state
 
 
 def test_connect_token_and_item_id_are_not_persisted_or_logged() -> None:
     production_sources = "\n".join(
-        _read(path) for path in sorted(PLUGGY_ROOT.glob("*.dart"))
-    ) + "\n" + _read(ADAPTER)
+        [
+            *(_read(path) for path in sorted(PLUGGY_ROOT.glob("*.dart"))),
+            *(_read(path) for path in sorted(REAUTH_ROOT.glob("*.dart"))),
+            _read(ADAPTER),
+        ]
+    )
 
     for forbidden in (
         "localStorage",
@@ -114,6 +139,8 @@ def test_connect_token_and_item_id_are_not_persisted_or_logged() -> None:
         assert forbidden not in production_sources
 
     assert "EphemeralConnectToken(<redacted>)" in production_sources
+    assert "EphemeralPluggyUpdateMaterial(<redacted>)" in production_sources
+    assert "PluggyUpdateLaunchMaterial(<redacted>)" in production_sources
     assert "PluggyConnectCallback(${type.name}, <redacted>)" in _read(
         LIB / "core/banking/pluggy/pluggy_connect_launcher_contract.dart"
     )
@@ -125,6 +152,7 @@ def test_client_never_supplies_residence_or_provider_ownership_scope() -> None:
         for path in sorted(
             [
                 *PLUGGY_ROOT.glob("*.dart"),
+                *REAUTH_ROOT.glob("*.dart"),
                 LIB / "platform/pluggy/pluggy_connect_launcher_web.dart",
                 LIB / "core/banking/pluggy/pluggy_connect_launcher_contract.dart",
             ]
@@ -146,8 +174,15 @@ def test_demo_is_checked_before_token_issue_or_launcher_call() -> None:
     token_issue = controller.index("issueToken()")
     launcher = controller.index(".launch(")
 
+    reauthentication = _read(REAUTH_CONTROLLER)
+    reauth_demo = reauthentication.index("demoStatus.enabled")
+    reauth_token = reauthentication.index("issueReauthenticationMaterial(connectionId)")
+    reauth_launcher = reauthentication.index(".launch(")
+
     assert demo_check < token_issue < launcher
+    assert reauth_demo < reauth_token < reauth_launcher
     assert "PluggyConnectPhase.demoUnavailable" in controller
+    assert "PluggyReauthenticationPhase.demoUnavailable" in reauthentication
 
 
 def test_service_worker_never_caches_api_or_cross_origin_provider_resources() -> None:
