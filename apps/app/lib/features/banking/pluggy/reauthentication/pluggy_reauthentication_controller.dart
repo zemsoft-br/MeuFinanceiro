@@ -274,16 +274,25 @@ class PluggyReauthenticationController
         state = state.withFocusReturn(++_focusReturnRevision);
         return;
       case PluggyConnectCallbackType.errorWithoutItem:
+        if (state.phase == PluggyReauthenticationPhase.updated) {
+          return;
+        }
         state = const PluggyReauthenticationState.phase(
           PluggyReauthenticationPhase.genericFailure,
         );
         return;
       case PluggyConnectCallbackType.invalidPayload:
+        if (state.phase == PluggyReauthenticationPhase.updated) {
+          return;
+        }
         state = const PluggyReauthenticationState.phase(
           PluggyReauthenticationPhase.invalidProviderResponse,
         );
         return;
       case PluggyConnectCallbackType.itemAvailable:
+        if (state.phase == PluggyReauthenticationPhase.updated) {
+          return;
+        }
         final itemId = callback.itemId;
         final expectedItem = _expectedUpdateItem;
         if (itemId == null || expectedItem == null || itemId != expectedItem) {
