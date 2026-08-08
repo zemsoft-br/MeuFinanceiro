@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 from sqlalchemy import Connection, Engine, func, select, update
@@ -30,8 +31,8 @@ from meufinanceiro_persistence.banking_models import (
     SyncTransitionError,
     clean_cursor,
     clean_external_account_id,
-    clean_idempotency_key,
     clean_http_status,
+    clean_idempotency_key,
     clean_reason_code,
     clean_retry_window_bucket,
     clean_source_window,
@@ -122,11 +123,6 @@ class BankingManualSyncStoreMixin:
                     connection_id=connection_id,
                     for_update=True,
                 )
-                if connection_status is StoredConnectionStatus.DISCONNECTED:
-                    raise SyncConflictError(
-                        "disconnected banking connection cannot be synchronized"
-                    )
-
                 existing = (
                     connection.execute(
                         select(*_SYNC_RUN_COLUMNS).where(
@@ -140,6 +136,10 @@ class BankingManualSyncStoreMixin:
                 )
                 if existing is not None:
                     return _sync_run_record(existing)
+                if connection_status is StoredConnectionStatus.DISCONNECTED:
+                    raise SyncConflictError(
+                        "disconnected banking connection cannot be synchronized"
+                    )
 
                 try:
                     row = (
@@ -298,7 +298,9 @@ class BankingManualSyncStoreMixin:
                             status=status.value,
                             finished_at=func.transaction_timestamp(),
                             error_category=(
-                                error_category.value if error_category is not None else None
+                                error_category.value
+                                if error_category is not None
+                                else None
                             ),
                             provider_reason_code=normalized_reason,
                             http_status=normalized_http_status,
@@ -642,7 +644,7 @@ def _raise_sync_run_write_error(
     residence_id: UUID,
     connection_id: UUID,
     sync_run_id: UUID,
-) -> None:
+) -> NoReturn:
     status = connection.scalar(
         select(sync_runs.c.status).where(
             sync_runs.c.id == sync_run_id,
@@ -673,7 +675,9 @@ def _sync_run_record(row: RowMapping) -> SyncRunRecord:
         finished_at=row["finished_at"],
         attempt_count=row["attempt_count"],
         error_category=(
-            StoredSyncErrorCategory(error_category) if error_category is not None else None
+            StoredSyncErrorCategory(error_category)
+            if error_category is not None
+            else None
         ),
         provider_reason_code=row["provider_reason_code"],
         http_status=row["http_status"],
