@@ -20,14 +20,20 @@ CONFIG_SOURCE = (ROOT / "apps/api/app/core/config.py").read_text(encoding="utf-8
 
 
 def test_local_connection_is_resolved_before_credentials_or_provider_io() -> None:
-    assert SERVICE_SOURCE.index("self._store.get_connection(") < SERVICE_SOURCE.index(
+    issue_source = SERVICE_SOURCE.split("def issue(", 1)[1].split(
+        "def _load_connection(", 1
+    )[0]
+    loader_source = SERVICE_SOURCE.split("def _load_connection(", 1)[1]
+
+    assert issue_source.index("self._load_connection(") < issue_source.index(
         "self._store.use_enabled_credentials("
     )
-    assert SERVICE_SOURCE.index("parse_connected_item(") < SERVICE_SOURCE.index(
+    assert "self._store.get_connection(" in loader_source
+    assert issue_source.index("parse_connected_item(") < issue_source.index(
         "transport.create_update_connect_token("
     )
-    assert 'expected_client_user_id = f"residence:{residence_id}"' in SERVICE_SOURCE
-    assert "connection.external_connection_id" in SERVICE_SOURCE
+    assert 'expected_client_user_id = f"residence:{residence_id}"' in issue_source
+    assert "connection.external_connection_id" in issue_source
 
 
 def test_update_connect_token_is_bound_only_to_verified_item() -> None:
