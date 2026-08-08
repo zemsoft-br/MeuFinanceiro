@@ -148,7 +148,7 @@ String _boundedText(
 String _boundedItemId(String value) {
   final normalized = _boundedText(value, 'itemId', maxLength: 512);
   if (normalized.contains('/') ||
-      normalized.contains(r'\') ||
+      normalized.contains('\\') ||
       normalized.contains('?') ||
       normalized.contains('#')) {
     throw const FormatException('itemId is invalid.');
