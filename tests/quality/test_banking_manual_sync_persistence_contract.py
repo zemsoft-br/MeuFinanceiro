@@ -15,10 +15,11 @@ PUBLIC = (PERSISTENCE / "banking.py").read_text(encoding="utf-8")
 
 
 def test_manual_sync_migration_is_linear_and_scoped_to_integrations() -> None:
-    assert 'revision: str = "0007_banking_manual_sync_persistence"' in MIGRATION
+    assert 'revision: str = "0007_banking_manual_sync"' in MIGRATION
+    assert len("0007_banking_manual_sync") <= 32
     assert 'down_revision: str | None = "0006_banking_residence_fk"' in MIGRATION
     for table in ("sync_runs", "external_accounts", "sync_cursors"):
-        assert f'"{table}"' in MIGRATION
+        assert f"integrations.{table}" in MIGRATION
         assert f"ALTER TABLE integrations.{table} ENABLE ROW LEVEL SECURITY" in MIGRATION
         assert f"ALTER TABLE integrations.{table} FORCE ROW LEVEL SECURITY" in MIGRATION
         assert f"CREATE POLICY {table}_residence_isolation" in MIGRATION
@@ -29,12 +30,14 @@ def test_manual_sync_migration_is_linear_and_scoped_to_integrations() -> None:
 def test_single_flight_and_scoped_foreign_keys_are_database_invariants() -> None:
     for source in (MIGRATION, SCHEMA):
         assert "uq_sync_runs_one_active_per_connection" in source
-        assert "status IN ('requested', 'running')" in source
         assert "fk_sync_runs_connection_scope" in source
         assert "fk_external_accounts_connection_scope" in source
         assert "fk_sync_cursors_external_account_scope" in source
         assert "uq_sync_cursors_account_resource" in source
-        assert 'ondelete="RESTRICT"' in source
+    assert "WHERE status IN ('requested','running')" in MIGRATION
+    assert "ON DELETE RESTRICT" in MIGRATION
+    assert "postgresql_where=text(" in SCHEMA
+    assert 'ondelete="RESTRICT"' in SCHEMA
 
 
 def test_manual_sync_store_has_no_provider_io_or_credentials() -> None:
