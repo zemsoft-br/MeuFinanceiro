@@ -55,15 +55,17 @@ class TransactionObservationSnapshot:
             "external_account_id",
             clean_external_account_id(self.external_account_id),
         )
-        object.__setattr__(
-            self,
+        external_resource_id = _clean_optional_opaque(
+            self.external_resource_id,
             "external_resource_id",
-            _clean_optional_opaque(
-                self.external_resource_id,
-                "external_resource_id",
-                512,
-            ),
+            512,
         )
+        if (
+            self.status is StoredTransactionObservationStatus.INFERRED
+            and external_resource_id is not None
+        ):
+            raise ValueError("inferred observation cannot claim a provider resource ID")
+        object.__setattr__(self, "external_resource_id", external_resource_id)
         object.__setattr__(self, "amount", _clean_amount(self.amount))
         object.__setattr__(self, "currency", _clean_currency(self.currency))
         object.__setattr__(
