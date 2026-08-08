@@ -46,6 +46,15 @@ from meufinanceiro_persistence.banking_models import (
     clean_provider,
     clean_secret,
 )
+from meufinanceiro_persistence.banking_observation_models import (
+    AppliedTransactionPage,
+    StoredTransactionObservationStatus,
+    TransactionObservationRecord,
+    TransactionObservationSnapshot,
+)
+from meufinanceiro_persistence.banking_observation_store import (
+    BankingTransactionObservationStoreMixin,
+)
 from meufinanceiro_persistence.banking_store import (
     BankingIntegrationStore as _BankingIntegrationStore,
 )
@@ -80,7 +89,11 @@ class EnabledProviderCredentials:
         )
 
 
-class BankingIntegrationStore(BankingManualSyncStoreMixin, _BankingIntegrationStore):
+class BankingIntegrationStore(
+    BankingTransactionObservationStoreMixin,
+    BankingManualSyncStoreMixin,
+    _BankingIntegrationStore,
+):
     """Public store boundary with sanitized database and credential failures."""
 
     def create_configuration(
@@ -207,6 +220,7 @@ class BankingIntegrationStore(BankingManualSyncStoreMixin, _BankingIntegrationSt
 
 
 __all__ = [
+    "AppliedTransactionPage",
     "BankingConnectionRecord",
     "BankingIntegrationStore",
     "BankingPersistenceError",
@@ -233,11 +247,14 @@ __all__ = [
     "StoredSyncResource",
     "StoredSyncStatus",
     "StoredSyncTrigger",
+    "StoredTransactionObservationStatus",
     "SyncConflictError",
     "SyncCursorNotFoundError",
     "SyncCursorRecord",
     "SyncRunNotFoundError",
     "SyncRunRecord",
     "SyncTransitionError",
+    "TransactionObservationRecord",
+    "TransactionObservationSnapshot",
     "credential_aad",
 ]
