@@ -6,6 +6,7 @@ import 'package:meufinanceiro_app/app/app_shell.dart';
 import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
 import 'package:meufinanceiro_app/features/auth/login_screen.dart';
+import 'package:meufinanceiro_app/features/banking/connections/banking_connections_screen.dart';
 import 'package:meufinanceiro_app/features/banking/pluggy/connect/pluggy_connect_screen.dart';
 import 'package:meufinanceiro_app/features/banking/pluggy/reauthentication/pluggy_reauthentication_screen.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
@@ -76,6 +77,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: AppRoutes.system,
             pageBuilder: (context, state) {
               return const NoTransitionPage(child: SystemHealthScreen());
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.integrationsPath,
+            name: AppRoutes.integrations,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(child: BankingConnectionsScreen());
             },
           ),
           GoRoute(

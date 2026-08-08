@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppRouteId { home, components, system }
+enum AppRouteId { home, integrations, components, system }
 
 class AppDestination {
   const AppDestination({
@@ -27,6 +27,8 @@ class AppDestination {
 abstract final class AppRoutes {
   static const login = 'login';
   static const loginPath = '/login';
+  static const integrations = 'integrations';
+  static const integrationsPath = '/app/integracoes';
   static const pluggyConnect = 'pluggy-connect';
   static const pluggyConnectPath = '/app/integracoes/pluggy/conectar';
   static const pluggyReauthentication = 'pluggy-reauthentication';
@@ -49,6 +51,16 @@ abstract final class AppRoutes {
       description: 'Visão geral da fundação do MeuFinanceiro',
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_rounded,
+    ),
+    AppDestination(
+      id: AppRouteId.integrations,
+      routeName: integrations,
+      path: integrationsPath,
+      label: 'Integrações',
+      shortLabel: 'Integrações',
+      description: 'Conexões bancárias e Open Finance',
+      icon: Icons.account_balance_outlined,
+      selectedIcon: Icons.account_balance_rounded,
     ),
     AppDestination(
       id: AppRouteId.components,
@@ -76,6 +88,10 @@ abstract final class AppRoutes {
     final path = Uri.tryParse(location)?.path ?? location;
     for (final destination in destinations) {
       if (destination.path == path) {
+        return destination;
+      }
+      if (destination.id == AppRouteId.integrations &&
+          path.startsWith('${destination.path}/')) {
         return destination;
       }
     }

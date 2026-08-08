@@ -10,8 +10,8 @@ não recebe funcionalidades novas.
 
 O cliente contém:
 
-- rotas nomeadas `/login`, `/`, `/componentes`, `/sistema` e o deep link
-  protegido `/app/integracoes/pluggy/conectar`;
+- rotas nomeadas `/login`, `/`, `/componentes`, `/sistema` e a área protegida
+  `/app/integracoes`, com fluxos Pluggy filhos;
 - shell responsivo com sidebar desktop, drawer e navegação inferior móvel;
 - tema e tokens locais, sem fontes ou assets remotos;
 - catálogo de componentes, formulário demonstrativo e estados comuns;
@@ -19,6 +19,7 @@ O cliente contém:
   indisponível;
 - autenticação local com bearer token mantido exclusivamente em memória;
 - transporte autenticado reutilizável e guarda para rotas protegidas;
+- visão local provider-neutral das conexões bancárias autenticadas;
 - Pluggy Connect Web atrás de adaptador de plataforma, carregado somente após
   ação explícita do usuário;
 - dependências de plataforma atrás de interfaces;
@@ -104,10 +105,33 @@ O logout remove primeiro a referência local do token e depois chama
 Rotas funcionais protegidas devem usar `AuthRouteGuard`. A especificação
 completa está em `../../docs/architecture/FLUTTER_OPERATOR_SESSION.md`.
 
+## Integrações bancárias locais
+
+A rota protegida `/app/integracoes` é a visão provider-neutral das conexões já
+registradas para a residência principal autenticada.
+
+Ela consome somente:
+
+```text
+GET /api/v1/banking/connections
+```
+
+O cliente recebe apenas metadata local allowlisted: UUID local, provider,
+status, flags e timestamps. Item ID Pluggy, `clientUserId`, reason codes,
+credenciais e payload provider não fazem parte desse contrato.
+
+O overview não consulta a Pluggy, não inicia sincronização, não usa polling e
+não persiste a lista em storage/cache. A atualização é explícita. Se uma
+conexão permitir reautenticação, a ação usa exclusivamente o `connectionId`
+local para abrir o fluxo protegido já existente.
+
+A especificação completa está em
+`../../docs/architecture/FLUTTER_BANKING_CONNECTIONS_OVERVIEW.md`.
+
 ## Pluggy Connect Web
 
-A rota protegida `/app/integracoes/pluggy/conectar` implementa a primeira
-experiência bancária online do Flutter Web/PWA.
+A rota protegida `/app/integracoes/pluggy/conectar` implementa a experiência de
+nova conexão bancária online do Flutter Web/PWA.
 
 O cliente não cria identidade Pluggy nem calcula escopo de residência. O fluxo
 é:
@@ -137,6 +161,9 @@ Connect Token. Não existe fila offline nem retry automático das mutações.
 
 A especificação e as referências oficiais estão em
 `../../docs/architecture/FLUTTER_PLUGGY_CONNECT.md`.
+
+A reautenticação/update de conexão existente está descrita em
+`../../docs/architecture/FLUTTER_PLUGGY_REAUTHENTICATION.md`.
 
 ## Comandos
 
