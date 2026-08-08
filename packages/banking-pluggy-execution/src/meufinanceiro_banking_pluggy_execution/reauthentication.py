@@ -200,7 +200,9 @@ class PluggyReauthenticationTokenService:
         self,
         store: ReauthenticationBankingStore,
         *,
-        transport_factory: ReauthenticationTransportFactory = _default_transport_factory,
+        transport_factory: ReauthenticationTransportFactory = (
+            _default_transport_factory
+        ),
     ) -> None:
         if not isinstance(store, ReauthenticationBankingStore):
             raise TypeError("store must satisfy ReauthenticationBankingStore")
@@ -224,28 +226,11 @@ class PluggyReauthenticationTokenService:
             if not isinstance(value, UUID):
                 raise TypeError(f"{field_name} must be UUID")
 
-        try:
-            connection = self._store.get_connection(
-                installation_id=installation_id,
-                residence_id=residence_id,
-                connection_id=connection_id,
-            )
-        except ConnectionNotFoundError:
-            raise PluggyReauthenticationError(
-                PluggyReauthenticationErrorCode.CONNECTION_NOT_FOUND
-            ) from None
-        except BankingPersistenceError:
-            raise PluggyReauthenticationError(
-                PluggyReauthenticationErrorCode.INTERNAL
-            ) from None
-
-        if connection.provider != "pluggy" or (
-            connection.status is StoredConnectionStatus.DISCONNECTED
-        ):
-            raise PluggyReauthenticationError(
-                PluggyReauthenticationErrorCode.CONNECTION_NOT_AVAILABLE
-            )
-
+        connection = self._load_connection(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+        )
         expected_client_user_id = f"residence:{residence_id}"
 
         def verify_and_issue(
@@ -329,3 +314,33 @@ class PluggyReauthenticationTokenService:
             raise PluggyReauthenticationError(
                 PluggyReauthenticationErrorCode.INTERNAL
             ) from None
+
+    def _load_connection(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> BankingConnectionRecord:
+        try:
+            connection = self._store.get_connection(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                connection_id=connection_id,
+            )
+        except ConnectionNotFoundError:
+            raise PluggyReauthenticationError(
+                PluggyReauthenticationErrorCode.CONNECTION_NOT_FOUND
+            ) from None
+        except BankingPersistenceError:
+            raise PluggyReauthenticationError(
+                PluggyReauthenticationErrorCode.INTERNAL
+            ) from None
+
+        if connection.provider != "pluggy" or (
+            connection.status is StoredConnectionStatus.DISCONNECTED
+        ):
+            raise PluggyReauthenticationError(
+                PluggyReauthenticationErrorCode.CONNECTION_NOT_AVAILABLE
+            )
+        return connection
