@@ -225,6 +225,7 @@ class PluggyConnectController extends Notifier<PluggyConnectState> {
         if (state.phase == PluggyConnectPhase.loadingWidget) {
           state = const PluggyConnectState.phase(PluggyConnectPhase.widgetOpen);
         }
+        return;
       case PluggyConnectCallbackType.closed:
         _widgetOpen = false;
         if (state.phase == PluggyConnectPhase.registeringConnection) {
@@ -238,12 +239,15 @@ class PluggyConnectController extends Notifier<PluggyConnectState> {
           );
         }
         state = state.withFocusReturn(++_focusReturnRevision);
+        return;
       case PluggyConnectCallbackType.errorWithoutItem:
         state = const PluggyConnectState.phase(PluggyConnectPhase.genericFailure);
+        return;
       case PluggyConnectCallbackType.invalidPayload:
         state = const PluggyConnectState.phase(
           PluggyConnectPhase.invalidProviderResponse,
         );
+        return;
       case PluggyConnectCallbackType.itemAvailable:
         final itemId = callback.itemId;
         if (itemId == null) {
@@ -253,6 +257,7 @@ class PluggyConnectController extends Notifier<PluggyConnectState> {
           return;
         }
         await _registerItem(generation, itemId);
+        return;
     }
   }
 
