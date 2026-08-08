@@ -197,25 +197,26 @@ def _clean_amount(value: Decimal) -> Decimal:
         raise TypeError("amount must be Decimal")
     if not value.is_finite():
         raise ValueError("amount must be finite")
-    canonical = Decimal(0) if value == 0 else value.normalize()
-    _, digits, exponent = canonical.as_tuple()
-    precision = len(digits)
-    if exponent >= 0:
-        scale = 0
-        integer_digits = precision + exponent
-    else:
-        scale = -exponent
-        integer_digits = max(precision - scale, 0)
+
+    canonical_text = format(value, "f")
+    if "." in canonical_text:
+        canonical_text = canonical_text.rstrip("0").rstrip(".")
+    if canonical_text in {"-0", "+0", ""}:
+        canonical_text = "0"
+
+    unsigned = canonical_text.lstrip("+-")
+    integer_part, separator, fractional_part = unsigned.partition(".")
+    integer_digits = len(integer_part.lstrip("0"))
+    scale = len(fractional_part) if separator else 0
     if scale > _MAX_AMOUNT_SCALE or integer_digits > (
         _MAX_AMOUNT_PRECISION - _MAX_AMOUNT_SCALE
     ):
         raise ValueError("amount exceeds the supported precision")
-    return canonical
+    return Decimal(canonical_text)
 
 
 def _canonical_decimal(value: Decimal) -> str:
-    cleaned = _clean_amount(value)
-    return format(cleaned, "f")
+    return format(_clean_amount(value), "f")
 
 
 def _join_fingerprint_parts(kind: str, *parts: str) -> str:
