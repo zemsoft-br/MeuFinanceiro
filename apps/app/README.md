@@ -10,12 +10,14 @@ não recebe funcionalidades novas.
 
 O cliente contém:
 
-- rotas nomeadas `/`, `/componentes` e `/sistema`;
+- rotas nomeadas `/login`, `/`, `/componentes` e `/sistema`;
 - shell responsivo com sidebar desktop, drawer e navegação inferior móvel;
 - tema e tokens locais, sem fontes ou assets remotos;
 - catálogo de componentes, formulário demonstrativo e estados comuns;
 - health check testável com timeout e classificação operacional, degradada e
   indisponível;
+- autenticação local com bearer token mantido exclusivamente em memória;
+- transporte autenticado reutilizável e guarda para rotas protegidas;
 - dependências de plataforma atrás de interfaces;
 - manifesto PWA, carregador e service worker próprios;
 - cache exclusivamente de shell, com `/api` e `/api/` fora da interceptação;
@@ -78,6 +80,22 @@ web/
   manifest.json
   sw.js            política de cache do shell
 ```
+
+## Autenticação local
+
+A rota `/login` consome `POST /api/v1/auth/session`. O token bearer retornado
+fica somente em `SessionTokenVault` durante a execução atual do aplicativo e
+não é gravado em storage, arquivo, URL ou cache.
+
+`AuthenticatedApiClient` injeta o bearer apenas durante requests protegidos,
+sem retry automático. HTTP 401 invalida a sessão local; HTTP 403 preserva o
+token e representa autorização insuficiente para a operação.
+
+O logout remove primeiro a referência local do token e depois chama
+`DELETE /api/v1/auth/session`. Um reload completo exige novo login.
+
+Rotas funcionais protegidas devem usar `AuthRouteGuard`. A especificação
+completa está em `../../docs/architecture/FLUTTER_OPERATOR_SESSION.md`.
 
 ## Comandos
 

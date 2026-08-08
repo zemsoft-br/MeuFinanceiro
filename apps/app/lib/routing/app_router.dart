@@ -1,20 +1,55 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/app/app_shell.dart';
+import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
 import 'package:meufinanceiro_app/core/health/api_health.dart';
+import 'package:meufinanceiro_app/features/auth/login_screen.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
 import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
+import 'package:meufinanceiro_app/routing/auth_route_guard.dart';
 
 final initialLocationProvider = Provider<String?>((ref) => null);
+
+final _authRouterRefreshProvider = Provider<_AuthRouterRefresh>((ref) {
+  final refresh = _AuthRouterRefresh();
+  ref.listen(operatorSessionControllerProvider, (previous, next) {
+    refresh.trigger();
+  });
+  ref.onDispose(refresh.dispose);
+  return refresh;
+});
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final router = GoRouter(
     initialLocation: ref.watch(initialLocationProvider),
+    refreshListenable: ref.watch(_authRouterRefreshProvider),
+    redirect: (context, state) {
+      if (!AuthRouteGuard.requiresAuthentication(state.uri)) {
+        return null;
+      }
+      return AuthRouteGuard.redirectForProtectedRoute(
+        session: ref.read(operatorSessionControllerProvider),
+        location: state.uri,
+      );
+    },
     routes: [
+      GoRoute(
+        path: AppRoutes.loginPath,
+        name: AppRoutes.login,
+        pageBuilder: (context, state) {
+          final redirectTo = AuthRouteGuard.sanitizeRedirect(
+            state.uri.queryParameters['redirect'],
+          );
+          return NoTransitionPage(
+            child: LoginScreen(redirectTo: redirectTo),
+          );
+        },
+      ),
       ShellRoute(
         builder: (context, state, child) {
           return AppShell(currentLocation: state.uri.path, child: child);
@@ -58,6 +93,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   ref.onDispose(router.dispose);
   return router;
 });
+
+class _AuthRouterRefresh extends ChangeNotifier {
+  void trigger() {
+    notifyListeners();
+  }
+}
 
 class _HomeRoute extends ConsumerWidget {
   const _HomeRoute();
