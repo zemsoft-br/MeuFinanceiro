@@ -9,14 +9,17 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from meufinanceiro_persistence import OperatorRole, OperatorSessionPrincipal
+from meufinanceiro_persistence import (
+    OperatorRole,
+    OperatorSessionPrincipal,
+    StoredConnectionStatus,
+)
 from meufinanceiro_security.keyring import initialize_keyring_file
 
 from app.core.config import Settings
 from app.main import create_app
 from app.services.banking_connections import LocalBankingConnectionSummary
 from app.services.operator_auth import InvalidOperatorSessionError
-from meufinanceiro_persistence import StoredConnectionStatus
 
 TOKEN = "L" * 43
 INSTALLATION_ID = UUID("10000000-0000-4000-8000-000000000001")
@@ -120,8 +123,7 @@ def test_list_derives_residence_scope_and_returns_only_local_metadata(
     response = test_client.get(PATH, headers=headers())
 
     assert response.status_code == 200
-    payload = response.json()
-    assert payload == {
+    assert response.json() == {
         "connections": [
             {
                 "connectionId": str(CONNECTION_ID),
