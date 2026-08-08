@@ -96,6 +96,12 @@ def _create_sync_runs() -> None:
             "retry_window_bucket ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,31}$'",
             name="ck_sync_runs_retry_window_bucket",
         ),
+        sa.CheckConstraint(
+            "status <> 'succeeded' OR ("
+            "error_category IS NULL AND provider_reason_code IS NULL AND "
+            "http_status IS NULL AND retry_window_bucket IS NULL)",
+            name="ck_sync_runs_success_diagnostics",
+        ),
         sa.ForeignKeyConstraint(
             ["connection_id", "residence_id"],
             ["integrations.connections.id", "integrations.connections.residence_id"],
@@ -156,20 +162,26 @@ def _create_external_accounts() -> None:
             name="ck_external_accounts_status",
         ),
         sa.CheckConstraint(
-            "length(external_account_id) BETWEEN 1 AND 512",
-            name="ck_external_accounts_external_id_length",
+            "length(external_account_id) BETWEEN 1 AND 512 AND "
+            "external_account_id = btrim(external_account_id) AND "
+            "external_account_id !~ '[[:cntrl:]]'",
+            name="ck_external_accounts_external_id_shape",
         ),
         sa.CheckConstraint(
-            "length(subtype) BETWEEN 1 AND 128",
-            name="ck_external_accounts_subtype_length",
+            "length(subtype) BETWEEN 1 AND 128 AND subtype = btrim(subtype) AND "
+            "subtype !~ '[[:cntrl:]]'",
+            name="ck_external_accounts_subtype_shape",
         ),
         sa.CheckConstraint(
-            "name IS NULL OR length(name) BETWEEN 1 AND 512",
-            name="ck_external_accounts_name_length",
+            "name IS NULL OR (length(name) BETWEEN 1 AND 512 AND name = btrim(name) "
+            "AND name !~ '[[:cntrl:]]')",
+            name="ck_external_accounts_name_shape",
         ),
         sa.CheckConstraint(
-            "number_mask IS NULL OR length(number_mask) BETWEEN 1 AND 32",
-            name="ck_external_accounts_number_mask_length",
+            "number_mask IS NULL OR (length(number_mask) BETWEEN 1 AND 32 AND "
+            "number_mask = btrim(number_mask) AND number_mask !~ '[[:cntrl:]]' AND "
+            "length(regexp_replace(number_mask, '[^0-9]', '', 'g')) <= 4)",
+            name="ck_external_accounts_number_mask_shape",
         ),
         sa.CheckConstraint(
             "last_seen_at >= first_seen_at",
@@ -221,12 +233,14 @@ def _create_sync_cursors() -> None:
             name="ck_sync_cursors_resource",
         ),
         sa.CheckConstraint(
-            "length(cursor) BETWEEN 1 AND 512",
-            name="ck_sync_cursors_cursor_length",
+            "length(cursor) BETWEEN 1 AND 512 AND cursor = btrim(cursor) AND "
+            "cursor !~ '[[:cntrl:]]'",
+            name="ck_sync_cursors_cursor_shape",
         ),
         sa.CheckConstraint(
-            "length(source_window) BETWEEN 1 AND 256",
-            name="ck_sync_cursors_source_window_length",
+            "length(source_window) BETWEEN 1 AND 256 AND "
+            "source_window = btrim(source_window) AND source_window !~ '[[:cntrl:]]'",
+            name="ck_sync_cursors_source_window_shape",
         ),
         sa.ForeignKeyConstraint(
             ["connection_id", "residence_id", "external_account_id"],
