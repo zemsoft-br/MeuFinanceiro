@@ -13,6 +13,7 @@ from sqlalchemy.engine import Connection, Engine
 
 from meufinanceiro_persistence.banking import (
     BankingIntegrationStore,
+    ExternalAccountNotFoundError,
     ExternalAccountSnapshot,
     ProviderConfigurationState,
     StoredConnectionStatus,
@@ -191,6 +192,7 @@ def test_page_and_cursor_commit_atomically_and_repeat_idempotently(
         committed_at=NOW,
     )
     assert repeated.records_seen == 1
+    assert repeated.records_applied == 0
 
     with engine.begin() as connection:
         assert (
@@ -326,6 +328,106 @@ def test_stale_observation_does_not_regress_newer_metadata(
     assert row["last_seen_at"] == NOW + timedelta(minutes=2)
 
 
+def test_page_rejects_wrong_account_and_future_observation_before_commit(
+    store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
+) -> None:
+    installation_id = uuid4()
+    residence_id = uuid4()
+    account_id = "synthetic-account-validation"
+    connection_id = _setup_connection_and_account(
+        store,
+        create_canonical_residences,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        external_connection_id="synthetic-item-validation",
+        external_account_id=account_id,
+    )
+
+    with pytest.raises(ValueError, match="another account"):
+        store.apply_transaction_page(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+            external_account_id=account_id,
+            observations=(_observation("other-account"),),
+            cursor="cursor-wrong-account",
+            source_window="window-wrong-account",
+            committed_at=NOW,
+        )
+
+    with pytest.raises(ValueError, match="newer than the page commit"):
+        store.apply_transaction_page(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+            external_account_id=account_id,
+            observations=(
+                _observation(
+                    account_id,
+                    observed_at=NOW + timedelta(seconds=1),
+                ),
+            ),
+            cursor="cursor-future-observation",
+            source_window="window-future-observation",
+            committed_at=NOW,
+        )
+
+
+def test_cross_connection_account_is_rejected_under_scoped_lock(
+    store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
+) -> None:
+    installation_id = uuid4()
+    residence_id = uuid4()
+    first_account_id = "synthetic-account-scope-a"
+    first_connection_id = _setup_connection_and_account(
+        store,
+        create_canonical_residences,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        external_connection_id="synthetic-item-scope-a",
+        external_account_id=first_account_id,
+    )
+    second_connection = store.register_connection(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        provider="pluggy",
+        external_connection_id="synthetic-item-scope-b",
+        status=StoredConnectionStatus.AVAILABLE,
+        requires_user_action=False,
+    )
+    second_account_id = "synthetic-account-scope-b"
+    store.replace_external_accounts(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=second_connection.id,
+        snapshots=(
+            ExternalAccountSnapshot(
+                external_account_id=second_account_id,
+                account_type=StoredExternalAccountType.BANK,
+                subtype="CHECKING_ACCOUNT",
+                currency="BRL",
+                status=StoredExternalAccountStatus.ACTIVE,
+                observed_at=NOW,
+                number_mask="4321",
+            ),
+        ),
+    )
+
+    with pytest.raises(ExternalAccountNotFoundError):
+        store.apply_transaction_page(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=first_connection_id,
+            external_account_id=second_account_id,
+            observations=(_observation(second_account_id),),
+            cursor="cursor-cross-connection",
+            source_window="window-cross-connection",
+            committed_at=NOW,
+        )
+
+
 def test_empty_page_can_advance_cursor_explicitly(
     engine: Engine,
     store: BankingIntegrationStore,
@@ -405,7 +507,7 @@ def test_failure_inside_page_rolls_back_prior_observations_and_cursor(
     )
     object.__setattr__(corrupted, "description", "invalid\ncontrol")
 
-    with pytest.raises(Exception):
+    with pytest.raises(SyncConflictError, match="identity conflicts"):
         store.apply_transaction_page(
             installation_id=installation_id,
             residence_id=residence_id,
