@@ -20,6 +20,9 @@ from meufinanceiro_persistence.banking_models import (
     ConnectionCapabilityRecord,
     ConnectionConflictError,
     ConnectionNotFoundError,
+    ExternalAccountNotFoundError,
+    ExternalAccountRecord,
+    ExternalAccountSnapshot,
     ProviderConfigurationRecord,
     ProviderConfigurationState,
     ProviderNotEnabledError,
@@ -27,13 +30,26 @@ from meufinanceiro_persistence.banking_models import (
     StoredCapabilitySource,
     StoredCapabilityState,
     StoredConnectionStatus,
+    StoredExternalAccountStatus,
+    StoredExternalAccountType,
+    StoredSyncErrorCategory,
+    StoredSyncResource,
+    StoredSyncStatus,
+    StoredSyncTrigger,
+    SyncConflictError,
+    SyncCursorNotFoundError,
+    SyncCursorRecord,
+    SyncRunNotFoundError,
+    SyncRunRecord,
+    SyncTransitionError,
+    credential_aad,
     clean_provider,
     clean_secret,
-    credential_aad,
 )
 from meufinanceiro_persistence.banking_store import (
     BankingIntegrationStore as _BankingIntegrationStore,
 )
+from meufinanceiro_persistence.banking_sync_store import BankingManualSyncStoreMixin
 from meufinanceiro_persistence.schema import provider_configurations
 
 _Result = TypeVar("_Result")
@@ -64,7 +80,7 @@ class EnabledProviderCredentials:
         )
 
 
-class BankingIntegrationStore(_BankingIntegrationStore):
+class BankingIntegrationStore(BankingManualSyncStoreMixin, _BankingIntegrationStore):
     """Public store boundary with sanitized database and credential failures."""
 
     def create_configuration(
@@ -201,6 +217,9 @@ __all__ = [
     "ConnectionConflictError",
     "ConnectionNotFoundError",
     "EnabledProviderCredentials",
+    "ExternalAccountNotFoundError",
+    "ExternalAccountRecord",
+    "ExternalAccountSnapshot",
     "ProviderConfigurationRecord",
     "ProviderConfigurationState",
     "ProviderNotEnabledError",
@@ -208,5 +227,17 @@ __all__ = [
     "StoredCapabilitySource",
     "StoredCapabilityState",
     "StoredConnectionStatus",
+    "StoredExternalAccountStatus",
+    "StoredExternalAccountType",
+    "StoredSyncErrorCategory",
+    "StoredSyncResource",
+    "StoredSyncStatus",
+    "StoredSyncTrigger",
+    "SyncConflictError",
+    "SyncCursorNotFoundError",
+    "SyncCursorRecord",
+    "SyncRunNotFoundError",
+    "SyncRunRecord",
+    "SyncTransitionError",
     "credential_aad",
 ]
