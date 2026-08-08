@@ -20,6 +20,11 @@ from meufinanceiro_persistence.banking import (
     StoredConnectionStatus,
     credential_aad,
 )
+from meufinanceiro_persistence.banking_queries import (
+    BankingConnectionQueryError,
+    BankingConnectionQueryStore,
+    LocalBankingConnectionRecord,
+)
 from meufinanceiro_persistence.database import Database
 from meufinanceiro_persistence.demo import (
     DEMO_CONTRACT_CHECKSUM,
@@ -75,6 +80,8 @@ __all__ = [
     "DEMO_REFERENCE_DATE",
     "DEMO_SCOPE",
     "DEMO_TIMEZONE",
+    "BankingConnectionQueryError",
+    "BankingConnectionQueryStore",
     "BankingConnectionRecord",
     "BankingIntegrationStore",
     "BankingPersistenceError",
@@ -95,6 +102,7 @@ __all__ = [
     "IdentityBootstrapConflictError",
     "IdentityPersistenceError",
     "InstallationOperatorRecord",
+    "LocalBankingConnectionRecord",
     "LostLeaseError",
     "MembershipRole",
     "MembershipStatus",
