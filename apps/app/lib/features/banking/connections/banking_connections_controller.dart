@@ -10,6 +10,7 @@ enum BankingConnectionsPhase {
   refreshing,
   authenticationRequired,
   forbidden,
+  primaryResidenceRequired,
   temporarilyUnavailable,
   invalidResponse,
 }
@@ -151,6 +152,9 @@ BankingConnectionsPhase _phaseForFailure(Object error) {
     if (error.failure == AuthenticatedApiFailure.forbidden ||
         error.statusCode == 403) {
       return BankingConnectionsPhase.forbidden;
+    }
+    if (error.statusCode == 409) {
+      return BankingConnectionsPhase.primaryResidenceRequired;
     }
     if (error.failure == AuthenticatedApiFailure.temporarilyUnavailable ||
         error.failure == AuthenticatedApiFailure.transportFailure ||
