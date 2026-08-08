@@ -104,7 +104,12 @@ class BankingConnectionQueryStore:
                 "banking connections could not be listed"
             ) from None
 
-        return tuple(_record(row) for row in rows)
+        try:
+            return tuple(_record(row) for row in rows)
+        except (TypeError, ValueError):
+            raise BankingConnectionQueryError(
+                "banking connection metadata is invalid"
+            ) from None
 
 
 def _record(row: RowMapping) -> LocalBankingConnectionRecord:
