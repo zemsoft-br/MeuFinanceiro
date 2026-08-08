@@ -13,7 +13,11 @@ from meufinanceiro_banking_pluggy_execution import (
     PluggyReadOnlyExecutionService,
     PluggyReauthenticationTokenService,
 )
-from meufinanceiro_persistence import BankingIntegrationStore, OperatorIdentityStore
+from meufinanceiro_persistence import (
+    BankingConnectionQueryStore,
+    BankingIntegrationStore,
+    OperatorIdentityStore,
+)
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
@@ -24,6 +28,9 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.banking_admin import router as banking_admin_router
 from app.api.routes.banking_connect import router as banking_connect_router
 from app.api.routes.banking_connections import router as banking_connections_router
+from app.api.routes.banking_local_connections import (
+    router as banking_local_connections_router,
+)
 from app.api.routes.banking_reauthentication import (
     router as banking_reauthentication_router,
 )
@@ -32,6 +39,7 @@ from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.database import create_database
 from app.services.banking_admin import BankingAdministrationService
+from app.services.banking_connections import BankingConnectionsService
 from app.services.operator_auth import OperatorAuthenticationService
 
 _BANKING_VALIDATION_PREFIXES = (
@@ -51,6 +59,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         secret_cipher = SecretCipher(keyring)
         provider_registry = BankingProviderRegistry().freeze()
         banking_store = BankingIntegrationStore(database.engine, secret_cipher)
+        banking_connection_query_store = BankingConnectionQueryStore(database.engine)
         operator_identity_store = OperatorIdentityStore(database.engine)
         operator_authentication = OperatorAuthenticationService(operator_identity_store)
         available_providers = (
@@ -88,6 +97,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.banking_pluggy_reauthentication = (
             banking_pluggy_reauthentication
+        )
+        app.state.banking_connections = BankingConnectionsService(
+            banking_connection_query_store,
+            pluggy_reauthentication_available=(
+                banking_pluggy_reauthentication is not None
+            ),
         )
         app.state.operator_identity_store = operator_identity_store
         app.state.operator_authentication = operator_authentication
@@ -128,6 +143,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(banking_admin_router, prefix="/api/v1")
     application.include_router(banking_connect_router, prefix="/api/v1")
     application.include_router(banking_connections_router, prefix="/api/v1")
+    application.include_router(
+        banking_local_connections_router,
+        prefix="/api/v1",
+    )
     application.include_router(
         banking_reauthentication_router,
         prefix="/api/v1",
