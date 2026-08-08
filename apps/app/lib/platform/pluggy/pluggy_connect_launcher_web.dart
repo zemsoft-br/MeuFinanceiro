@@ -183,7 +183,7 @@ String? _extractBoundedItemId(dynamic item) {
       value != value.trim() ||
       value.codeUnits.any((unit) => unit < 32 || unit == 127) ||
       value.contains('/') ||
-      value.contains(r'\') ||
+      value.contains('\\') ||
       value.contains('?') ||
       value.contains('#')) {
     return null;
