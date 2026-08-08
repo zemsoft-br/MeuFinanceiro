@@ -41,6 +41,48 @@ class EphemeralConnectToken {
   String toString() => 'EphemeralConnectToken(<redacted>)';
 }
 
+class PluggyUpdateLaunchMaterial {
+  const PluggyUpdateLaunchMaterial._({
+    required this.connectToken,
+    required this.updateItem,
+  });
+
+  final String connectToken;
+  final String updateItem;
+
+  @override
+  String toString() => 'PluggyUpdateLaunchMaterial(<redacted>)';
+}
+
+class EphemeralPluggyUpdateMaterial {
+  EphemeralPluggyUpdateMaterial._(this._connectToken, this._itemId);
+
+  String? _connectToken;
+  String? _itemId;
+
+  PluggyUpdateLaunchMaterial take() {
+    final connectToken = _connectToken;
+    final itemId = _itemId;
+    _connectToken = null;
+    _itemId = null;
+    if (connectToken == null || itemId == null) {
+      throw StateError('Reauthentication material is no longer available.');
+    }
+    return PluggyUpdateLaunchMaterial._(
+      connectToken: connectToken,
+      updateItem: itemId,
+    );
+  }
+
+  void clear() {
+    _connectToken = null;
+    _itemId = null;
+  }
+
+  @override
+  String toString() => 'EphemeralPluggyUpdateMaterial(<redacted>)';
+}
+
 class RegisteredPluggyConnection {
   const RegisteredPluggyConnection({
     required this.connectionId,
@@ -75,6 +117,27 @@ class PluggyConnectApi {
       maxLength: 4096,
     );
     return EphemeralConnectToken._(accessToken);
+  }
+
+  Future<EphemeralPluggyUpdateMaterial> issueReauthenticationMaterial(
+    String connectionId,
+  ) async {
+    final normalizedConnectionId = _uuid(connectionId, 'connectionId');
+    final response = await client.post(
+      'banking/pluggy/connections/$normalizedConnectionId/reauthentication-token',
+    );
+    final values = _strictJsonObject(
+      response.body,
+      allowedKeys: const {'accessToken', 'itemId'},
+      label: 'reauthentication token response',
+    );
+    final accessToken = _boundedText(
+      values['accessToken'],
+      'accessToken',
+      maxLength: 4096,
+    );
+    final itemId = _boundedItemIdValue(values['itemId']);
+    return EphemeralPluggyUpdateMaterial._(accessToken, itemId);
   }
 
   Future<RegisteredPluggyConnection> registerItem(String itemId) async {
@@ -143,6 +206,13 @@ String _boundedText(
     throw FormatException('$fieldName is invalid.');
   }
   return value;
+}
+
+String _boundedItemIdValue(Object? value) {
+  if (value is! String) {
+    throw const FormatException('itemId is invalid.');
+  }
+  return _boundedItemId(value);
 }
 
 String _boundedItemId(String value) {
