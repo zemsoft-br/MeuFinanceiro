@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import Connection, Engine, func, select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from meufinanceiro_persistence.banking_models import (
@@ -59,6 +60,10 @@ class BankingTransactionObservationStoreMixin:
                 )
             if observation.external_account_id != normalized_account_id:
                 raise ValueError("transaction observation belongs to another account")
+            if observation.observed_at > committed_at:
+                raise ValueError(
+                    "transaction observation cannot be newer than the page commit"
+                )
             fingerprints.append(observation.stable_fingerprint)
         if len(fingerprints) != len(set(fingerprints)):
             raise ValueError("transaction page contains duplicate observations")
@@ -141,7 +146,7 @@ class BankingTransactionObservationStoreMixin:
                             )
                             & (
                                 external_observations.c.last_seen_at
-                                <= observation.observed_at
+                                < observation.observed_at
                             ),
                         )
                     )
