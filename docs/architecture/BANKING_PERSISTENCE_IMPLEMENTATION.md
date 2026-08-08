@@ -29,7 +29,8 @@ e não registra identificadores externos na mensagem de falha. A FK usa
 `ON DELETE RESTRICT`. O downgrade da `0006` remove somente essa constraint e preserva
 as linhas de integração e household.
 
-A revisão `0007_banking_manual_sync_persistence` adiciona:
+A revisão `0007_banking_manual_sync` (arquivo
+`0007_banking_manual_sync_persistence.py`) adiciona:
 
 ```text
 sync_runs
@@ -40,6 +41,9 @@ sync_cursors
 Essas tabelas implementam somente a fundação local de execução idempotente, contas
 externas minimizadas e cursor opaco confirmado. Elas não persistem ainda observações
 ou transações financeiras e não executam provider I/O.
+
+O identificador da revisão permanece abaixo do limite padrão de 32 caracteres da
+coluna `alembic_version.version_num`.
 
 O downgrade integral remove os objetos na ordem inversa, revoga os grants do runtime
 e remove o schema `integrations`.
