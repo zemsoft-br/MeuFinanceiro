@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,7 +40,7 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
   }
 
   void _start() {
-    ref.read(pluggyConnectControllerProvider.notifier).start();
+    unawaited(ref.read(pluggyConnectControllerProvider.notifier).start());
   }
 
   @override
@@ -51,23 +53,20 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
       previous,
       next,
     ) {
-      final shouldReturnFocus =
-          next.focusReturnRevision != (previous?.focusReturnRevision ?? 0) ||
-          (previous?.isBusy == true && !next.isBusy);
-      if (shouldReturnFocus) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted && _connectFocusNode.canRequestFocus) {
-            _connectFocusNode.requestFocus();
-          }
-        });
+      if (next.focusReturnRevision == (previous?.focusReturnRevision ?? 0)) {
+        return;
       }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _connectFocusNode.canRequestFocus) {
+          _connectFocusNode.requestFocus();
+        }
+      });
     });
 
-    final principal = session.principal;
     final demoStatus = demo.value;
     final prerequisite = _prerequisiteMessage(
       authenticated: session.isAuthenticated,
-      hasPrimaryResidence: principal?.primaryResidenceId != null,
+      hasPrimaryResidence: session.principal?.primaryResidenceId != null,
       demoLoaded: demoStatus != null,
       demoEnabled: demoStatus?.enabled == true,
     );
@@ -99,7 +98,6 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final stacked = constraints.maxWidth < 760;
-                  final intro = _Intro(state: state);
                   final action = _ActionPanel(
                     state: state,
                     prerequisite: prerequisite,
@@ -111,7 +109,7 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        intro,
+                        const _Intro(),
                         const SizedBox(height: AppTokens.space24),
                         action,
                       ],
@@ -120,7 +118,7 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(flex: 6, child: intro),
+                      const Expanded(flex: 6, child: _Intro()),
                       const SizedBox(width: AppTokens.space32),
                       Expanded(flex: 4, child: action),
                     ],
@@ -140,9 +138,7 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
 }
 
 class _Intro extends StatelessWidget {
-  const _Intro({required this.state});
-
-  final PluggyConnectState state;
+  const _Intro();
 
   @override
   Widget build(BuildContext context) {
@@ -214,7 +210,7 @@ class _ActionPanel extends StatelessWidget {
       PluggyConnectPhase.widgetOpen => 'Conexão em andamento…',
       PluggyConnectPhase.registeringConnection => 'Validando conexão…',
       PluggyConnectPhase.connected => 'Conectar outra instituição',
-      PluggyConnectPhase.userCancelled => 'Tentar novamente',
+      PluggyConnectPhase.userCancelled ||
       PluggyConnectPhase.providerUnavailable ||
       PluggyConnectPhase.configurationRequired ||
       PluggyConnectPhase.temporarilyUnavailable ||
@@ -409,7 +405,11 @@ class _SecurityChip extends StatelessWidget {
       child: const Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.verified_user_outlined, size: 18, color: AppTokens.forest700),
+          Icon(
+            Icons.verified_user_outlined,
+            size: 18,
+            color: AppTokens.forest700,
+          ),
           SizedBox(width: AppTokens.space8),
           Text('Sessão autenticada'),
         ],
