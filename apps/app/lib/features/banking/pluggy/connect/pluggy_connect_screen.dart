@@ -20,12 +20,10 @@ class PluggyConnectScreen extends ConsumerStatefulWidget {
 
 class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
   final _connectFocusNode = FocusNode(debugLabel: 'pluggy-connect-action');
-  late final PluggyConnectController _controller;
 
   @override
   void initState() {
     super.initState();
-    _controller = ref.read(pluggyConnectControllerProvider.notifier);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _connectFocusNode.requestFocus();
@@ -35,9 +33,12 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
 
   @override
   void dispose() {
-    _controller.cancelFromScreen();
     _connectFocusNode.dispose();
     super.dispose();
+  }
+
+  void _start() {
+    ref.read(pluggyConnectControllerProvider.notifier).start();
   }
 
   @override
@@ -104,7 +105,7 @@ class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
                     prerequisite: prerequisite,
                     canStart: canStart,
                     focusNode: _connectFocusNode,
-                    onStart: _controller.start,
+                    onStart: _start,
                   );
                   if (stacked) {
                     return Column(
