@@ -197,22 +197,28 @@ def _clean_amount(value: Decimal) -> Decimal:
         raise TypeError("amount must be Decimal")
     if not value.is_finite():
         raise ValueError("amount must be finite")
+    if value == 0:
+        return Decimal(0)
 
-    canonical_text = format(value, "f")
-    if "." in canonical_text:
-        canonical_text = canonical_text.rstrip("0").rstrip(".")
-    if canonical_text in {"-0", "+0", ""}:
-        canonical_text = "0"
+    sign, raw_digits, raw_exponent = value.as_tuple()
+    digits = list(raw_digits)
+    exponent = raw_exponent
+    while digits and digits[-1] == 0:
+        digits.pop()
+        exponent += 1
 
-    unsigned = canonical_text.lstrip("+-")
-    integer_part, separator, fractional_part = unsigned.partition(".")
-    integer_digits = len(integer_part.lstrip("0"))
-    scale = len(fractional_part) if separator else 0
+    precision = len(digits)
+    if exponent >= 0:
+        scale = 0
+        integer_digits = precision + exponent
+    else:
+        scale = -exponent
+        integer_digits = max(precision - scale, 0)
     if scale > _MAX_AMOUNT_SCALE or integer_digits > (
         _MAX_AMOUNT_PRECISION - _MAX_AMOUNT_SCALE
     ):
         raise ValueError("amount exceeds the supported precision")
-    return Decimal(canonical_text)
+    return Decimal((sign, tuple(digits), exponent))
 
 
 def _canonical_decimal(value: Decimal) -> str:
