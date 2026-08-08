@@ -247,7 +247,7 @@ ProviderContainer _container(
   required FakePluggyConnectLauncher launcher,
   bool demoEnabled = false,
 }) {
-  return ProviderContainer(
+  final container = ProviderContainer(
     overrides: [
       authTransportProvider.overrideWithValue(transport),
       authApiBaseUriProvider.overrideWithValue(
@@ -260,6 +260,12 @@ ProviderContainer _container(
       ),
     ],
   );
+  container.listen(
+    pluggyConnectControllerProvider,
+    (previous, next) {},
+    fireImmediately: true,
+  );
+  return container;
 }
 
 Future<void> _login(ProviderContainer container) async {
