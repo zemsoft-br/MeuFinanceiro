@@ -88,7 +88,7 @@ final pluggyConnectControllerProvider =
       PluggyConnectController.new,
     );
 
-class PluggyConnectController extends Notifier<PluggyConnectState> {
+class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
   int _generation = 0;
   int _focusReturnRevision = 0;
   bool _flowActive = false;
