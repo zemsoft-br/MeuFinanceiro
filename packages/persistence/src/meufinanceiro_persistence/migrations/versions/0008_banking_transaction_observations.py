@@ -65,6 +65,9 @@ def upgrade() -> None:
                     external_resource_id !~ '[[:cntrl:]]'
                 )
             ),
+            CONSTRAINT ck_external_observations_inferred_identity CHECK (
+                status <> 'INFERRED' OR external_resource_id IS NULL
+            ),
             CONSTRAINT ck_external_observations_currency CHECK (
                 currency ~ '^[A-Z]{3}$'
             ),
