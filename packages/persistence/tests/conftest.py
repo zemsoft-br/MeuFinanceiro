@@ -20,12 +20,15 @@ from meufinanceiro_persistence.schema import (
     connections,
     demo_fixture,
     demo_task_effects,
+    external_accounts,
     household_memberships,
     household_residences,
     identity_installation,
     identity_operators,
     identity_sessions,
     provider_configurations,
+    sync_cursors,
+    sync_runs,
     task_queue,
 )
 
@@ -174,6 +177,9 @@ def create_canonical_residences(
 @pytest.fixture(autouse=True)
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
+        connection.execute(delete(sync_cursors))
+        connection.execute(delete(external_accounts))
+        connection.execute(delete(sync_runs))
         connection.execute(delete(connection_capabilities))
         connection.execute(delete(connections))
         connection.execute(delete(provider_configurations))

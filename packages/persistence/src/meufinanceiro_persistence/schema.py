@@ -17,6 +17,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 
@@ -297,4 +298,236 @@ Index(
     "ix_connection_capabilities_residence_connection",
     connection_capabilities.c.residence_id,
     connection_capabilities.c.connection_id,
+)
+
+
+sync_runs = Table(
+    "sync_runs",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("residence_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("idempotency_key", String(200), nullable=False),
+    Column("trigger", String(16), nullable=False),
+    Column("status", String(16), nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=True),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    Column("attempt_count", Integer, nullable=False),
+    Column("error_category", String(32), nullable=True),
+    Column("provider_reason_code", String(128), nullable=True),
+    Column("http_status", Integer, nullable=True),
+    Column("retry_window_bucket", String(32), nullable=True),
+    Column("records_seen", Integer, nullable=False),
+    Column("records_applied", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint("trigger IN ('manual')", name="ck_sync_runs_trigger"),
+    CheckConstraint(
+        "status IN ('requested', 'running', 'partial', 'succeeded', 'failed', 'cancelled')",
+        name="ck_sync_runs_status",
+    ),
+    CheckConstraint(
+        "idempotency_key ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,199}$'",
+        name="ck_sync_runs_idempotency_key",
+    ),
+    CheckConstraint("attempt_count >= 0", name="ck_sync_runs_attempt_count"),
+    CheckConstraint("records_seen >= 0", name="ck_sync_runs_records_seen"),
+    CheckConstraint("records_applied >= 0", name="ck_sync_runs_records_applied"),
+    CheckConstraint(
+        "records_applied <= records_seen",
+        name="ck_sync_runs_records_applied_seen",
+    ),
+    CheckConstraint(
+        "(status IN ('partial', 'succeeded', 'failed', 'cancelled') AND finished_at IS NOT NULL) OR "
+        "(status IN ('requested', 'running') AND finished_at IS NULL)",
+        name="ck_sync_runs_finished_at",
+    ),
+    CheckConstraint(
+        "status <> 'running' OR started_at IS NOT NULL",
+        name="ck_sync_runs_running_started_at",
+    ),
+    CheckConstraint(
+        "error_category IS NULL OR error_category IN ("
+        "'AUTHENTICATION', 'AUTHORIZATION', 'NOT_FOUND', 'INVALID_REQUEST', "
+        "'REQUIRES_USER_ACTION', 'RATE_LIMITED', 'TEMPORARILY_UNAVAILABLE', "
+        "'CONFLICT', 'UNSUPPORTED', 'INTERNAL')",
+        name="ck_sync_runs_error_category",
+    ),
+    CheckConstraint(
+        "provider_reason_code IS NULL OR "
+        "provider_reason_code ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$'",
+        name="ck_sync_runs_provider_reason_code",
+    ),
+    CheckConstraint(
+        "http_status IS NULL OR (http_status >= 100 AND http_status <= 599)",
+        name="ck_sync_runs_http_status",
+    ),
+    CheckConstraint(
+        "retry_window_bucket IS NULL OR "
+        "retry_window_bucket ~ '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,31}$'",
+        name="ck_sync_runs_retry_window_bucket",
+    ),
+    CheckConstraint(
+        "status <> 'succeeded' OR ("
+        "error_category IS NULL AND provider_reason_code IS NULL AND "
+        "http_status IS NULL AND retry_window_bucket IS NULL)",
+        name="ck_sync_runs_success_diagnostics",
+    ),
+    ForeignKeyConstraint(
+        ["connection_id", "residence_id"],
+        ["integrations.connections.id", "integrations.connections.residence_id"],
+        ondelete="RESTRICT",
+        name="fk_sync_runs_connection_scope",
+    ),
+    UniqueConstraint(
+        "connection_id",
+        "idempotency_key",
+        name="uq_sync_runs_connection_idempotency",
+    ),
+    schema="integrations",
+)
+
+Index(
+    "uq_sync_runs_one_active_per_connection",
+    sync_runs.c.connection_id,
+    unique=True,
+    postgresql_where=text("status IN ('requested', 'running')"),
+)
+Index(
+    "ix_sync_runs_residence_created",
+    sync_runs.c.residence_id,
+    sync_runs.c.created_at,
+)
+
+
+external_accounts = Table(
+    "external_accounts",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("residence_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("external_account_id", String(512), nullable=False),
+    Column("type", String(16), nullable=False),
+    Column("subtype", String(128), nullable=False),
+    Column("currency", String(3), nullable=False),
+    Column("name", String(512), nullable=True),
+    Column("number_mask", String(32), nullable=True),
+    Column("status", String(16), nullable=False),
+    Column("first_seen_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "type IN ('BANK', 'CREDIT', 'INVESTMENT', 'LOAN', 'OTHER')",
+        name="ck_external_accounts_type",
+    ),
+    CheckConstraint(
+        "currency ~ '^[A-Z]{3}$'",
+        name="ck_external_accounts_currency",
+    ),
+    CheckConstraint(
+        "status IN ('active', 'unavailable', 'disconnected')",
+        name="ck_external_accounts_status",
+    ),
+    CheckConstraint(
+        "length(external_account_id) BETWEEN 1 AND 512 AND "
+        "external_account_id = btrim(external_account_id) AND "
+        "external_account_id !~ '[[:cntrl:]]'",
+        name="ck_external_accounts_external_id_shape",
+    ),
+    CheckConstraint(
+        "length(subtype) BETWEEN 1 AND 128 AND subtype = btrim(subtype) AND "
+        "subtype !~ '[[:cntrl:]]'",
+        name="ck_external_accounts_subtype_shape",
+    ),
+    CheckConstraint(
+        "name IS NULL OR (length(name) BETWEEN 1 AND 512 AND name = btrim(name) "
+        "AND name !~ '[[:cntrl:]]')",
+        name="ck_external_accounts_name_shape",
+    ),
+    CheckConstraint(
+        "number_mask IS NULL OR (length(number_mask) BETWEEN 1 AND 32 AND "
+        "number_mask = btrim(number_mask) AND number_mask !~ '[[:cntrl:]]' AND "
+        "length(regexp_replace(number_mask, '[^0-9]', '', 'g')) <= 4)",
+        name="ck_external_accounts_number_mask_shape",
+    ),
+    CheckConstraint(
+        "last_seen_at >= first_seen_at",
+        name="ck_external_accounts_seen_order",
+    ),
+    ForeignKeyConstraint(
+        ["connection_id", "residence_id"],
+        ["integrations.connections.id", "integrations.connections.residence_id"],
+        ondelete="RESTRICT",
+        name="fk_external_accounts_connection_scope",
+    ),
+    UniqueConstraint(
+        "connection_id",
+        "external_account_id",
+        name="uq_external_accounts_connection_external",
+    ),
+    UniqueConstraint(
+        "connection_id",
+        "residence_id",
+        "external_account_id",
+        name="uq_external_accounts_scope",
+    ),
+    schema="integrations",
+)
+
+Index(
+    "ix_external_accounts_residence_connection",
+    external_accounts.c.residence_id,
+    external_accounts.c.connection_id,
+)
+
+
+sync_cursors = Table(
+    "sync_cursors",
+    metadata,
+    Column("id", UUID(as_uuid=True), primary_key=True),
+    Column("residence_id", UUID(as_uuid=True), nullable=False),
+    Column("connection_id", UUID(as_uuid=True), nullable=False),
+    Column("external_account_id", String(512), nullable=False),
+    Column("resource", String(32), nullable=False),
+    Column("cursor", String(512), nullable=False),
+    Column("source_window", String(256), nullable=False),
+    Column("committed_at", DateTime(timezone=True), nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "resource IN ('transactions')",
+        name="ck_sync_cursors_resource",
+    ),
+    CheckConstraint(
+        "length(cursor) BETWEEN 1 AND 512 AND cursor = btrim(cursor) AND "
+        "cursor !~ '[[:cntrl:]]'",
+        name="ck_sync_cursors_cursor_shape",
+    ),
+    CheckConstraint(
+        "length(source_window) BETWEEN 1 AND 256 AND "
+        "source_window = btrim(source_window) AND source_window !~ '[[:cntrl:]]'",
+        name="ck_sync_cursors_source_window_shape",
+    ),
+    ForeignKeyConstraint(
+        ["connection_id", "residence_id", "external_account_id"],
+        [
+            "integrations.external_accounts.connection_id",
+            "integrations.external_accounts.residence_id",
+            "integrations.external_accounts.external_account_id",
+        ],
+        ondelete="RESTRICT",
+        name="fk_sync_cursors_external_account_scope",
+    ),
+    UniqueConstraint(
+        "connection_id",
+        "external_account_id",
+        "resource",
+        name="uq_sync_cursors_account_resource",
+    ),
+    schema="integrations",
+)
+
+Index(
+    "ix_sync_cursors_residence_connection",
+    sync_cursors.c.residence_id,
+    sync_cursors.c.connection_id,
 )

@@ -1,10 +1,12 @@
 # Implementação da persistência bancária mínima
 
-Status: **implementação inicial da issue #68, reforçada pela issue #90**.
+Status: **implementação iniciada pela issue #68, reforçada pelas issues #90 e #109**.
 
-Este documento descreve o primeiro subconjunto executável do contrato definido no
-ADR-0012 e em `BANKING_INTEGRATION_PERSISTENCE_MODEL.md`. O recorte cria somente a
-configuração administrativa, as conexões externas e as capacidades observadas.
+Este documento descreve o subconjunto executável do contrato definido no ADR-0012 e
+em `BANKING_INTEGRATION_PERSISTENCE_MODEL.md`. A fundação atual cobre configuração,
+conexões, capacidades e a persistência operacional necessária para futura
+sincronização manual. A especificação detalhada do último recorte está em
+`BANKING_MANUAL_SYNC_PERSISTENCE.md`.
 
 ## Migrations
 
@@ -27,11 +29,27 @@ e não registra identificadores externos na mensagem de falha. A FK usa
 `ON DELETE RESTRICT`. O downgrade da `0006` remove somente essa constraint e preserva
 as linhas de integração e household.
 
+A revisão `0007_banking_manual_sync` (arquivo
+`0007_banking_manual_sync_persistence.py`) adiciona:
+
+```text
+sync_runs
+external_accounts
+sync_cursors
+```
+
+Essas tabelas implementam somente a fundação local de execução idempotente, contas
+externas minimizadas e cursor opaco confirmado. Elas não persistem ainda observações
+ou transações financeiras e não executam provider I/O.
+
+O identificador da revisão permanece abaixo do limite padrão de 32 caracteres da
+coluna `alembic_version.version_num`.
+
 O downgrade integral remove os objetos na ordem inversa, revoga os grants do runtime
 e remove o schema `integrations`.
 
-Não são criadas neste recorte tabelas de contas externas, transações, faturas,
-investimentos, empréstimos, sync runs, cursores, observações ou auditoria.
+Continuam não criadas tabelas de observações/transações, faturas, investimentos,
+empréstimos ou auditoria bancária.
 
 ## Configuração por instalação
 
@@ -120,6 +138,39 @@ Ausência de linha não significa `NOT_AVAILABLE`. O snapshot pode remover capac
 não mais observadas e atualizar estados para `UNKNOWN` ou
 `REQUIRES_USER_ACTION`.
 
+## Fundação da sincronização manual
+
+A `0007` introduz três objetos residence-scoped.
+
+### `sync_runs`
+
+- chave idempotente por conexão;
+- trigger inicial somente `manual`;
+- estados `requested`, `running`, `partial`, `succeeded`, `failed` e `cancelled`;
+- índice parcial PostgreSQL garante somente um run ativo por conexão;
+- estados terminais exigem `finished_at`;
+- diagnósticos são allowlisted e bounded, nunca mensagem/payload livre.
+
+### `external_accounts`
+
+- FK composta para conexão da mesma residência;
+- unicidade por `(connection_id, external_account_id)`;
+- tipo/status/moeda neutros e validados;
+- nome é opcional e minimizado;
+- somente `number_mask` pode ser armazenado, nunca número completo;
+- snapshot repetido atualiza sem duplicar e snapshot antigo não regride a observação.
+
+### `sync_cursors`
+
+- recurso inicial somente `transactions`;
+- cursor opaco e bounded;
+- FK composta para uma conta da mesma conexão/residência;
+- um cursor por `(connection_id, external_account_id, resource)`;
+- commit não pode retroceder `committed_at`;
+- cursor e source window são omitidos de representações públicas.
+
+Nenhum desses objetos cria provider transport, decripta credenciais ou chama Pluggy.
+
 ## Row-Level Security
 
 Todas as políticas usam contexto transacional definido por `set_config(..., true)`.
@@ -154,8 +205,17 @@ app.current_residence_id
 A política de `connection_capabilities` usa a residência direta da linha. A FK
 composta confirma que a conexão pertence à mesma residência.
 
-As três tabelas usam `ENABLE ROW LEVEL SECURITY` e `FORCE ROW LEVEL SECURITY`. A role
-de runtime permanece sem `BYPASSRLS`, `SUPERUSER`, `CREATEDB`, `CREATEROLE` ou
+### Sync runs, contas externas e cursores
+
+```text
+app.current_residence_id
+```
+
+Cada uma das tabelas novas possui `residence_id` direto, `ENABLE ROW LEVEL SECURITY`
+e `FORCE ROW LEVEL SECURITY`. FKs compostas vinculam os registros à conexão/conta da
+mesma residência.
+
+A role de runtime permanece sem `BYPASSRLS`, `SUPERUSER`, `CREATEDB`, `CREATEROLE` ou
 `REPLICATION`.
 
 Quando o contexto está ausente, `current_setting(..., true)` produz valor nulo e a
@@ -163,7 +223,7 @@ política não permite leitura ou mutação. O comportamento é fail-closed.
 
 ## Store transacional
 
-`BankingIntegrationStore` fornece somente:
+`BankingIntegrationStore` fornece:
 
 ```text
 create_configuration
@@ -173,21 +233,33 @@ replace_credentials
 register_connection
 get_connection
 replace_capabilities
+begin_manual_sync
+mark_sync_running
+finish_sync
+replace_external_accounts
+get_sync_cursor
+commit_sync_cursor
 ```
 
 Cada operação abre uma transação curta e define o contexto antes de acessar tabelas
 com RLS. `register_connection` não cria nem corrige uma residência: o PostgreSQL exige
 que o contexto informado já corresponda a uma linha canônica de household.
 
+As operações de sync resolvem a conexão usando simultaneamente installation,
+residence e `connection_id` local antes das mutações. Elas não acessam credenciais nem
+provider.
+
 Erros públicos são estáveis e não incluem:
 
 - plaintext;
 - envelope;
 - external connection ID;
+- external account ID;
+- cursor ou idempotency key;
 - residence ID inválido;
 - payload;
 - token;
-- resposta HTTP;
+- resposta HTTP bruta;
 - mensagem livre do provider.
 
 ## Testes PostgreSQL
@@ -202,17 +274,21 @@ NOREPLICATION
 NOBYPASSRLS
 ```
 
-Os testes comprovam:
+Os testes existentes e adicionados cobrem:
 
-- round-trip da migration e preservação de dados no downgrade da `0006`;
-- falha fechada do upgrade quando existe referência de residência órfã;
-- FK canônica com `ON DELETE RESTRICT`;
+- round-trip das migrations, incluindo downgrade/reupgrade da `0007`;
+- falha fechada do upgrade `0006` quando existe referência de residência órfã;
+- FKs canônicas com `ON DELETE RESTRICT` onde histórico operacional exige retenção;
 - envelope válido e AAD contextual;
 - ausência dos envelopes nos records públicos;
 - compare-and-swap e substituição de credenciais;
 - reutilização idempotente de conexão;
 - snapshot idempotente de capacidades;
-- invisibilidade total sem contexto;
+- idempotência e single-flight de `sync_runs`;
+- bloqueio de sync para conexão desconectada;
+- snapshot minimizado/idempotente de contas externas;
+- cursor vinculado à conta, idempotente e monotônico;
+- invisibilidade das tabelas novas sem contexto ou com outra residência;
 - isolamento de configuração por instalação;
 - isolamento de conexões e capacidades entre residências da instalação;
 - bloqueio de update, delete e insert cruzados;
@@ -226,12 +302,13 @@ de inserir dados bancários. UUIDs sintéticos sem linha canônica não são mai
 
 Continuam fora deste recorte:
 
-- Connect Token e Connect Widget;
-- criação de Item real;
-- endpoint HTTP de conexão bancária;
-- leitura real de contas e dados financeiros;
-- sincronização manual ou worker;
-- múltiplas residências selecionáveis pela UI;
+- persistência de observações/transações financeiras;
+- reconciliação `PENDING` / `CONFIRMED` / `DELETED`;
+- execução provider-neutral da sincronização;
+- `request_refresh` / PATCH de Item no fluxo de sync;
+- endpoint HTTP e UI Flutter de sincronização;
+- worker, fila ou polling de sincronização;
+- faturas/cartões;
 - chamada real à Pluggy;
 - alteração de flags;
 - bootstrap real;
