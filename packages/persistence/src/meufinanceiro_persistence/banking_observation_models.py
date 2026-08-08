@@ -196,11 +196,14 @@ def _clean_amount(value: Decimal) -> Decimal:
     if not value.is_finite():
         raise ValueError("amount must be finite")
     canonical = Decimal(0) if value == 0 else value.normalize()
-    sign, digits, exponent = canonical.as_tuple()
-    del sign
+    _, digits, exponent = canonical.as_tuple()
     precision = len(digits)
-    scale = max(-exponent, 0)
-    integer_digits = max(precision - scale, 0)
+    if exponent >= 0:
+        scale = 0
+        integer_digits = precision + exponent
+    else:
+        scale = -exponent
+        integer_digits = max(precision - scale, 0)
     if scale > _MAX_AMOUNT_SCALE or integer_digits > (
         _MAX_AMOUNT_PRECISION - _MAX_AMOUNT_SCALE
     ):
