@@ -29,6 +29,8 @@ def test_web_adapter_uses_exact_lazy_allowlisted_pluggy_asset() -> None:
     assert "ScriptElement()" in source
     assert "head.append(script)" in source
     assert "widget.callMethod('init')" in source
+    assert "Duration(seconds: 15)" in source
+    assert "Timer(_scriptLoadTimeout" in source
     assert "'language': 'pt'" in source
     assert "'countries': ['BR']" in source
     assert "'includeSandbox': false" in source
