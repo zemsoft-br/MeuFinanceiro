@@ -84,7 +84,7 @@ final pluggyConnectApiProvider = Provider<PluggyConnectApi>(
 );
 
 final pluggyConnectControllerProvider =
-    NotifierProvider<PluggyConnectController, PluggyConnectState>(
+    NotifierProvider.autoDispose<PluggyConnectController, PluggyConnectState>(
       PluggyConnectController.new,
     );
 
