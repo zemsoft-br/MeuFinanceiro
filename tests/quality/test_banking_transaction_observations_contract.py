@@ -32,12 +32,15 @@ def test_observation_schema_preserves_identity_and_history_invariants() -> None:
         assert "fk_external_observations_account_scope" in source
         assert "uq_external_observations_fingerprint" in source
         assert "uq_external_observations_external_resource" in source
+        assert "ck_external_observations_inferred_identity" in source
         assert "normalized_payload_version" in source
         assert "stable_fingerprint" in source
     assert "ON DELETE RESTRICT" in MIGRATION
     assert 'ondelete="RESTRICT"' in SCHEMA
     assert "external_resource_id IS NOT NULL" in MIGRATION
     assert "external_resource_id IS NOT NULL" in SCHEMA
+    assert "status <> 'INFERRED' OR external_resource_id IS NULL" in MIGRATION
+    assert "status <> 'INFERRED' OR external_resource_id IS NULL" in SCHEMA
 
 
 def test_amount_and_fingerprint_are_normalized_inside_persistence_boundary() -> None:
@@ -50,6 +53,7 @@ def test_amount_and_fingerprint_are_normalized_inside_persistence_boundary() -> 
     )[0]
     assert "_MAX_AMOUNT_PRECISION = 24" in MODELS
     assert "_MAX_AMOUNT_SCALE = 8" in MODELS
+    assert "inferred observation cannot claim a provider resource ID" in MODELS
 
 
 def test_page_and_cursor_are_committed_inside_one_database_transaction() -> None:
@@ -64,6 +68,9 @@ def test_page_and_cursor_are_committed_inside_one_database_transaction() -> None
     )
     assert "_lock_external_account(" in method
     assert "sync_cursors.insert()" not in method
+    assert "observation.observed_at > committed_at" in method
+    assert "external_observations.c.last_seen_at" in method
+    assert "< observation.observed_at" in method
 
 
 def test_observation_store_has_no_provider_io_http_or_credentials() -> None:
@@ -99,14 +106,26 @@ def test_raw_provider_material_is_not_persisted_or_rendered() -> None:
     ):
         assert forbidden not in combined_schema
     assert "<financial-material-redacted>" in MODELS
-    for sensitive_attr in (
-        "self.amount",
-        "self.description",
-        "self.external_account_id",
-        "self.external_resource_id",
-        "self.stable_fingerprint",
-    ):
-        assert sensitive_attr not in MODELS.split("def __repr__", maxsplit=1)[1]
+
+    snapshot_class = MODELS.split(
+        "class TransactionObservationSnapshot",
+        maxsplit=1,
+    )[1].split("class TransactionObservationRecord", maxsplit=1)[0]
+    snapshot_repr = snapshot_class.split("def __repr__", maxsplit=1)[1]
+    record_class = MODELS.split(
+        "class TransactionObservationRecord",
+        maxsplit=1,
+    )[1].split("class AppliedTransactionPage", maxsplit=1)[0]
+    record_repr = record_class.split("def __repr__", maxsplit=1)[1]
+    for representation in (snapshot_repr, record_repr):
+        for sensitive_attr in (
+            "self.amount",
+            "self.description",
+            "self.external_account_id",
+            "self.external_resource_id",
+            "self.stable_fingerprint",
+        ):
+            assert sensitive_attr not in representation
 
 
 def test_public_store_composes_atomic_observation_boundary() -> None:
