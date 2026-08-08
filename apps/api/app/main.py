@@ -11,6 +11,7 @@ from meufinanceiro_banking_pluggy_execution import (
     PluggyConnectionRegistrationService,
     PluggyConnectTokenService,
     PluggyReadOnlyExecutionService,
+    PluggyReauthenticationTokenService,
 )
 from meufinanceiro_persistence import BankingIntegrationStore, OperatorIdentityStore
 from meufinanceiro_security.envelope import SecretCipher
@@ -23,6 +24,9 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.banking_admin import router as banking_admin_router
 from app.api.routes.banking_connect import router as banking_connect_router
 from app.api.routes.banking_connections import router as banking_connections_router
+from app.api.routes.banking_reauthentication import (
+    router as banking_reauthentication_router,
+)
 from app.api.routes.demo import router as demo_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
@@ -57,6 +61,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         banking_pluggy_connection_registration: (
             PluggyConnectionRegistrationService | None
         ) = None
+        banking_pluggy_reauthentication: (
+            PluggyReauthenticationTokenService | None
+        ) = None
         if (
             resolved_settings.app_banking_enabled
             and resolved_settings.app_banking_pluggy_enabled
@@ -64,6 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             banking_pluggy_execution = PluggyReadOnlyExecutionService(banking_store)
             banking_pluggy_connect_token = PluggyConnectTokenService(banking_store)
             banking_pluggy_connection_registration = PluggyConnectionRegistrationService(
+                banking_store
+            )
+            banking_pluggy_reauthentication = PluggyReauthenticationTokenService(
                 banking_store
             )
 
@@ -75,6 +85,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.banking_pluggy_connect_token = banking_pluggy_connect_token
         app.state.banking_pluggy_connection_registration = (
             banking_pluggy_connection_registration
+        )
+        app.state.banking_pluggy_reauthentication = (
+            banking_pluggy_reauthentication
         )
         app.state.operator_identity_store = operator_identity_store
         app.state.operator_authentication = operator_authentication
@@ -115,6 +128,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(banking_admin_router, prefix="/api/v1")
     application.include_router(banking_connect_router, prefix="/api/v1")
     application.include_router(banking_connections_router, prefix="/api/v1")
+    application.include_router(
+        banking_reauthentication_router,
+        prefix="/api/v1",
+    )
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application

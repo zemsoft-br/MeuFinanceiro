@@ -36,6 +36,18 @@ itemId não confiável
     -> replace_capabilities
 ```
 
+A reautenticação de uma conexão existente inverte a entrada: o cliente fornece somente
+o UUID local e o Item é resolvido server-side:
+
+```text
+connection_id local
+    -> get_connection sob RLS
+    -> GET /items/{external_connection_id persistido}
+    -> prova de id + clientUserId
+    -> POST /connect_token {itemId: Item verificado}
+    -> accessToken + itemId efêmeros para update mode
+```
+
 ## Operações read-only
 
 `PluggyReadOnlyExecutionService` oferece:
@@ -85,11 +97,28 @@ Mismatch de ownership, Item inválido, erro de transporte e conflito cross-resid
 convertidos para erros estáveis sem Item ID, clientUserId, payload bruto ou credenciais.
 A resposta pública usa apenas o UUID local da conexão e estado neutro.
 
+## Reautenticação/update
+
+`PluggyReauthenticationTokenService` recebe somente `installation_id`, `residence_id`
+e `connection_id` confiáveis. O serviço resolve a conexão local antes de acessar
+credenciais e rejeita provider incompatível ou conexão desconectada.
+
+Com credenciais efêmeras, ele lê o Item persistido diretamente na Pluggy, exige o ID
+exato e `clientUserId=residence:<residence_id>` e só então cria um Connect Token
+vinculado ao Item. O DTO `IssuedPluggyReauthenticationToken` contém `access_token` e
+`item_id` apenas para inicialização do Pluggy Connect update mode e possui `repr`
+redigido.
+
+O POST de Connect Token não é repetido automaticamente após falha ambígua de rede/5xx.
+Não há `PATCH /items`, persistência adicional ou atualização de estado local nessa
+fronteira; após o widget, o registro existente recompõe a prova de ownership e atualiza
+a conexão de forma idempotente.
+
 ## Segurança
 
 - conexão read-only resolvida pelo store sob RLS;
 - provider diferente de `pluggy` é rejeitado nas operações contextualizadas;
-- conexão desconectada é rejeitada antes da decriptação nas leituras;
+- conexão desconectada é rejeitada antes da decriptação nas leituras e reautenticação;
 - configuração deve estar `enabled` antes de qualquer I/O do provider;
 - credenciais existem somente dentro do callback do store;
 - factories e transportes são injetáveis nos testes;
@@ -116,4 +145,5 @@ externas. I/O do provider ocorre somente após uma operação autenticada explí
 Detalhes das fronteiras estão em:
 
 - `docs/architecture/PLUGGY_CONNECT_TOKEN.md`;
-- `docs/architecture/PLUGGY_CONNECTED_ITEM_REGISTRATION.md`.
+- `docs/architecture/PLUGGY_CONNECTED_ITEM_REGISTRATION.md`;
+- `docs/architecture/PLUGGY_REAUTHENTICATION_TOKEN.md`.

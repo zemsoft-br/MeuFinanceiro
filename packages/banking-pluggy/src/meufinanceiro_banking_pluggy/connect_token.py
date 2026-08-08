@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
 
 import httpx
 
@@ -20,22 +19,29 @@ from .transport import (
 
 
 class PluggyConnectTokenHttpTransport(PluggyHttpTransport):
-    """Issue one server-authorized Connect Token without broadening other POSTs."""
+    """Issue server-authorized Connect Tokens without broadening other POSTs."""
 
     def create_connect_token(self, *, client_user_id: str) -> str:
         normalized_client_user_id = _clean_identifier(
             client_user_id,
             "client_user_id",
         )
-        payload = cast(
-            Mapping[str, str],
+        return self._create_connect_token(
             {
                 "options": {
                     "clientUserId": normalized_client_user_id,
                     "avoidDuplicates": True,
                 }
-            },
+            }
         )
+
+    def create_update_connect_token(self, *, item_id: str) -> str:
+        """Issue a Connect Token bound to one already verified provider Item."""
+
+        normalized_item_id = _clean_identifier(item_id, "item_id")
+        return self._create_connect_token({"itemId": normalized_item_id})
+
+    def _create_connect_token(self, payload: Mapping[str, object]) -> str:
         response = self._authenticated_connect_token(payload)
         value = response.get("accessToken")
         if not isinstance(value, str) or not value.strip():
@@ -55,7 +61,7 @@ class PluggyConnectTokenHttpTransport(PluggyHttpTransport):
 
     def _authenticated_connect_token(
         self,
-        payload: Mapping[str, str],
+        payload: Mapping[str, object],
     ) -> JsonObject:
         self._ensure_open()
         if self._api_key is None:
@@ -78,7 +84,7 @@ class PluggyConnectTokenHttpTransport(PluggyHttpTransport):
 
     def _request_connect_token_once(
         self,
-        payload: Mapping[str, str],
+        payload: Mapping[str, object],
     ) -> JsonObject:
         self._ensure_open()
         self._validate_operation("POST", "connect_token")
