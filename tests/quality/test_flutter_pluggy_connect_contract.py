@@ -11,6 +11,7 @@ ADAPTER = LIB / "platform/pluggy/pluggy_connect_launcher_web.dart"
 CONTROLLER = PLUGGY_ROOT / "pluggy_connect_controller.dart"
 API = PLUGGY_ROOT / "pluggy_connect_api.dart"
 PUBSPEC = APP / "pubspec.yaml"
+PUBSPEC_LOCK = APP / "pubspec.lock"
 
 
 def _read(path: Path) -> str:
@@ -59,8 +60,8 @@ def test_pluggy_script_is_not_a_static_bootstrap_dependency() -> None:
 
 
 def test_web_target_does_not_depend_on_flutter_pluggy_connect_package() -> None:
-    pubspec = _read(PUBSPEC)
-    assert "flutter_pluggy_connect" not in pubspec
+    assert "flutter_pluggy_connect" not in _read(PUBSPEC)
+    assert "flutter_pluggy_connect" not in _read(PUBSPEC_LOCK)
 
 
 def test_callback_is_reduced_to_transient_item_id_before_backend() -> None:
@@ -71,6 +72,8 @@ def test_callback_is_reduced_to_transient_item_id_before_backend() -> None:
     assert "payload['item']" in adapter
     assert "data['item']" in adapter
     assert "item['id']" in adapter
+    on_error = adapter.split("'onError':", 1)[1].split("}),", 1)[0]
+    assert "PluggyConnectCallback.itemAvailable(extraction.itemId)" in on_error
     assert "jsonBody: {'itemId': normalizedItemId}" in api
     assert "banking/pluggy/connections" in api
 
