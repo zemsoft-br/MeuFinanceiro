@@ -120,6 +120,21 @@ void main() {
     );
   });
 
+  test('409 maps to explicit primary residence requirement', () async {
+    final container = _container(
+      FakeAuthTransport.response(statusCode: 409, body: '{}'),
+    );
+    addTearDown(container.dispose);
+
+    await container.read(bankingConnectionsControllerProvider.notifier).load();
+
+    expect(
+      container.read(bankingConnectionsControllerProvider).phase,
+      BankingConnectionsPhase.primaryResidenceRequired,
+    );
+    expect(container.read(sessionTokenVaultProvider).hasToken, isTrue);
+  });
+
   test('403 and malformed initial responses map to sanitized states', () async {
     final forbidden = _container(
       FakeAuthTransport.response(statusCode: 403, body: '{}'),
