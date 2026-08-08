@@ -54,6 +54,20 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('missing primary residence is explicit and disables refresh', (
+    tester,
+  ) async {
+    await _pumpScreen(tester, statusCode: 409, body: '{}');
+
+    expect(find.text('Residência principal necessária'), findsOneWidget);
+    final refresh = tester.widget<OutlinedButton>(
+      find.byKey(BankingConnectionsScreen.refreshButtonKey),
+    );
+    expect(refresh.onPressed, isNull);
+    expect(find.text('Tentar novamente'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('overview remains usable at 320 px with text scaled 2x', (
     tester,
   ) async {
@@ -78,10 +92,14 @@ void main() {
 Future<void> _pumpScreen(
   WidgetTester tester, {
   required String body,
+  int statusCode = 200,
   MediaQueryData? mediaQuery,
 }) async {
   final vault = SessionTokenVault()..store(_token);
-  final transport = FakeAuthTransport.response(statusCode: 200, body: body);
+  final transport = FakeAuthTransport.response(
+    statusCode: statusCode,
+    body: body,
+  );
 
   Widget home = const Scaffold(
     body: SingleChildScrollView(child: BankingConnectionsScreen()),
