@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from sqlalchemy import (
+    CHAR,
     CheckConstraint,
     Column,
     Date,
@@ -36,7 +37,7 @@ external_observations = Table(
     Column("currency", String(3), nullable=False),
     Column("description", String(512), nullable=True),
     Column("category", String(128), nullable=True),
-    Column("stable_fingerprint", String(64), nullable=False),
+    Column("stable_fingerprint", CHAR(64), nullable=False),
     Column("first_seen_at", DateTime(timezone=True), nullable=False),
     Column("last_seen_at", DateTime(timezone=True), nullable=False),
     Column("deleted_at", DateTime(timezone=True), nullable=True),
@@ -56,6 +57,10 @@ external_observations = Table(
         "external_resource_id = btrim(external_resource_id) AND "
         "external_resource_id !~ '[[:cntrl:]]')",
         name="ck_external_observations_external_id_shape",
+    ),
+    CheckConstraint(
+        "status <> 'INFERRED' OR external_resource_id IS NULL",
+        name="ck_external_observations_inferred_identity",
     ),
     CheckConstraint(
         "currency ~ '^[A-Z]{3}$'",
