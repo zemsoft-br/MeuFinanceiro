@@ -1,6 +1,7 @@
 """Shared PostgreSQL persistence primitives for MeuFinanceiro."""
 
 from meufinanceiro_persistence.banking import (
+    AppliedTransactionPage,
     BankingConnectionRecord,
     BankingIntegrationStore,
     BankingPersistenceError,
@@ -27,12 +28,15 @@ from meufinanceiro_persistence.banking import (
     StoredSyncResource,
     StoredSyncStatus,
     StoredSyncTrigger,
+    StoredTransactionObservationStatus,
     SyncConflictError,
     SyncCursorNotFoundError,
     SyncCursorRecord,
     SyncRunNotFoundError,
     SyncRunRecord,
     SyncTransitionError,
+    TransactionObservationRecord,
+    TransactionObservationSnapshot,
     credential_aad,
 )
 from meufinanceiro_persistence.banking_queries import (
@@ -95,6 +99,7 @@ __all__ = [
     "DEMO_REFERENCE_DATE",
     "DEMO_SCOPE",
     "DEMO_TIMEZONE",
+    "AppliedTransactionPage",
     "BankingConnectionQueryError",
     "BankingConnectionQueryStore",
     "BankingConnectionRecord",
@@ -145,6 +150,7 @@ __all__ = [
     "StoredSyncResource",
     "StoredSyncStatus",
     "StoredSyncTrigger",
+    "StoredTransactionObservationStatus",
     "SyncConflictError",
     "SyncCursorNotFoundError",
     "SyncCursorRecord",
@@ -154,6 +160,8 @@ __all__ = [
     "TaskQueue",
     "TaskRecord",
     "TaskStatus",
+    "TransactionObservationRecord",
+    "TransactionObservationSnapshot",
     "credential_aad",
     "inspect_persistence_health",
     "normalize_operator_login",
