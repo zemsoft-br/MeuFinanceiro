@@ -9,6 +9,7 @@ import 'package:meufinanceiro_app/core/banking/pluggy/pluggy_connect_launcher_co
 const pluggyConnectScriptUrl =
     'https://cdn.pluggy.ai/pluggy-connect/v2.8.2/pluggy-connect.js';
 const _scriptElementId = 'meufinanceiro-pluggy-connect-v2-8-2';
+const _scriptLoadTimeout = Duration(seconds: 15);
 
 PluggyConnectLauncher createPluggyConnectLauncher() =>
     const BrowserPluggyConnectLauncher();
@@ -114,8 +115,10 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
 
     late final StreamSubscription<html.Event> loadSubscription;
     late final StreamSubscription<html.Event> errorSubscription;
+    late final Timer loadTimeout;
 
     void cleanup() {
+      loadTimeout.cancel();
       unawaited(loadSubscription.cancel());
       unawaited(errorSubscription.cancel());
     }
@@ -132,6 +135,13 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
       }
     });
     errorSubscription = script.onError.listen((_) {
+      cleanup();
+      script.remove();
+      if (!completer.isCompleted) {
+        completer.completeError(const PluggyConnectLaunchException());
+      }
+    });
+    loadTimeout = Timer(_scriptLoadTimeout, () {
       cleanup();
       script.remove();
       if (!completer.isCompleted) {
