@@ -28,7 +28,7 @@ class EphemeralConnectToken {
     final value = _value;
     _value = null;
     if (value == null) {
-      throw const StateError('Connect token is no longer available.');
+      throw StateError('Connect token is no longer available.');
     }
     return value;
   }
