@@ -230,15 +230,31 @@ class ExternalAccountSnapshot:
     number_mask: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.account_type, StoredExternalAccountType):
+            raise TypeError("account_type must be StoredExternalAccountType")
+        if not isinstance(self.status, StoredExternalAccountStatus):
+            raise TypeError("status must be StoredExternalAccountStatus")
         object.__setattr__(
             self,
             "external_account_id",
             clean_external_account_id(self.external_account_id),
         )
-        object.__setattr__(self, "subtype", clean_bounded_text(self.subtype, "subtype", 128))
+        object.__setattr__(
+            self,
+            "subtype",
+            clean_bounded_text(self.subtype, "subtype", 128),
+        )
         object.__setattr__(self, "currency", clean_currency(self.currency))
-        object.__setattr__(self, "name", clean_optional_text(self.name, "name", 512))
-        object.__setattr__(self, "number_mask", clean_number_mask(self.number_mask))
+        object.__setattr__(
+            self,
+            "name",
+            clean_optional_text(self.name, "name", 512),
+        )
+        object.__setattr__(
+            self,
+            "number_mask",
+            clean_number_mask(self.number_mask),
+        )
         require_aware(self.observed_at, "observed_at")
 
     def __repr__(self) -> str:
@@ -433,7 +449,8 @@ def clean_number_mask(value: str | None) -> str | None:
     if value is None:
         return None
     normalized = clean_bounded_text(value, "number_mask", 32)
-    if normalized.isdigit() and len(normalized) > 4:
+    digit_count = sum(character.isdigit() for character in normalized)
+    if digit_count > 4:
         raise ValueError("number_mask must not contain a full numeric account number")
     return normalized
 
@@ -494,12 +511,33 @@ def validate_sync_completion(
     records_seen: int,
     records_applied: int,
 ) -> None:
-    if not status.is_terminal:
+    if not isinstance(status, StoredSyncStatus) or not status.is_terminal:
         raise ValueError("sync completion status must be terminal")
-    if records_seen < 0 or records_applied < 0 or records_applied > records_seen:
+    if error_category is not None and not isinstance(
+        error_category,
+        StoredSyncErrorCategory,
+    ):
+        raise TypeError("error_category must be StoredSyncErrorCategory")
+    if (
+        isinstance(records_seen, bool)
+        or not isinstance(records_seen, int)
+        or isinstance(records_applied, bool)
+        or not isinstance(records_applied, int)
+        or records_seen < 0
+        or records_applied < 0
+        or records_applied > records_seen
+    ):
         raise ValueError("sync record counts are invalid")
     clean_reason_code(provider_reason_code)
     clean_http_status(http_status)
     clean_retry_window_bucket(retry_window_bucket)
-    if status is StoredSyncStatus.SUCCEEDED and error_category is not None:
-        raise ValueError("successful sync cannot have an error category")
+    if status is StoredSyncStatus.SUCCEEDED and any(
+        value is not None
+        for value in (
+            error_category,
+            provider_reason_code,
+            http_status,
+            retry_window_bucket,
+        )
+    ):
+        raise ValueError("successful sync cannot contain error diagnostics")
