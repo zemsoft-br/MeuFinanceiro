@@ -62,6 +62,10 @@ class _BankingConnectionsScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(bankingConnectionsControllerProvider);
+    final refreshEnabled = !state.isBusy &&
+        state.phase != BankingConnectionsPhase.authenticationRequired &&
+        state.phase != BankingConnectionsPhase.forbidden &&
+        state.phase != BankingConnectionsPhase.primaryResidenceRequired;
 
     return FocusTraversalGroup(
       policy: ReadingOrderTraversalPolicy(),
@@ -72,7 +76,7 @@ class _BankingConnectionsScreenState
             headingFocusNode: _headingFocusNode,
             refreshing: state.phase == BankingConnectionsPhase.refreshing,
             onConnect: () => context.go(AppRoutes.pluggyConnectPath),
-            onRefresh: state.isBusy ? null : _refresh,
+            onRefresh: refreshEnabled ? _refresh : null,
           ),
           const SizedBox(height: AppTokens.space24),
           _RefreshNotice(state: state),
@@ -524,18 +528,17 @@ class _StatusBadge extends StatelessWidget {
           border: Border.all(color: presentation.border),
           borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: AppTokens.space8,
+          runSpacing: AppTokens.space4,
           children: [
             Icon(presentation.icon, size: 18, color: presentation.foreground),
-            const SizedBox(width: AppTokens.space8),
-            Flexible(
-              child: Text(
-                presentation.label,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: presentation.foreground,
-                    ),
-              ),
+            Text(
+              presentation.label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: presentation.foreground,
+                  ),
             ),
           ],
         ),
@@ -676,6 +679,12 @@ _FailurePresentation _failurePresentation(BankingConnectionsPhase phase) {
     BankingConnectionsPhase.forbidden => const _FailurePresentation(
         title: 'Acesso não autorizado',
         message: 'Sua sessão não possui autorização para consultar estas conexões.',
+        retryable: false,
+      ),
+    BankingConnectionsPhase.primaryResidenceRequired =>
+      const _FailurePresentation(
+        title: 'Residência principal necessária',
+        message: 'Defina uma residência principal antes de consultar as conexões bancárias.',
         retryable: false,
       ),
     BankingConnectionsPhase.invalidResponse => const _FailurePresentation(
