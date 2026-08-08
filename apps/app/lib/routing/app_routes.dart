@@ -27,6 +27,8 @@ class AppDestination {
 abstract final class AppRoutes {
   static const login = 'login';
   static const loginPath = '/login';
+  static const pluggyConnect = 'pluggy-connect';
+  static const pluggyConnectPath = '/app/integracoes/pluggy/conectar';
   static const home = 'home';
   static const components = 'components';
   static const system = 'system';
