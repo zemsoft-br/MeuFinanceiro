@@ -152,7 +152,11 @@ def test_protocols_accept_reauthentication_fakes() -> None:
 
 
 def test_reauthentication_verifies_ownership_before_issuing_update_token() -> None:
-    store = FakeStore(connection=_connection(status=StoredConnectionStatus.REAUTHENTICATION_REQUIRED))
+    store = FakeStore(
+        connection=_connection(
+            status=StoredConnectionStatus.REAUTHENTICATION_REQUIRED,
+        )
+    )
     transport = FakeTransport()
     created_credentials: list[PluggyApplicationCredentials] = []
 
@@ -196,7 +200,10 @@ def test_ownership_mismatch_does_not_issue_connect_token() -> None:
             connection_id=CONNECTION_ID,
         )
 
-    assert captured.value.code is PluggyReauthenticationErrorCode.CONNECTION_NOT_ALLOWED
+    assert (
+        captured.value.code
+        is PluggyReauthenticationErrorCode.CONNECTION_NOT_ALLOWED
+    )
     assert ITEM_ID not in str(captured.value)
     assert marker not in str(captured.value)
     assert transport.token_calls == []
