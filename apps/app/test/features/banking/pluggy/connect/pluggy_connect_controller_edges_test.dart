@@ -40,6 +40,28 @@ void main() {
     expect(harness.registrationCalls, isEmpty);
   });
 
+  test('launcher failure is recoverable and does not register an item', () async {
+    final harness = await _Harness.create(failOnLaunch: true);
+    addTearDown(harness.dispose);
+
+    await harness.controller.start();
+
+    expect(harness.state.phase, PluggyConnectPhase.temporarilyUnavailable);
+    expect(harness.launcher.calls, hasLength(1));
+    expect(harness.registrationCalls, isEmpty);
+  });
+
+  test('connect-token transport failure is recoverable without opening widget', () async {
+    final harness = await _Harness.create(failTokenTransport: true);
+    addTearDown(harness.dispose);
+
+    await harness.controller.start();
+
+    expect(harness.state.phase, PluggyConnectPhase.temporarilyUnavailable);
+    expect(harness.launcher.calls, isEmpty);
+    expect(harness.registrationCalls, isEmpty);
+  });
+
   test('401 during registration clears local auth and requires login again', () async {
     final harness = await _Harness.create(registrationStatus: 401);
     addTearDown(harness.dispose);
@@ -80,13 +102,20 @@ class _Harness {
         (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
       );
 
-  static Future<_Harness> create({int registrationStatus = 200}) async {
-    final launcher = FakePluggyConnectLauncher();
+  static Future<_Harness> create({
+    int registrationStatus = 200,
+    bool failOnLaunch = false,
+    bool failTokenTransport = false,
+  }) async {
+    final launcher = FakePluggyConnectLauncher(failOnLaunch: failOnLaunch);
     final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
       if (uri.path.endsWith('/auth/session')) {
         return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
       }
       if (uri.path.endsWith('/banking/pluggy/connect-token')) {
+        if (failTokenTransport) {
+          throw StateError('synthetic offline transport');
+        }
         return const AuthHttpResponse(
           statusCode: 200,
           body: '{"accessToken":"$_connectToken"}',
