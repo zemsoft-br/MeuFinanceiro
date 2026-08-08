@@ -60,13 +60,12 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
       }),
       'onError': js.allowInterop((dynamic payload) {
         final extraction = _extractErrorItemId(payload);
-        switch (extraction) {
-          case _ItemExtraction.found(:final itemId):
-            emit(PluggyConnectCallback.itemAvailable(itemId));
-          case _ItemExtraction.missing():
-            emit(const PluggyConnectCallback.errorWithoutItem());
-          case _ItemExtraction.invalid():
-            emit(const PluggyConnectCallback.invalidPayload());
+        if (extraction is _FoundItem) {
+          emit(PluggyConnectCallback.itemAvailable(extraction.itemId));
+        } else if (extraction is _MissingItem) {
+          emit(const PluggyConnectCallback.errorWithoutItem());
+        } else {
+          emit(const PluggyConnectCallback.invalidPayload());
         }
       }),
     });
