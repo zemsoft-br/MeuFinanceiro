@@ -82,6 +82,17 @@ def test_status_does_not_change_content_fingerprint_without_provider_id() -> Non
     assert pending.stable_fingerprint == confirmed.stable_fingerprint
 
 
+def test_inferred_observation_cannot_claim_provider_resource_id() -> None:
+    with pytest.raises(ValueError, match="cannot claim"):
+        _snapshot(status=StoredTransactionObservationStatus.INFERRED)
+
+    inferred = _snapshot(
+        status=StoredTransactionObservationStatus.INFERRED,
+        external_resource_id=None,
+    )
+    assert inferred.external_resource_id is None
+
+
 def test_deleted_status_derives_deleted_at_from_observation_time() -> None:
     deleted = _snapshot(status=StoredTransactionObservationStatus.DELETED)
     active = _snapshot(status=StoredTransactionObservationStatus.CONFIRMED)
@@ -125,7 +136,7 @@ def test_snapshot_rejects_unaware_time_and_invalid_currency() -> None:
         )
 
     with pytest.raises(ValueError, match="currency"):
-        _snapshot().__class__(
+        TransactionObservationSnapshot(
             external_account_id="synthetic-account",
             status=StoredTransactionObservationStatus.CONFIRMED,
             effective_date=date(2026, 8, 8),
