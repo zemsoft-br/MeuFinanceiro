@@ -13,6 +13,7 @@ from psycopg import sql
 from sqlalchemy import create_engine, delete, insert, select
 from sqlalchemy.engine import Engine, make_url
 
+from meufinanceiro_persistence.banking_observation_schema import external_observations
 from meufinanceiro_persistence.bootstrap import normalize_psycopg_url
 from meufinanceiro_persistence.migrations import upgrade
 from meufinanceiro_persistence.schema import (
@@ -177,6 +178,7 @@ def create_canonical_residences(
 @pytest.fixture(autouse=True)
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
+        connection.execute(delete(external_observations))
         connection.execute(delete(sync_cursors))
         connection.execute(delete(external_accounts))
         connection.execute(delete(sync_runs))
