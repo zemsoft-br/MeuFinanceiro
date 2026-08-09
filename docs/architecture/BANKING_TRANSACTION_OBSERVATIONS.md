@@ -1,6 +1,6 @@
 # Observações normalizadas de transação
 
-Status: **fundação persistente da Epic #63 / issue #111, estendida pela #115**.
+Status: **fundação persistente da Epic #63 / issue #111, estendida pelas #115 e #119**.
 
 ## Objetivo
 
@@ -8,7 +8,8 @@ Este recorte adiciona o primeiro armazenamento de dados financeiros vindos de um
 integração bancária sem transformar o provider em fonte de verdade do domínio.
 
 O PostgreSQL local persiste uma camada de observações normalizadas com identidade
-lógica suficiente para permitir sincronização idempotente e futura reconciliação.
+lógica suficiente para permitir sincronização idempotente e reconciliação local
+posterior.
 
 Ainda não existe criação automática de lançamento financeiro do usuário.
 
@@ -36,7 +37,11 @@ integrations.external_observations
 ```
 
 A #115 não altera esse schema. A semântica de página terminal usa ausência da linha
-em `sync_cursors`, portanto nenhuma migration adicional é necessária.
+em `sync_cursors`, portanto nenhuma migration adicional é necessária para o cursor.
+
+A #119 adiciona uma candidate key local em `external_observations` para permitir FKs
+de source residence-scoped da camada de reconciliação, sem mudar a semântica da
+observação normalizada.
 
 ## Estrutura da observação
 
@@ -122,7 +127,7 @@ internamente com SHA-256 usando namespace versionado:
 meufinanceiro:transaction-observation:v1
 ```
 
-Quando há `external_resource_id`, a identidade usa:
+Quando há `external_resource_id`, a identidade da **observação** usa:
 
 ```text
 namespace + external_account_id + external_resource_id
@@ -151,7 +156,10 @@ UNIQUE(connection_id, external_account_id, stable_fingerprint)
 
 e também unicidade parcial do ID externo não nulo na mesma conta.
 
-A reconciliação de identidades distintas ainda é outro recorte.
+A #119 mantém esse fingerprint como material interno da camada de observação. Na
+camada canônica, `external_resource_id` é a autoridade quando existe; o fingerprint é
+fallback apenas para observações sem ID. Identidades diferentes não são unidas por
+fuzzy matching ou por semelhança de valores financeiros.
 
 ## RLS e vínculo com a conta
 
@@ -278,7 +286,7 @@ amount ou descrição.
 Os `repr` dos snapshots/records também omitem material financeiro e identificadores
 externos.
 
-## Relação com a orquestração
+## Relação com a orquestração e reconciliação
 
 A #115 compõe esta fundação no orquestrador manual provider-neutral:
 
@@ -292,17 +300,30 @@ sync_run
   -> finish_sync
 ```
 
-A orquestração continua sem reconciliar automaticamente as observações com
-lançamentos do domínio. A reconciliação `PENDING`/`CONFIRMED`/`DELETED` será
-estabilizada depois da primeira sincronização manual reproduzível.
+A #119 adiciona uma fronteira local separada:
+
+```text
+external_observations
+  -> reconcile_transaction_observations
+  -> reconciled_transactions
+```
+
+A reconciliação materializa `PENDING`, `CONFIRMED`, `INFERRED` e `DELETED` em
+identidades canônicas locais, mas permanece desacoplada do final de
+`ManualBankingSyncService.run` neste estágio. Ela também não cria ou altera
+lançamentos financeiros do domínio.
+
+As observações continuam sendo o histórico normalizado da integração; o estado
+canônico é uma projeção local derivada e reproduzível, não uma substituição do
+histórico observado.
 
 ## Fora do escopo
 
 - provider I/O dentro deste store;
 - chamada Pluggy direta pelo store;
 - geração de lançamentos financeiros;
-- reconciliação entre identidades diferentes;
-- endpoint HTTP e Flutter de sync;
+- fuzzy matching/merge heurístico entre identidades distintas;
+- endpoint HTTP e Flutter de sync/reconciliação;
 - worker/polling;
 - cartões, faturas e parcelas;
 - desconexão/consentimento;
