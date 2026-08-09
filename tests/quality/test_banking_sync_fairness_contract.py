@@ -55,6 +55,19 @@ def test_fairness_never_encodes_local_state_inside_provider_cursor() -> None:
     assert "completed_at" in FAIRNESS_STORE
 
 
+def test_new_cycle_resets_only_previous_cycle_recovery_material() -> None:
+    assert "_has_completed_cycle(" in FAIRNESS_STORE
+    assert "_clear_previous_cycle_cursors(" in FAIRNESS_STORE
+    reset = FAIRNESS_STORE.split(
+        "def _clear_previous_cycle_cursors",
+        maxsplit=1,
+    )[1].split("def _active_cycle_accounts", maxsplit=1)[0]
+    assert "delete(sync_cursors)" in reset
+    assert "StoredSyncResource.TRANSACTIONS.value" in reset
+    assert "residence_id == residence_id" in reset
+    assert "connection_id == connection_id" in reset
+
+
 def test_fairness_orders_least_served_accounts_before_recovery_priority() -> None:
     assert "pages_committed" in MIGRATION
     assert "pages_committed=0" in FAIRNESS_STORE
@@ -90,8 +103,8 @@ def test_terminal_page_commits_cursor_and_cycle_progress_together() -> None:
         "def _advance_cycle_account",
         maxsplit=1,
     )[1].split("def _page_cursor_already_committed", maxsplit=1)[0]
-    assert '"pages_committed": sync_cycle_accounts.c.pages_committed + 1' in progress
-    assert 'values["completed_at"] = func.transaction_timestamp()' in progress
+    assert "pages_committed=sync_cycle_accounts.c.pages_committed + 1" in progress
+    assert "completed_at=func.transaction_timestamp()" in progress
     assert "StoredSyncCycleStatus.COMPLETED.value" in progress
 
 
