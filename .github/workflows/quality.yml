@@ -60,6 +60,7 @@ jobs:
             packages/banking/pyproject.toml
             packages/banking-pluggy/pyproject.toml
             packages/banking-pluggy-execution/pyproject.toml
+            packages/banking-sync/pyproject.toml
             packages/security/pyproject.toml
             packages/persistence/pyproject.toml
             apps/api/pyproject.toml
@@ -142,6 +143,7 @@ jobs:
             -e './packages/banking[test]' \
             -e './packages/banking-pluggy[test]' \
             -e './packages/banking-pluggy-execution[test]' \
+            -e './packages/banking-sync[test]' \
             -e './packages/security[test]' \
             -e './packages/persistence[test]' \
             -e './apps/api[test]' \
@@ -151,22 +153,22 @@ jobs:
         run: >-
           .quality-venv/bin/python -m ruff check
           packages/banking packages/banking-pluggy packages/banking-pluggy-execution
-          packages/security packages/persistence
+          packages/banking-sync packages/security packages/persistence
           apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
 
       - name: Check Python formatting
         run: >-
           .quality-venv/bin/python -m ruff format --check
           packages/banking packages/banking-pluggy packages/banking-pluggy-execution
-          packages/security packages/persistence
+          packages/banking-sync packages/security packages/persistence
           apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
 
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
           packages/banking/src packages/banking-pluggy/src
-          packages/banking-pluggy-execution/src packages/security/src
-          packages/persistence/src apps/api/app apps/worker/worker
+          packages/banking-pluggy-execution/src packages/banking-sync/src
+          packages/security/src packages/persistence/src apps/api/app apps/worker/worker
           tools/pluggy-spike/pluggy_spike.py
 
       - name: Test Python
@@ -176,7 +178,7 @@ jobs:
           set -o pipefail
           .quality-venv/bin/python -m pytest \
             packages/banking/tests packages/banking-pluggy/tests \
-            packages/banking-pluggy-execution/tests \
+            packages/banking-pluggy-execution/tests packages/banking-sync/tests \
             packages/security/tests packages/persistence/tests \
             apps/api/tests apps/worker/tests tests/quality \
             2>&1 | tee "$RUNNER_TEMP/python-tests.log"
