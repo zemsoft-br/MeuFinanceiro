@@ -89,11 +89,20 @@ class SyncCyclePlan:
     def __post_init__(self) -> None:
         if not isinstance(self.cycle, SyncCycleRecord):
             raise TypeError("cycle must be SyncCycleRecord")
+        seen_external_ids: set[str] = set()
         for account in self.accounts:
             if not isinstance(account, SyncCycleAccountRecord):
                 raise TypeError("accounts must contain SyncCycleAccountRecord")
             if account.cycle_id != self.cycle.id:
                 raise ValueError("sync cycle account belongs to another cycle")
+            if (
+                account.residence_id != self.cycle.residence_id
+                or account.connection_id != self.cycle.connection_id
+            ):
+                raise ValueError("sync cycle account belongs to another scope")
+            if account.external_account_id in seen_external_ids:
+                raise ValueError("sync cycle plan contains duplicate accounts")
+            seen_external_ids.add(account.external_account_id)
 
     @property
     def is_completed(self) -> bool:
