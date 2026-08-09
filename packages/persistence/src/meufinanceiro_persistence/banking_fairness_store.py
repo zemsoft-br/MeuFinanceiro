@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import Connection, Engine, case, func, select, update
+from sqlalchemy import Connection, Engine, case, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -95,16 +95,29 @@ class BankingSyncFairnessStoreMixin:
                     residence_id=residence_id,
                     connection_id=connection_id,
                 )
+                eligible_accounts = _eligible_accounts(
+                    connection,
+                    residence_id=residence_id,
+                    connection_id=connection_id,
+                    external_account_ids=normalized_ids,
+                )
                 cycle = _open_cycle(
                     connection,
                     residence_id=residence_id,
                     connection_id=connection_id,
                 )
+                created_new_cycle = cycle is None
                 if cycle is None:
                     cycle = _create_cycle(
                         connection,
                         residence_id=residence_id,
                         connection_id=connection_id,
+                    )
+                    _clear_previous_cycle_cursors(
+                        connection,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                        external_account_ids=normalized_ids,
                     )
 
                 connection.execute(
@@ -121,12 +134,6 @@ class BankingSyncFairnessStoreMixin:
                     )
                 )
 
-                eligible_accounts = _eligible_accounts(
-                    connection,
-                    residence_id=residence_id,
-                    connection_id=connection_id,
-                    external_account_ids=normalized_ids,
-                )
                 for account in eligible_accounts:
                     statement = postgresql_insert(sync_cycle_accounts).values(
                         id=uuid4(),
@@ -213,6 +220,7 @@ class BankingSyncFairnessStoreMixin:
                 "banking synchronization cycle could not be prepared"
             ) from None
 
+        del created_new_cycle
         return SyncCyclePlan(
             cycle=_cycle_record(cycle),
             accounts=tuple(_cycle_account_record(row) for row in account_rows),
@@ -342,6 +350,25 @@ def _eligible_accounts(
         raise SyncConflictError("banking account is not eligible for transaction sync")
     rows_by_external_id = {row["external_account_id"]: row for row in rows}
     return tuple(rows_by_external_id[account_id] for account_id in external_account_ids)
+
+
+def _clear_previous_cycle_cursors(
+    connection: Connection,
+    *,
+    residence_id: UUID,
+    connection_id: UUID,
+    external_account_ids: tuple[str, ...],
+) -> None:
+    if not external_account_ids:
+        return
+    connection.execute(
+        delete(sync_cursors).where(
+            sync_cursors.c.residence_id == residence_id,
+            sync_cursors.c.connection_id == connection_id,
+            sync_cursors.c.resource == StoredSyncResource.TRANSACTIONS.value,
+            sync_cursors.c.external_account_id.in_(external_account_ids),
+        )
+    )
 
 
 def _active_cycle_accounts(
