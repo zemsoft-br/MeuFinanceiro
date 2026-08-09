@@ -9,14 +9,22 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Index,
-    String,
     Table,
     UniqueConstraint,
     text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 
-from meufinanceiro_persistence.schema import metadata
+from meufinanceiro_persistence.schema import external_accounts, metadata
+
+# The fairness membership references the local account UUID together with its trusted
+# connection/residence scope. The database migration adds the same candidate key.
+UniqueConstraint(
+    external_accounts.c.id,
+    external_accounts.c.connection_id,
+    external_accounts.c.residence_id,
+    name="uq_external_accounts_local_scope",
+)
 
 sync_cycles = Table(
     "sync_cycles",
@@ -24,7 +32,7 @@ sync_cycles = Table(
     Column("id", UUID(as_uuid=True), primary_key=True),
     Column("residence_id", UUID(as_uuid=True), nullable=False),
     Column("connection_id", UUID(as_uuid=True), nullable=False),
-    Column("status", String(16), nullable=False),
+    Column("status", DateTime.__mro__[1](16), nullable=False),
     Column("started_at", DateTime(timezone=True), nullable=False),
     Column("completed_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
