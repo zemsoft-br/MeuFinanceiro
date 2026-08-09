@@ -17,6 +17,7 @@ from meufinanceiro_persistence import (
     StoredExternalAccountStatus,
     StoredExternalAccountType,
     StoredSyncCycleStatus,
+    SyncConflictError,
 )
 
 NOW = datetime(2026, 8, 9, 19, 30, tzinfo=UTC)
@@ -79,7 +80,7 @@ def _setup(
     return installation_id, residence_id, connection.id
 
 
-def test_first_fairness_cycle_preserves_preexisting_recovery_cursor(
+def test_first_fairness_cycle_preserves_and_prioritizes_preexisting_recovery_cursor(
     store: BankingIntegrationStore,
     create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
 ) -> None:
@@ -101,10 +102,11 @@ def test_first_fairness_cycle_preserves_preexisting_recovery_cursor(
         installation_id=installation_id,
         residence_id=residence_id,
         connection_id=connection_id,
-        eligible_external_account_ids=("reset-account-a", "reset-account-b"),
+        eligible_external_account_ids=("reset-account-b", "reset-account-a"),
     )
 
     assert plan.cycle.status is StoredSyncCycleStatus.OPEN
+    assert plan.pending_accounts[0].external_account_id == "reset-account-a"
     cursor = store.get_sync_cursor(
         installation_id=installation_id,
         residence_id=residence_id,
@@ -192,3 +194,43 @@ def test_new_cycle_clears_recovery_cursor_abandoned_by_prior_completed_cycle(
         )
         is None
     )
+
+
+def test_completed_cycle_membership_rejects_additional_pages(
+    store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
+) -> None:
+    installation_id, residence_id, connection_id = _setup(
+        store,
+        create_canonical_residences,
+    )
+    plan = store.prepare_sync_cycle(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        eligible_external_account_ids=("reset-account-a",),
+    )
+    store.apply_transaction_page(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        external_account_id="reset-account-a",
+        observations=(),
+        cursor=None,
+        source_window="FULL",
+        committed_at=NOW,
+        sync_cycle_id=plan.cycle.id,
+    )
+
+    with pytest.raises(SyncConflictError):
+        store.apply_transaction_page(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+            external_account_id="reset-account-a",
+            observations=(),
+            cursor=None,
+            source_window="FULL",
+            committed_at=NOW + timedelta(seconds=1),
+            sync_cycle_id=plan.cycle.id,
+        )
