@@ -1,6 +1,6 @@
 # Observações normalizadas de transação
 
-Status: **fundação persistente da Epic #63 / issue #111**.
+Status: **fundação persistente da Epic #63 / issue #111, estendida pela #115**.
 
 ## Objetivo
 
@@ -34,6 +34,9 @@ A migration cria:
 ```text
 integrations.external_observations
 ```
+
+A #115 não altera esse schema. A semântica de página terminal usa ausência da linha
+em `sync_cursors`, portanto nenhuma migration adicional é necessária.
 
 ## Estrutura da observação
 
@@ -183,6 +186,12 @@ conexão/residência e evitando cascade destrutivo do histórico observado.
 apply_transaction_page(...)
 ```
 
+A partir da #115, o parâmetro de checkpoint é:
+
+```text
+cursor: str | None
+```
+
 A operação executa uma única transação PostgreSQL:
 
 ```text
@@ -191,14 +200,14 @@ set installation/residence context
   -> lock da external_account
   -> preflight do cursor
   -> validar/aplicar observações
-  -> confirmar cursor transactions
+  -> confirmar ou remover checkpoint transactions
   -> COMMIT
 ```
 
 O lock da conta serializa páginas/cursor da mesma conta dentro desta fronteira,
 inclusive quando ainda não existe uma linha de cursor para bloquear.
 
-O cursor é consultado antes de qualquer escrita da página. Se o mesmo
+Para página não terminal, o cursor é consultado antes de qualquer escrita. Se o mesmo
 `committed_at`, cursor e `source_window` já estiverem confirmados, a página é tratada
 como replay concluído e o payload recebido novamente não é reaplicado. Isso impede
 que um cursor já confirmado seja reutilizado para anexar observações diferentes.
@@ -208,9 +217,7 @@ Uma observação mais antiga não sobrescreve `status`, amount ou metadados de u
 observação mais recente. `first_seen_at` permanece o valor original e
 `last_seen_at` só avança estritamente; replay exato não regrava a linha.
 
-Somente depois de aplicar a página a operação confirma `sync_cursors`.
-
-Se qualquer insert/update/constraint ou o commit do cursor falhar, a transação é
+Se qualquer insert/update/constraint ou a mutação do checkpoint falhar, a transação é
 revertida e nenhuma parte da página é confirmada.
 
 Violações de unicidade são classificadas como conflito de identidade. Outras
@@ -223,9 +230,13 @@ Uma página vazia pode confirmar um cursor novo explicitamente. Isso representa 
 consulta bem-sucedida do provider que não devolveu registros no intervalo, e não uma
 inferência de exclusão.
 
-## Cursor
+Uma página vazia terminal (`cursor=None`) também pode encerrar um full-scan e remover
+um recovery cursor anterior na mesma transação.
 
-O cursor continua opaco. A operação de página preserva as invariantes da #109:
+## Cursor e página terminal
+
+O cursor continua opaco. Para página não terminal, a operação preserva as invariantes
+da #109:
 
 - commit anterior ao cursor atual falha;
 - mesmo `committed_at` com cursor/window iguais é idempotente;
@@ -233,9 +244,23 @@ O cursor continua opaco. A operação de página preserva as invariantes da #109
 - atualização posterior substitui o cursor confirmado;
 - cursor/source window não entram no resultado do método.
 
-A API histórica `commit_sync_cursor` criada na #109 continua fora desta transação de
-página. A futura orquestração de transações deve usar `apply_transaction_page` para
-garantir atomicidade entre página e cursor.
+Para a primeira estratégia de sincronização manual da #115, o cursor é um checkpoint
+de **retomada de full-scan incompleto**, não um marcador incremental permanente.
+
+Quando `cursor=None` em uma página terminal:
+
+- as observações são aplicadas normalmente;
+- eventual `sync_cursor` anterior é removido na mesma transação;
+- a remoção só ocorre se o `committed_at` terminal for posterior ao checkpoint atual;
+- falha da página preserva o checkpoint anterior por rollback;
+- ausência da linha passa a significar que não há full-scan interrompido para retomar.
+
+A coluna `sync_cursors.cursor` permanece `NOT NULL`; não se persiste `NULL` como
+checkpoint.
+
+A API histórica `commit_sync_cursor` criada na #109 continua disponível para outras
+fronteiras internas, mas a orquestração de transações usa `apply_transaction_page`
+para garantir atomicidade entre página e checkpoint.
 
 ## Resultado público do store
 
@@ -253,10 +278,9 @@ amount ou descrição.
 Os `repr` dos snapshots/records também omitem material financeiro e identificadores
 externos.
 
-## Relação com a próxima etapa
+## Relação com a orquestração
 
-A partir desta fundação, o próximo recorte pode criar o orquestrador manual
-provider-neutral:
+A #115 compõe esta fundação no orquestrador manual provider-neutral:
 
 ```text
 sync_run
@@ -268,15 +292,14 @@ sync_run
   -> finish_sync
 ```
 
-Esse orquestrador continuará sem reconciliar automaticamente as observações com
+A orquestração continua sem reconciliar automaticamente as observações com
 lançamentos do domínio. A reconciliação `PENDING`/`CONFIRMED`/`DELETED` será
 estabilizada depois da primeira sincronização manual reproduzível.
 
 ## Fora do escopo
 
-- provider I/O neste store;
-- chamada Pluggy real;
-- orquestrador/manual refresh;
+- provider I/O dentro deste store;
+- chamada Pluggy direta pelo store;
 - geração de lançamentos financeiros;
 - reconciliação entre identidades diferentes;
 - endpoint HTTP e Flutter de sync;
