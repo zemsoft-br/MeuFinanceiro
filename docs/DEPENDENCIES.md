@@ -106,6 +106,7 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 | meufinanceiro-banking | 0.1.0 | protocolo neutro, DTOs imutáveis e provider fake sem I/O | AGPL-3.0-only |
 | meufinanceiro-banking-pluggy | 0.1.0 | adapter e transporte HTTP opcional da Pluggy | AGPL-3.0-only |
 | meufinanceiro-banking-pluggy-execution | 0.1.0 | executor read-only contextual por residência | AGPL-3.0-only |
+| meufinanceiro-banking-sync | 0.1.0 | orquestração manual provider-neutral, limitada e sem transporte | AGPL-3.0-only |
 | meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
 | meufinanceiro-persistence | 0.1.0 | engine, transações, Alembic, health e fila PostgreSQL | AGPL-3.0-only |
 
@@ -114,6 +115,8 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 `meufinanceiro-banking-pluggy` depende do contrato neutro e de `httpx==0.28.1`. O pacote é instalado na imagem da API como dependência do executor, mas permanece inativo por padrão, não lê configuração do ambiente e não executa chamadas externas no startup ou nos gates.
 
 `meufinanceiro-banking-pluggy-execution` compõe o contrato neutro, o adapter Pluggy e a persistência para operações internas por residência. O pacote é instalado na API, mas o serviço somente é composto quando `APP_BANKING_ENABLED` e `APP_BANKING_PLUGGY_ENABLED` estão ativos; nenhuma credencial ou rede é acessada no startup.
+
+`meufinanceiro-banking-sync` depende somente dos contratos neutros de banking e persistence. O pacote não inclui HTTP, SDK Pluggy, FastAPI ou worker; recebe o leitor contextual e o store por injeção e limita a execução manual por contas, páginas e registros. Nesta etapa ele também não é composto no startup da API.
 
 ## Ferramentas Python de qualidade
 
