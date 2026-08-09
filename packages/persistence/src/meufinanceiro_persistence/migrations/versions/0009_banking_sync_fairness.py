@@ -31,6 +31,11 @@ def _quoted_role() -> str:
 def upgrade() -> None:
     role = _quoted_role()
     op.execute(
+        "ALTER TABLE integrations.external_accounts "
+        "ADD CONSTRAINT uq_external_accounts_local_scope "
+        "UNIQUE (id, connection_id, residence_id)"
+    )
+    op.execute(
         """
         CREATE TABLE integrations.sync_cycles (
             id uuid PRIMARY KEY,
@@ -75,28 +80,23 @@ def upgrade() -> None:
             cycle_id uuid NOT NULL,
             residence_id uuid NOT NULL,
             connection_id uuid NOT NULL,
-            external_account_id varchar(512) NOT NULL,
+            external_account_record_id uuid NOT NULL,
             active_in_latest_snapshot boolean NOT NULL,
             completed_at timestamptz NULL,
             created_at timestamptz NOT NULL,
             updated_at timestamptz NOT NULL,
-            CONSTRAINT ck_sync_cycle_accounts_external_id_shape CHECK (
-                length(external_account_id) BETWEEN 1 AND 512 AND
-                external_account_id = btrim(external_account_id) AND
-                external_account_id !~ '[[:cntrl:]]'
-            ),
             CONSTRAINT fk_sync_cycle_accounts_cycle_scope FOREIGN KEY (
                 cycle_id, connection_id, residence_id
             ) REFERENCES integrations.sync_cycles (
                 id, connection_id, residence_id
             ) ON DELETE CASCADE,
             CONSTRAINT fk_sync_cycle_accounts_external_account_scope FOREIGN KEY (
-                connection_id, residence_id, external_account_id
+                external_account_record_id, connection_id, residence_id
             ) REFERENCES integrations.external_accounts (
-                connection_id, residence_id, external_account_id
+                id, connection_id, residence_id
             ) ON DELETE CASCADE,
             CONSTRAINT uq_sync_cycle_accounts_cycle_account UNIQUE (
-                cycle_id, external_account_id
+                cycle_id, external_account_record_id
             )
         )
         """
@@ -135,3 +135,7 @@ def downgrade() -> None:
     )
     op.execute("DROP TABLE integrations.sync_cycle_accounts")
     op.execute("DROP TABLE integrations.sync_cycles")
+    op.execute(
+        "ALTER TABLE integrations.external_accounts "
+        "DROP CONSTRAINT uq_external_accounts_local_scope"
+    )
