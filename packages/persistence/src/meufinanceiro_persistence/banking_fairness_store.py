@@ -44,7 +44,7 @@ _CYCLE_ACCOUNT_COLUMNS = (
     sync_cycle_accounts.c.cycle_id,
     sync_cycle_accounts.c.residence_id,
     sync_cycle_accounts.c.connection_id,
-    sync_cycle_accounts.c.external_account_id,
+    external_accounts.c.external_account_id.label("external_account_id"),
     sync_cycle_accounts.c.active_in_latest_snapshot,
     sync_cycle_accounts.c.completed_at,
     sync_cycle_accounts.c.created_at,
@@ -115,19 +115,19 @@ class BankingSyncFairnessStoreMixin:
                     )
                 )
 
-                _validate_eligible_accounts(
+                eligible_accounts = _eligible_accounts(
                     connection,
                     residence_id=residence_id,
                     connection_id=connection_id,
                     external_account_ids=normalized_ids,
                 )
-                for external_account_id in normalized_ids:
+                for account in eligible_accounts:
                     statement = postgresql_insert(sync_cycle_accounts).values(
                         id=uuid4(),
                         cycle_id=cycle["id"],
                         residence_id=residence_id,
                         connection_id=connection_id,
-                        external_account_id=external_account_id,
+                        external_account_record_id=account["id"],
                         active_in_latest_snapshot=True,
                         completed_at=None,
                         created_at=func.transaction_timestamp(),
@@ -137,7 +137,7 @@ class BankingSyncFairnessStoreMixin:
                         statement.on_conflict_do_update(
                             index_elements=[
                                 sync_cycle_accounts.c.cycle_id,
-                                sync_cycle_accounts.c.external_account_id,
+                                sync_cycle_accounts.c.external_account_record_id,
                             ],
                             set_={
                                 "active_in_latest_snapshot": True,
@@ -188,13 +188,33 @@ class BankingSyncFairnessStoreMixin:
                 account_rows = (
                     connection.execute(
                         select(*_CYCLE_ACCOUNT_COLUMNS)
+                        .select_from(
+                            sync_cycle_accounts.join(
+                                external_accounts,
+                                (
+                                    sync_cycle_accounts.c.external_account_record_id
+                                    == external_accounts.c.id
+                                )
+                                & (
+                                    sync_cycle_accounts.c.connection_id
+                                    == external_accounts.c.connection_id
+                                )
+                                & (
+                                    sync_cycle_accounts.c.residence_id
+                                    == external_accounts.c.residence_id
+                                ),
+                            )
+                        )
                         .where(
                             sync_cycle_accounts.c.cycle_id == cycle["id"],
                             sync_cycle_accounts.c.residence_id == residence_id,
                             sync_cycle_accounts.c.connection_id == connection_id,
                             sync_cycle_accounts.c.active_in_latest_snapshot.is_(True),
                         )
-                        .order_by(sync_cycle_accounts.c.created_at, sync_cycle_accounts.c.id)
+                        .order_by(
+                            sync_cycle_accounts.c.created_at,
+                            sync_cycle_accounts.c.id,
+                        )
                     )
                     .mappings()
                     .all()
@@ -313,18 +333,19 @@ def _create_cycle(
     )
 
 
-def _validate_eligible_accounts(
+def _eligible_accounts(
     connection: Connection,
     *,
     residence_id: UUID,
     connection_id: UUID,
     external_account_ids: tuple[str, ...],
-) -> None:
+) -> tuple[RowMapping, ...]:
     if not external_account_ids:
-        return
+        return ()
     rows = (
         connection.execute(
             select(
+                external_accounts.c.id,
                 external_accounts.c.external_account_id,
                 external_accounts.c.type,
             ).where(
@@ -340,6 +361,8 @@ def _validate_eligible_accounts(
         raise SyncConflictError("eligible banking account was not persisted")
     if any(row["type"] not in _TRANSACTION_TYPES for row in rows):
         raise SyncConflictError("banking account is not eligible for transaction sync")
+    rows_by_external_id = {row["external_account_id"]: row for row in rows}
+    return tuple(rows_by_external_id[account_id] for account_id in external_account_ids)
 
 
 def _cycle_record(row: RowMapping) -> SyncCycleRecord:
