@@ -94,15 +94,13 @@ class BankingTransactionObservationStoreMixin:
                     external_account_id=normalized_account_id,
                 )
                 cycle_account_id: UUID | None = None
-                cycle_account_completed = False
                 if sync_cycle_id is not None:
-                    cycle_account_id, cycle_account_completed = _require_cycle_progress(
+                    cycle_account_id = _require_cycle_progress(
                         connection,
                         residence_id=residence_id,
                         connection_id=connection_id,
                         external_account_id=normalized_account_id,
                         sync_cycle_id=sync_cycle_id,
-                        terminal=normalized_cursor is None,
                     )
                 if _page_cursor_already_committed(
                     connection,
@@ -193,11 +191,7 @@ class BankingTransactionObservationStoreMixin:
                     source_window=normalized_window,
                     committed_at=committed_at,
                 )
-                if (
-                    cycle_account_id is not None
-                    and sync_cycle_id is not None
-                    and not cycle_account_completed
-                ):
+                if cycle_account_id is not None and sync_cycle_id is not None:
                     _advance_cycle_account(
                         connection,
                         residence_id=residence_id,
@@ -299,8 +293,7 @@ def _require_cycle_progress(
     connection_id: UUID,
     external_account_id: str,
     sync_cycle_id: UUID,
-    terminal: bool,
-) -> tuple[UUID, bool]:
+) -> UUID:
     row = (
         connection.execute(
             select(
@@ -356,13 +349,12 @@ def _require_cycle_progress(
     cycle_account_id = row["id"]
     if not isinstance(cycle_account_id, UUID):
         raise SyncConflictError("banking sync cycle account identity is invalid")
-    cycle_completed = row["status"] == StoredSyncCycleStatus.COMPLETED.value
-    account_completed = row["completed_at"] is not None
-    if cycle_completed or account_completed:
-        if terminal and account_completed:
-            return cycle_account_id, True
+    if (
+        row["status"] == StoredSyncCycleStatus.COMPLETED.value
+        or row["completed_at"] is not None
+    ):
         raise SyncConflictError("banking sync cycle account is already completed")
-    return cycle_account_id, False
+    return cycle_account_id
 
 
 def _advance_cycle_account(
