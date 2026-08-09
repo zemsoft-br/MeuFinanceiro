@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Index,
+    Integer,
     String,
     Table,
     UniqueConstraint,
@@ -84,9 +85,14 @@ sync_cycle_accounts = Table(
     Column("connection_id", UUID(as_uuid=True), nullable=False),
     Column("external_account_record_id", UUID(as_uuid=True), nullable=False),
     Column("active_in_latest_snapshot", Boolean, nullable=False),
+    Column("pages_committed", Integer, nullable=False),
     Column("completed_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    CheckConstraint(
+        "pages_committed >= 0",
+        name="ck_sync_cycle_accounts_pages_committed",
+    ),
     ForeignKeyConstraint(
         ["cycle_id", "connection_id", "residence_id"],
         [
@@ -120,5 +126,6 @@ Index(
     sync_cycle_accounts.c.residence_id,
     sync_cycle_accounts.c.connection_id,
     sync_cycle_accounts.c.cycle_id,
+    sync_cycle_accounts.c.pages_committed,
     postgresql_where=text("active_in_latest_snapshot AND completed_at IS NULL"),
 )
