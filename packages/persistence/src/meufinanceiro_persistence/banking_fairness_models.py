@@ -7,10 +7,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from meufinanceiro_persistence.banking_models import (
-    clean_external_account_id,
-    require_aware,
-)
+from meufinanceiro_persistence.banking_models import clean_external_account_id, require_aware
 
 
 class StoredSyncCycleStatus(StrEnum):
@@ -53,6 +50,7 @@ class SyncCycleAccountRecord:
     connection_id: UUID
     external_account_id: str
     active_in_latest_snapshot: bool
+    pages_committed: int
     completed_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -65,6 +63,12 @@ class SyncCycleAccountRecord:
         )
         if not isinstance(self.active_in_latest_snapshot, bool):
             raise TypeError("active_in_latest_snapshot must be bool")
+        if (
+            isinstance(self.pages_committed, bool)
+            or not isinstance(self.pages_committed, int)
+            or self.pages_committed < 0
+        ):
+            raise ValueError("pages_committed must be a non-negative integer")
         require_aware(self.completed_at, "completed_at")
         require_aware(self.created_at, "created_at")
         require_aware(self.updated_at, "updated_at")
@@ -77,6 +81,7 @@ class SyncCycleAccountRecord:
         return (
             "SyncCycleAccountRecord("
             f"active_in_latest_snapshot={self.active_in_latest_snapshot!r}, "
+            f"pages_committed={self.pages_committed}, "
             f"is_completed={self.is_completed!r}, <external-id-redacted>)"
         )
 
