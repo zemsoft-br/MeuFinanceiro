@@ -29,7 +29,7 @@ Index(
     "ix_external_observations_reconciliation_scan",
     external_observations.c.residence_id,
     external_observations.c.connection_id,
-    external_observations.c.updated_at,
+    external_observations.c.last_seen_at,
     external_observations.c.id,
 )
 
