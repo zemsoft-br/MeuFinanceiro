@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Connection, Engine, RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -42,12 +42,12 @@ class BankingTransactionObservationStoreMixin:
         connection_id: UUID,
         external_account_id: str,
         observations: tuple[TransactionObservationSnapshot, ...],
-        cursor: str,
+        cursor: str | None,
         source_window: str,
         committed_at: datetime,
     ) -> AppliedTransactionPage:
         normalized_account_id = clean_external_account_id(external_account_id)
-        normalized_cursor = clean_cursor(cursor)
+        normalized_cursor = None if cursor is None else clean_cursor(cursor)
         normalized_window = clean_source_window(source_window)
         require_aware(committed_at, "committed_at")
 
@@ -268,7 +268,7 @@ def _page_cursor_already_committed(
     residence_id: UUID,
     connection_id: UUID,
     external_account_id: str,
-    cursor: str,
+    cursor: str | None,
     source_window: str,
     committed_at: datetime,
 ) -> bool:
@@ -285,7 +285,9 @@ def _page_cursor_already_committed(
         raise SyncConflictError("banking sync cursor commit is stale")
     if previous_committed_at < committed_at:
         return False
-    if existing["cursor"] == cursor and existing["source_window"] == source_window:
+    if cursor is not None and (
+        existing["cursor"] == cursor and existing["source_window"] == source_window
+    ):
         return True
     raise SyncConflictError("banking sync cursor commit is inconsistent")
 
@@ -296,7 +298,7 @@ def _commit_cursor(
     residence_id: UUID,
     connection_id: UUID,
     external_account_id: str,
-    cursor: str,
+    cursor: str | None,
     source_window: str,
     committed_at: datetime,
 ) -> None:
@@ -306,6 +308,15 @@ def _commit_cursor(
         connection_id=connection_id,
         external_account_id=external_account_id,
     )
+    if cursor is None:
+        if existing is None:
+            return
+        previous_committed_at = existing["committed_at"]
+        if previous_committed_at >= committed_at:
+            raise SyncConflictError("banking sync cursor commit is inconsistent")
+        connection.execute(delete(sync_cursors).where(sync_cursors.c.id == existing["id"]))
+        return
+
     if existing is None:
         connection.execute(
             sync_cursors.insert().values(
