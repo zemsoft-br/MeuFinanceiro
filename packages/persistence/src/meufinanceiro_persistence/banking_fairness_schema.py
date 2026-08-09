@@ -73,17 +73,11 @@ sync_cycle_accounts = Table(
     Column("cycle_id", UUID(as_uuid=True), nullable=False),
     Column("residence_id", UUID(as_uuid=True), nullable=False),
     Column("connection_id", UUID(as_uuid=True), nullable=False),
-    Column("external_account_id", String(512), nullable=False),
+    Column("external_account_record_id", UUID(as_uuid=True), nullable=False),
     Column("active_in_latest_snapshot", Boolean, nullable=False),
     Column("completed_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
-    CheckConstraint(
-        "length(external_account_id) BETWEEN 1 AND 512 AND "
-        "external_account_id = btrim(external_account_id) AND "
-        "external_account_id !~ '[[:cntrl:]]'",
-        name="ck_sync_cycle_accounts_external_id_shape",
-    ),
     ForeignKeyConstraint(
         ["cycle_id", "connection_id", "residence_id"],
         [
@@ -95,18 +89,18 @@ sync_cycle_accounts = Table(
         name="fk_sync_cycle_accounts_cycle_scope",
     ),
     ForeignKeyConstraint(
-        ["connection_id", "residence_id", "external_account_id"],
+        ["external_account_record_id", "connection_id", "residence_id"],
         [
+            "integrations.external_accounts.id",
             "integrations.external_accounts.connection_id",
             "integrations.external_accounts.residence_id",
-            "integrations.external_accounts.external_account_id",
         ],
         ondelete="CASCADE",
         name="fk_sync_cycle_accounts_external_account_scope",
     ),
     UniqueConstraint(
         "cycle_id",
-        "external_account_id",
+        "external_account_record_id",
         name="uq_sync_cycle_accounts_cycle_account",
     ),
     schema="integrations",
@@ -117,7 +111,5 @@ Index(
     sync_cycle_accounts.c.residence_id,
     sync_cycle_accounts.c.connection_id,
     sync_cycle_accounts.c.cycle_id,
-    postgresql_where=text(
-        "active_in_latest_snapshot AND completed_at IS NULL"
-    ),
+    postgresql_where=text("active_in_latest_snapshot AND completed_at IS NULL"),
 )
