@@ -195,15 +195,16 @@ class BankingTransactionObservationStoreMixin:
                 )
                 if (
                     cycle_account_id is not None
-                    and normalized_cursor is None
+                    and sync_cycle_id is not None
                     and not cycle_account_completed
                 ):
-                    _complete_cycle_account(
+                    _advance_cycle_account(
                         connection,
                         residence_id=residence_id,
                         connection_id=connection_id,
                         cycle_account_id=cycle_account_id,
                         sync_cycle_id=sync_cycle_id,
+                        terminal=normalized_cursor is None,
                     )
         except BankingPersistenceError:
             raise
@@ -361,15 +362,23 @@ def _require_cycle_progress(
     return row["id"], False
 
 
-def _complete_cycle_account(
+def _advance_cycle_account(
     connection: Connection,
     *,
     residence_id: UUID,
     connection_id: UUID,
     cycle_account_id: UUID,
     sync_cycle_id: UUID,
+    terminal: bool,
 ) -> None:
-    completed_id = connection.scalar(
+    values: dict[str, object] = {
+        "pages_committed": sync_cycle_accounts.c.pages_committed + 1,
+        "updated_at": func.transaction_timestamp(),
+    }
+    if terminal:
+        values["completed_at"] = func.transaction_timestamp()
+
+    advanced_id = connection.scalar(
         update(sync_cycle_accounts)
         .where(
             sync_cycle_accounts.c.id == cycle_account_id,
@@ -379,14 +388,14 @@ def _complete_cycle_account(
             sync_cycle_accounts.c.active_in_latest_snapshot.is_(True),
             sync_cycle_accounts.c.completed_at.is_(None),
         )
-        .values(
-            completed_at=func.transaction_timestamp(),
-            updated_at=func.transaction_timestamp(),
-        )
+        .values(**values)
         .returning(sync_cycle_accounts.c.id)
     )
-    if completed_id != cycle_account_id:
-        raise SyncConflictError("banking sync cycle completion is inconsistent")
+    if advanced_id != cycle_account_id:
+        raise SyncConflictError("banking sync cycle progress is inconsistent")
+
+    if not terminal:
+        return
 
     pending_count = connection.scalar(
         select(func.count())
