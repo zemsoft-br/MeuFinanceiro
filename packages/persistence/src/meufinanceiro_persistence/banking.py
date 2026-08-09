@@ -64,6 +64,16 @@ from meufinanceiro_persistence.banking_observation_models import (
 from meufinanceiro_persistence.banking_observation_store import (
     BankingTransactionObservationStoreMixin,
 )
+from meufinanceiro_persistence.banking_reconciliation_models import (
+    ReconciledTransactionIdentityKind,
+    ReconciledTransactionRecord,
+    TransactionReconciliationConflictError,
+    TransactionReconciliationError,
+    TransactionReconciliationResult,
+)
+from meufinanceiro_persistence.banking_reconciliation_store import (
+    BankingTransactionReconciliationStoreMixin,
+)
 from meufinanceiro_persistence.banking_store import (
     BankingIntegrationStore as _BankingIntegrationStore,
 )
@@ -99,6 +109,7 @@ class EnabledProviderCredentials:
 
 
 class BankingIntegrationStore(
+    BankingTransactionReconciliationStoreMixin,
     BankingTransactionObservationStoreMixin,
     BankingSyncFairnessStoreMixin,
     BankingManualSyncStoreMixin,
@@ -247,6 +258,8 @@ __all__ = [
     "ProviderConfigurationRecord",
     "ProviderConfigurationState",
     "ProviderNotEnabledError",
+    "ReconciledTransactionIdentityKind",
+    "ReconciledTransactionRecord",
     "StoredCapability",
     "StoredCapabilitySource",
     "StoredCapabilityState",
@@ -270,5 +283,8 @@ __all__ = [
     "SyncTransitionError",
     "TransactionObservationRecord",
     "TransactionObservationSnapshot",
+    "TransactionReconciliationConflictError",
+    "TransactionReconciliationError",
+    "TransactionReconciliationResult",
     "credential_aad",
 ]
