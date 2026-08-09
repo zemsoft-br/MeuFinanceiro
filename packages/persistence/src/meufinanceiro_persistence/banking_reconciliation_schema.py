@@ -11,20 +11,26 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
-    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 
 from meufinanceiro_persistence.banking_observation_schema import external_observations
 from meufinanceiro_persistence.schema import metadata
 
-# The reconciliation source relation scopes a local observation UUID to its trusted
-# connection/residence. The migration adds the same candidate key in PostgreSQL.
+# Reconciliation references local observation UUIDs together with trusted scope. The
+# migration adds the same candidate key in PostgreSQL.
 UniqueConstraint(
     external_observations.c.id,
     external_observations.c.connection_id,
     external_observations.c.residence_id,
     name="uq_external_observations_local_scope",
+)
+Index(
+    "ix_external_observations_reconciliation_scan",
+    external_observations.c.residence_id,
+    external_observations.c.connection_id,
+    external_observations.c.updated_at,
+    external_observations.c.id,
 )
 
 reconciled_transactions = Table(
@@ -144,7 +150,7 @@ Index(
     reconciled_transaction_sources.c.reconciled_transaction_id,
 )
 
-DIRTY_RECONCILIATION_PREDICATE = text(
-    "reconciled_transaction_sources.id IS NULL OR "
-    "reconciled_transaction_sources.observation_updated_at < external_observations.updated_at"
-)
+__all__ = [
+    "reconciled_transaction_sources",
+    "reconciled_transactions",
+]
