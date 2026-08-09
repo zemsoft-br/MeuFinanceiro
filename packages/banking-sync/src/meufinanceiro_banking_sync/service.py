@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
@@ -165,6 +166,7 @@ _PROVIDER_ERROR_CATEGORIES = {
     ProviderErrorCategory.INTERNAL: StoredSyncErrorCategory.INTERNAL,
 }
 _TRANSACTION_ACCOUNT_TYPES = {AccountType.BANK, AccountType.CREDIT}
+_PROVIDER_REASON_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$")
 
 
 def _utc_now() -> datetime:
@@ -173,7 +175,11 @@ def _utc_now() -> datetime:
 
 def _aware_now(clock: Clock) -> datetime:
     value = clock()
-    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
         raise ValueError("manual sync clock must return a timezone-aware datetime")
     return value
 
@@ -186,20 +192,20 @@ class ManualBankingSyncService:
         reader: ContextualBankingReadService,
         store: ManualSyncStore,
         *,
-        limits: ManualSyncLimits = ManualSyncLimits(),
+        limits: ManualSyncLimits | None = None,
         clock: Clock = _utc_now,
     ) -> None:
         if not isinstance(reader, ContextualBankingReadService):
             raise TypeError("reader must satisfy ContextualBankingReadService")
         if not isinstance(store, ManualSyncStore):
             raise TypeError("store must satisfy ManualSyncStore")
-        if not isinstance(limits, ManualSyncLimits):
+        if limits is not None and not isinstance(limits, ManualSyncLimits):
             raise TypeError("limits must be ManualSyncLimits")
         if not callable(clock):
             raise TypeError("clock must be callable")
         self._reader = reader
         self._store = store
-        self._limits = limits
+        self._limits = ManualSyncLimits() if limits is None else limits
         self._clock = clock
 
     def run(
@@ -284,7 +290,7 @@ class ManualBankingSyncService:
                 current_cursor = (
                     None if persisted_cursor is None else persisted_cursor.cursor
                 )
-                seen_cursors = (
+                seen_cursors: set[str] = (
                     set() if current_cursor is None else {current_cursor}
                 )
 
@@ -322,7 +328,10 @@ class ManualBankingSyncService:
                         cursor=current_cursor,
                         changed_since=None,
                     )
-                    if records_seen + len(page.records) > self._limits.max_records_per_run:
+                    if (
+                        records_seen + len(page.records)
+                        > self._limits.max_records_per_run
+                    ):
                         return self._finish_partial(
                             installation_id=installation_id,
                             residence_id=residence_id,
@@ -338,7 +347,8 @@ class ManualBankingSyncService:
                     next_cursor = page.next_cursor
                     if next_cursor is not None and next_cursor in seen_cursors:
                         raise ManualSyncExecutionError(
-                            "manual banking synchronization detected an invalid cursor sequence"
+                            "manual banking synchronization detected an invalid "
+                            "cursor sequence"
                         )
 
                     applied = self._store.apply_transaction_page(
@@ -395,18 +405,7 @@ class ManualBankingSyncService:
                 pages_committed=pages_committed,
                 error=error,
             )
-        except BankingPersistenceError:
-            return self._finish_internal_error(
-                installation_id=installation_id,
-                residence_id=residence_id,
-                connection_id=connection_id,
-                sync_run_id=sync_run.id,
-                records_seen=records_seen,
-                records_applied=records_applied,
-                accounts_seen=accounts_seen,
-                pages_committed=pages_committed,
-            )
-        except ManualSyncExecutionError:
+        except (BankingPersistenceError, ManualSyncExecutionError):
             return self._finish_internal_error(
                 installation_id=installation_id,
                 residence_id=residence_id,
@@ -448,7 +447,7 @@ class ManualBankingSyncService:
             )
             target = pending if cursor is not None else fresh
             target.append((account, cursor))
-        return tuple((*pending, *fresh))
+        return tuple(pending + fresh)
 
     def _finish_partial(
         self,
@@ -500,17 +499,34 @@ class ManualBankingSyncService:
             if pages_committed > 0
             else StoredSyncStatus.FAILED
         )
-        finished = self._store.finish_sync(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            connection_id=connection_id,
-            sync_run_id=sync_run_id,
-            status=status,
-            records_seen=records_seen,
-            records_applied=records_applied,
-            error_category=_PROVIDER_ERROR_CATEGORIES[error.category],
-            provider_reason_code=error.provider_reason_code,
+        category = _PROVIDER_ERROR_CATEGORIES.get(
+            error.category,
+            StoredSyncErrorCategory.INTERNAL,
         )
+        reason_code = _safe_provider_reason_code(error.provider_reason_code)
+        try:
+            finished = self._store.finish_sync(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                connection_id=connection_id,
+                sync_run_id=sync_run_id,
+                status=status,
+                records_seen=records_seen,
+                records_applied=records_applied,
+                error_category=category,
+                provider_reason_code=reason_code,
+            )
+        except Exception:
+            return self._finish_internal_error(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                connection_id=connection_id,
+                sync_run_id=sync_run_id,
+                records_seen=records_seen,
+                records_applied=records_applied,
+                accounts_seen=accounts_seen,
+                pages_committed=pages_committed,
+            )
         return ManualSyncResult(
             sync_run_id=finished.id,
             status=finished.status,
@@ -549,7 +565,7 @@ class ManualBankingSyncService:
                 records_applied=records_applied,
                 error_category=StoredSyncErrorCategory.INTERNAL,
             )
-        except BankingPersistenceError:
+        except Exception:
             raise ManualSyncExecutionError(
                 "manual banking synchronization could not be completed"
             ) from None
@@ -597,6 +613,12 @@ def _transaction_snapshot(
         category=transaction.category,
         observed_at=observed_at,
     )
+
+
+def _safe_provider_reason_code(value: str | None) -> str | None:
+    if value is None or not _PROVIDER_REASON_PATTERN.fullmatch(value):
+        return None
+    return value
 
 
 def _existing_result(
