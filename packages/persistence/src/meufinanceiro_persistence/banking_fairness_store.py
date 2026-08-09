@@ -106,19 +106,24 @@ class BankingSyncFairnessStoreMixin:
                     residence_id=residence_id,
                     connection_id=connection_id,
                 )
-                created_new_cycle = cycle is None
                 if cycle is None:
+                    has_previous_cycle = _has_completed_cycle(
+                        connection,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                    )
                     cycle = _create_cycle(
                         connection,
                         residence_id=residence_id,
                         connection_id=connection_id,
                     )
-                    _clear_previous_cycle_cursors(
-                        connection,
-                        residence_id=residence_id,
-                        connection_id=connection_id,
-                        external_account_ids=normalized_ids,
-                    )
+                    if has_previous_cycle:
+                        _clear_previous_cycle_cursors(
+                            connection,
+                            residence_id=residence_id,
+                            connection_id=connection_id,
+                            external_account_ids=normalized_ids,
+                        )
 
                 connection.execute(
                     update(sync_cycle_accounts)
@@ -220,7 +225,6 @@ class BankingSyncFairnessStoreMixin:
                 "banking synchronization cycle could not be prepared"
             ) from None
 
-        del created_new_cycle
         return SyncCyclePlan(
             cycle=_cycle_record(cycle),
             accounts=tuple(_cycle_account_record(row) for row in account_rows),
@@ -292,6 +296,24 @@ def _open_cycle(
         .mappings()
         .one_or_none()
     )
+
+
+def _has_completed_cycle(
+    connection: Connection,
+    *,
+    residence_id: UUID,
+    connection_id: UUID,
+) -> bool:
+    value = connection.scalar(
+        select(sync_cycles.c.id)
+        .where(
+            sync_cycles.c.residence_id == residence_id,
+            sync_cycles.c.connection_id == connection_id,
+            sync_cycles.c.status == StoredSyncCycleStatus.COMPLETED.value,
+        )
+        .limit(1)
+    )
+    return value is not None
 
 
 def _create_cycle(
