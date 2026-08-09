@@ -65,15 +65,29 @@ Depois de `replace_external_accounts`, `prepare_sync_cycle` recebe somente as co
 Na mesma transação local:
 
 1. bloqueia a conexão;
-2. obtém ou cria o ciclo aberto;
-3. marca memberships antigos como fora do snapshot atual;
-4. resolve e valida os UUIDs locais das contas na mesma residência/conexão;
-5. rejeita qualquer conta persistida com tipo não transacional;
-6. cria/reativa memberships do snapshot corrente;
-7. preserva `pages_committed` e `completed_at` de memberships já existentes;
-8. se nenhuma conta ativa estiver pendente, conclui o ciclo.
+2. valida as contas elegíveis dentro da mesma residência/conexão;
+3. obtém ou cria o ciclo aberto;
+4. marca memberships antigos como fora do snapshot atual;
+5. resolve os UUIDs locais das contas;
+6. rejeita qualquer conta persistida com tipo não transacional;
+7. cria/reativa memberships do snapshot corrente;
+8. preserva `pages_committed` e `completed_at` de memberships já existentes;
+9. se nenhuma conta ativa estiver pendente, conclui o ciclo.
 
 Uma conta que desaparece do snapshot não é apagada, desconectada nem inferida como removida. Ela apenas deixa de bloquear o ciclo corrente. Se reaparecer no mesmo ciclo, seu progresso anterior é preservado; se reaparecer em ciclo futuro, participa do novo full-scan normalmente.
+
+### Recuperação na fronteira entre ciclos
+
+Um recovery cursor pertence ao full-scan que o produziu. Portanto ele não pode atravessar silenciosamente um ciclo já concluído.
+
+Há duas regras distintas:
+
+- no **primeiro ciclo persistente da #117**, cursores que já existiam da implementação #115 são preservados, permitindo retomar uma sincronização interrompida durante a transição de versão;
+- quando já existe um ciclo persistente `completed` e um novo ciclo é criado, qualquer recovery cursor de `transactions` das contas elegíveis atuais é removido antes da nova membership. O novo ciclo começa full-scan limpo.
+
+Isso resolve o caso de uma conta que tinha paginação incompleta, desapareceu do snapshot, deixou de bloquear o ciclo antigo e reapareceu depois. O cursor abandonado do ciclo antigo não é reutilizado no ciclo novo.
+
+A limpeza é residence/connection-scoped, limitada às contas elegíveis já validadas e executada dentro da mesma transação que cria o ciclo.
 
 ## Fairness entre runs
 
@@ -124,7 +138,7 @@ set residence context
 
 Qualquer falha reverte observações, cursor, contador de serviço e progresso de conclusão juntos.
 
-Replay de uma página não terminal já confirmada retorna antes de incrementar novamente `pages_committed`. Um replay terminal de uma conta já concluída também não altera o contador. Uma página não terminal após conclusão falha fechado.
+Replay exato de uma página **não terminal** já confirmada retorna antes de incrementar novamente `pages_committed`, preservando a idempotência do cursor. Depois que uma membership foi concluída, qualquer nova página usando aquele `sync_cycle_id` falha fechado. O orquestrador não tenta essa operação porque contas concluídas já foram retiradas do plano pendente antes de qualquer I/O do provider.
 
 ## RLS e integridade
 
@@ -178,6 +192,6 @@ Os DTOs de ciclo não exibem:
 
 ## Validação
 
-Os testes adicionados cobrem migration, persistência do ciclo, terminal atômico, mudança de membership, isolamento de escopo, RLS, redaction, limite de contas e rotação por limite de páginas.
+Os testes adicionados cobrem migration, persistência do ciclo, terminal atômico, mudança de membership, isolamento de escopo, RLS, redaction, limite de contas, rotação por limite de páginas e reset seguro de recovery cursors entre ciclos.
 
 GitHub Actions não é gate operacional deste projeto. Validações não executadas nesta sessão permanecem declaradas como não executadas.
