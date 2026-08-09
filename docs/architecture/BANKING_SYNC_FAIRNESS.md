@@ -36,18 +36,22 @@ Um novo ciclo nasce somente quando não existe ciclo aberto. Depois que um ciclo
 
 ## Progresso por conta
 
-`sync_cycle_accounts` registra a participação de uma conta no ciclo corrente:
+`sync_cycle_accounts` registra a participação de uma conta **local** no ciclo corrente:
 
 ```text
 cycle_id
 residence_id
 connection_id
-external_account_id       # somente interno; nunca representação pública
+external_account_record_id  # UUID local de integrations.external_accounts
 active_in_latest_snapshot
 completed_at
 ```
 
-O estado não depende da ordem retornada pelo provider.
+O identificador externo do provider não é duplicado nessa tabela. O store resolve o UUID local a partir do snapshot já persistido e só projeta o `external_account_id` transitoriamente no DTO interno usado pelo orquestrador. Esse valor permanece redigido de `repr` e nunca vira resultado público.
+
+A migration adiciona uma candidate key explícita `(id, connection_id, residence_id)` em `external_accounts`, permitindo que a FK de membership feche o escopo da conta local no próprio PostgreSQL.
+
+O estado não depende da ordem retornada pelo provider nem usa o identificador externo como marcador de progresso.
 
 Uma conta é concluída somente quando sua página terminal foi confirmada. Página não terminal nunca grava `completed_at`.
 
@@ -60,10 +64,11 @@ Na mesma transação local:
 1. bloqueia a conexão;
 2. obtém ou cria o ciclo aberto;
 3. marca memberships antigos como fora do snapshot atual;
-4. valida que todas as contas recebidas existem na mesma residência/conexão e são transacionais;
-5. cria/reativa memberships do snapshot corrente;
-6. preserva `completed_at` de contas já concluídas;
-7. se nenhuma conta ativa estiver pendente, conclui o ciclo.
+4. resolve e valida os UUIDs locais das contas na mesma residência/conexão;
+5. rejeita qualquer conta persistida com tipo não transacional;
+6. cria/reativa memberships do snapshot corrente;
+7. preserva `completed_at` de contas já concluídas;
+8. se nenhuma conta ativa estiver pendente, conclui o ciclo.
 
 Uma conta que desaparece do snapshot não é apagada, desconectada nem inferida como removida. Ela apenas deixa de bloquear o ciclo corrente. Se reaparecer em um ciclo futuro, volta a participar normalmente.
 
@@ -88,7 +93,7 @@ No caminho cycle-aware, `apply_transaction_page` executa uma única transação 
 ```text
 set residence context
   -> lock external account
-  -> lock/validate cycle membership
+  -> lock/validate cycle + local membership
   -> apply normalized observations
   -> confirm/remove recovery cursor
   -> terminal? mark cycle account completed
@@ -114,7 +119,7 @@ A política usa diretamente `app.current_residence_id`.
 FKs compostas garantem:
 
 - ciclo e membership na mesma residência/conexão;
-- membership ligado à conta externa da mesma residência/conexão.
+- UUID local da conta, membership e ciclo na mesma residência/conexão.
 
 A remoção física de conexão/conta pode limpar apenas esse estado de scheduler por cascade. Isso não altera o histórico financeiro normalizado nem os `sync_runs` existentes.
 
@@ -129,6 +134,7 @@ A composição canônica `BankingIntegrationStore` implementa `SyncFairnessStore
 Os DTOs de ciclo não exibem:
 
 - external account ID;
+- UUID local da conta;
 - cursor;
 - fingerprint;
 - amount;
@@ -151,6 +157,6 @@ O resultado público de sincronização permanece inalterado.
 
 ## Validação
 
-Os testes adicionados cobrem migration, persistência do ciclo, terminal atômico, mudança de membership, isolamento de escopo, redaction e progressão entre múltiplos runs limitados.
+Os testes adicionados cobrem migration, persistência do ciclo, terminal atômico, mudança de membership, isolamento de escopo, RLS, redaction e progressão entre múltiplos runs limitados.
 
 GitHub Actions não é gate operacional deste projeto. Validações não executadas nesta sessão permanecem declaradas como não executadas.
