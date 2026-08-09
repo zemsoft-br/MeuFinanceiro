@@ -158,6 +158,9 @@ max_pages_per_run = 20
 max_records_per_run = 5000
 ```
 
+Os limites são *safety ceilings* por execução lógica, e não um escalonador persistente
+entre contas.
+
 Os limites são verificados antes da próxima chamada externa sempre que o tamanho já é
 conhecido.
 
@@ -166,6 +169,27 @@ persistida e o checkpoint anterior permanece intacto.
 
 Atingir limite termina o run como `partial`; não há retry automático na camada de
 orquestração.
+
+### Limitação conhecida de continuidade entre contas
+
+O estado persistido deste recorte sabe distinguir apenas uma conta com full-scan
+**interrompido** (possui `sync_cursor`) de uma conta **sem checkpoint**. Depois que uma
+conta alcança página terminal, seu cursor é removido e ela volta a ser indistinguível,
+para a próxima operação lógica, de uma conta que ainda não começou um novo full-scan.
+
+Consequência: se os limites globais forem atingidos exatamente depois de concluir
+contas que aparecem antes de outras no snapshot do provider, uma execução posterior
+pode voltar a escanear essas contas antes de alcançar as restantes. O comportamento é
+bounded e idempotente, mas este estágio **não promete fairness ou progresso global
+entre todas as contas ao longo de múltiplos runs**.
+
+Não é usado cursor sentinela local para contornar isso, porque o cursor é material
+opaco do provider. A solução correta exige estado persistido explícito de progresso ou
+uma estratégia incremental/fair-scheduling própria, que fica para issue separada antes
+de transformar esta fundação em sincronização automática.
+
+Na prática, o limite protege a execução atual; ele não deve ser interpretado como uma
+garantia de varredura eventual para cardinalidades acima do teto configurado.
 
 ## Erros
 
@@ -231,6 +255,7 @@ da #80/#81.
 
 - sync incremental por `changed_since`;
 - recovery automático de run órfão;
+- fairness/escalonamento persistente entre contas através de múltiplos runs;
 - reconciliação entre observações e lançamentos financeiros;
 - inferência de deleção por ausência;
 - cartões/faturas/parcelas;
