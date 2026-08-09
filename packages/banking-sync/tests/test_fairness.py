@@ -9,8 +9,10 @@ from meufinanceiro_banking_sync import ManualBankingSyncService, ManualSyncLimit
 from meufinanceiro_persistence import (
     AppliedTransactionPage,
     StoredSyncCycleStatus,
+    StoredSyncResource,
     StoredSyncStatus,
     StoredSyncTrigger,
+    SyncCursorRecord,
     SyncCycleAccountRecord,
     SyncCyclePlan,
     SyncCycleRecord,
@@ -36,9 +38,20 @@ def _account(identifier: str) -> ExternalAccount:
 
 
 class FairReader:
-    def __init__(self) -> None:
-        self.accounts = (_account("account-a"), _account("account-b"), _account("account-c"))
-        self.transaction_calls: list[str] = []
+    def __init__(
+        self,
+        *,
+        page_sequences: dict[str, list[str | None]] | None = None,
+    ) -> None:
+        self.accounts = (
+            _account("account-a"),
+            _account("account-b"),
+            _account("account-c"),
+        )
+        self.page_sequences = {
+            key: list(values) for key, values in (page_sequences or {}).items()
+        }
+        self.transaction_calls: list[tuple[str, str | None]] = []
 
     def list_accounts(
         self,
@@ -62,12 +75,13 @@ class FairReader:
         cursor: str | None = None,
         changed_since: datetime | None = None,
     ) -> ExternalPage[object]:
-        assert cursor is None
         assert changed_since is None
-        self.transaction_calls.append(external_account_id)
+        self.transaction_calls.append((external_account_id, cursor))
+        sequence = self.page_sequences.get(external_account_id)
+        next_cursor = None if not sequence else sequence.pop(0)
         return ExternalPage(
             records=(),
-            next_cursor=None,
+            next_cursor=next_cursor,
             source_window="FULL",
             retrieved_at=NOW,
         )
@@ -77,6 +91,8 @@ class FairStore:
     def __init__(self) -> None:
         self.cycle_id = uuid4()
         self.completed: set[str] = set()
+        self.pages_committed: dict[str, int] = {}
+        self.cursors: dict[str, str] = {}
         self.runs: dict[str, SyncRunRecord] = {}
 
     def begin_manual_sync(
@@ -120,7 +136,9 @@ class FairStore:
         connection_id: UUID,
         sync_run_id: UUID,
     ) -> SyncRunRecord:
-        key, run = next((key, run) for key, run in self.runs.items() if run.id == sync_run_id)
+        key, run = next(
+            (key, run) for key, run in self.runs.items() if run.id == sync_run_id
+        )
         running = replace(
             run,
             status=StoredSyncStatus.RUNNING,
@@ -145,7 +163,9 @@ class FairStore:
         http_status=None,
         retry_window_bucket=None,
     ) -> SyncRunRecord:
-        key, run = next((key, run) for key, run in self.runs.items() if run.id == sync_run_id)
+        key, run = next(
+            (key, run) for key, run in self.runs.items() if run.id == sync_run_id
+        )
         finished = replace(
             run,
             status=status,
@@ -163,8 +183,28 @@ class FairStore:
     def replace_external_accounts(self, **kwargs):
         return ()
 
-    def get_sync_cursor(self, **kwargs):
-        return None
+    def get_sync_cursor(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+        external_account_id: str,
+    ) -> SyncCursorRecord | None:
+        cursor = self.cursors.get(external_account_id)
+        if cursor is None:
+            return None
+        return SyncCursorRecord(
+            id=uuid4(),
+            residence_id=residence_id,
+            connection_id=connection_id,
+            external_account_id=external_account_id,
+            resource=StoredSyncResource.TRANSACTIONS,
+            cursor=cursor,
+            source_window="FULL",
+            committed_at=NOW,
+            updated_at=NOW,
+        )
 
     def prepare_sync_cycle(
         self,
@@ -189,6 +229,18 @@ class FairStore:
             created_at=NOW,
             updated_at=NOW,
         )
+        indexed_ids = tuple(enumerate(eligible_external_account_ids))
+        ordered_ids = tuple(
+            account_id
+            for _, account_id in sorted(
+                indexed_ids,
+                key=lambda item: (
+                    self.pages_committed.get(item[1], 0),
+                    0 if item[1] in self.cursors else 1,
+                    item[0],
+                ),
+            )
+        )
         accounts = tuple(
             SyncCycleAccountRecord(
                 id=uuid4(),
@@ -197,11 +249,12 @@ class FairStore:
                 connection_id=connection_id,
                 external_account_id=account_id,
                 active_in_latest_snapshot=True,
+                pages_committed=self.pages_committed.get(account_id, 0),
                 completed_at=NOW if account_id in self.completed else None,
                 created_at=NOW,
                 updated_at=NOW,
             )
-            for account_id in eligible_external_account_ids
+            for account_id in ordered_ids
         )
         return SyncCyclePlan(cycle=cycle, accounts=accounts)
 
@@ -219,13 +272,31 @@ class FairStore:
         sync_cycle_id: UUID | None = None,
     ) -> AppliedTransactionPage:
         assert sync_cycle_id == self.cycle_id
-        assert cursor is None
-        self.completed.add(external_account_id)
+        self.pages_committed[external_account_id] = (
+            self.pages_committed.get(external_account_id, 0) + 1
+        )
+        if cursor is None:
+            self.cursors.pop(external_account_id, None)
+            self.completed.add(external_account_id)
+        else:
+            self.cursors[external_account_id] = cursor
         return AppliedTransactionPage(
             records_seen=len(observations),
             records_applied=len(observations),
             committed_at=committed_at,
         )
+
+
+def _run(
+    service: ManualBankingSyncService,
+    key: str,
+):
+    return service.run(
+        installation_id=INSTALLATION_ID,
+        residence_id=RESIDENCE_ID,
+        connection_id=CONNECTION_ID,
+        idempotency_key=key,
+    )
 
 
 def test_account_limit_advances_to_new_accounts_across_runs() -> None:
@@ -242,27 +313,55 @@ def test_account_limit_advances_to_new_accounts_across_runs() -> None:
         clock=lambda: NOW,
     )
 
-    first = service.run(
-        installation_id=INSTALLATION_ID,
-        residence_id=RESIDENCE_ID,
-        connection_id=CONNECTION_ID,
-        idempotency_key="fair-run-1",
-    )
-    second = service.run(
-        installation_id=INSTALLATION_ID,
-        residence_id=RESIDENCE_ID,
-        connection_id=CONNECTION_ID,
-        idempotency_key="fair-run-2",
-    )
-    third = service.run(
-        installation_id=INSTALLATION_ID,
-        residence_id=RESIDENCE_ID,
-        connection_id=CONNECTION_ID,
-        idempotency_key="fair-run-3",
-    )
+    first = _run(service, "fair-run-1")
+    second = _run(service, "fair-run-2")
+    third = _run(service, "fair-run-3")
 
     assert first.status is StoredSyncStatus.PARTIAL
     assert second.status is StoredSyncStatus.PARTIAL
     assert third.status is StoredSyncStatus.SUCCEEDED
-    assert reader.transaction_calls == ["account-a", "account-b", "account-c"]
+    assert reader.transaction_calls == [
+        ("account-a", None),
+        ("account-b", None),
+        ("account-c", None),
+    ]
+    assert store.completed == {"account-a", "account-b", "account-c"}
+
+
+def test_page_limit_rotates_long_recovery_before_it_can_starve_fresh_account() -> None:
+    reader = FairReader(
+        page_sequences={
+            "account-a": ["account-a-cursor-1", None],
+        }
+    )
+    store = FairStore()
+    service = ManualBankingSyncService(
+        reader,
+        store,
+        limits=ManualSyncLimits(
+            max_accounts_per_run=3,
+            max_pages_per_run=1,
+            max_records_per_run=100,
+        ),
+        clock=lambda: NOW,
+    )
+
+    first = _run(service, "page-fair-run-1")
+    second = _run(service, "page-fair-run-2")
+    third = _run(service, "page-fair-run-3")
+
+    assert first.status is StoredSyncStatus.PARTIAL
+    assert second.status is StoredSyncStatus.PARTIAL
+    assert third.status is StoredSyncStatus.PARTIAL
+    assert reader.transaction_calls[:3] == [
+        ("account-a", None),
+        ("account-b", None),
+        ("account-c", None),
+    ]
+    assert store.cursors["account-a"] == "account-a-cursor-1"
+    assert store.completed == {"account-b", "account-c"}
+
+    fourth = _run(service, "page-fair-run-4")
+    assert fourth.status is StoredSyncStatus.SUCCEEDED
+    assert reader.transaction_calls[-1] == ("account-a", "account-a-cursor-1")
     assert store.completed == {"account-a", "account-b", "account-c"}
