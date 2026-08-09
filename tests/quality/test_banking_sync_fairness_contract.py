@@ -15,6 +15,9 @@ FAIRNESS_STORE = (
     ROOT
     / "packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py"
 ).read_text(encoding="utf-8")
+BANKING_STORE = (
+    ROOT / "packages/persistence/src/meufinanceiro_persistence/banking.py"
+).read_text(encoding="utf-8")
 OBSERVATION_STORE = (
     ROOT
     / "packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py"
@@ -33,6 +36,9 @@ def test_fairness_uses_explicit_residence_scoped_cycle_state() -> None:
     assert "uq_sync_cycles_one_open_per_connection" in MIGRATION
     assert "fk_sync_cycle_accounts_cycle_scope" in MIGRATION
     assert "fk_sync_cycle_accounts_external_account_scope" in MIGRATION
+    assert "uq_external_accounts_local_scope" in MIGRATION
+    assert "external_account_record_id uuid NOT NULL" in MIGRATION
+    assert "external_account_id varchar" not in MIGRATION
     assert "active_in_latest_snapshot" in FAIRNESS_SCHEMA
 
 
@@ -49,10 +55,24 @@ def test_fairness_never_encodes_local_state_inside_provider_cursor() -> None:
     assert "completed_at" in FAIRNESS_STORE
 
 
-def test_orchestrator_filters_completed_accounts_before_spending_run_limits() -> None:
+def test_fairness_orders_least_served_accounts_before_recovery_priority() -> None:
+    assert "pages_committed" in MIGRATION
+    assert "pages_committed=0" in FAIRNESS_STORE
+    ordering = FAIRNESS_STORE.split("def _active_cycle_accounts", maxsplit=1)[1].split(
+        "def _cycle_record", maxsplit=1
+    )[0]
+    assert "sync_cycle_accounts.c.pages_committed" in ordering
+    assert "cursor_priority" in ordering
+    assert ordering.index("sync_cycle_accounts.c.pages_committed") < ordering.rindex(
+        "cursor_priority"
+    )
+
+
+def test_orchestrator_preserves_persistent_fair_order_before_spending_limits() -> None:
     assert "prepare_sync_cycle(" in SYNC_SERVICE
     assert "_pending_cycle_accounts(" in SYNC_SERVICE
     assert "cycle_plan.pending_accounts" in SYNC_SERVICE
+    assert "preserve_input_order=preserve_fair_order" in SYNC_SERVICE
     assert "accounts=accounts_to_process" in SYNC_SERVICE
     assert "sync_cycle_id=cycle_id" in SYNC_SERVICE
 
@@ -63,15 +83,24 @@ def test_terminal_page_commits_cursor_and_cycle_progress_together() -> None:
         maxsplit=1,
     )[1].split("def _set_context", maxsplit=1)[0]
     assert "_commit_cursor(" in page_method
-    assert "_complete_cycle_account(" in page_method
-    assert "normalized_cursor is None" in page_method
+    assert "_advance_cycle_account(" in page_method
+    assert "terminal=normalized_cursor is None" in page_method
 
-    completion = OBSERVATION_STORE.split(
-        "def _complete_cycle_account",
+    progress = OBSERVATION_STORE.split(
+        "def _advance_cycle_account",
         maxsplit=1,
     )[1].split("def _page_cursor_already_committed", maxsplit=1)[0]
-    assert "completed_at=func.transaction_timestamp()" in completion
-    assert "StoredSyncCycleStatus.COMPLETED.value" in completion
+    assert '"pages_committed": sync_cycle_accounts.c.pages_committed + 1' in progress
+    assert 'values["completed_at"] = func.transaction_timestamp()' in progress
+    assert "StoredSyncCycleStatus.COMPLETED.value" in progress
+
+
+def test_canonical_store_composes_fairness_extension() -> None:
+    declaration = BANKING_STORE.split(
+        "class BankingIntegrationStore(",
+        maxsplit=1,
+    )[1].split("):", maxsplit=1)[0]
+    assert "BankingSyncFairnessStoreMixin" in declaration
 
 
 def test_fairness_result_boundaries_do_not_add_external_material() -> None:
