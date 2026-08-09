@@ -11,6 +11,15 @@ from meufinanceiro_security.errors import SecurityError
 from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError
 
+from meufinanceiro_persistence.banking_fairness_models import (
+    StoredSyncCycleStatus,
+    SyncCycleAccountRecord,
+    SyncCyclePlan,
+    SyncCycleRecord,
+)
+from meufinanceiro_persistence.banking_fairness_store import (
+    BankingSyncFairnessStoreMixin,
+)
 from meufinanceiro_persistence.banking_models import (
     BankingConnectionRecord,
     BankingPersistenceError,
@@ -91,6 +100,7 @@ class EnabledProviderCredentials:
 
 class BankingIntegrationStore(
     BankingTransactionObservationStoreMixin,
+    BankingSyncFairnessStoreMixin,
     BankingManualSyncStoreMixin,
     _BankingIntegrationStore,
 ):
@@ -243,6 +253,7 @@ __all__ = [
     "StoredConnectionStatus",
     "StoredExternalAccountStatus",
     "StoredExternalAccountType",
+    "StoredSyncCycleStatus",
     "StoredSyncErrorCategory",
     "StoredSyncResource",
     "StoredSyncStatus",
@@ -251,6 +262,9 @@ __all__ = [
     "SyncConflictError",
     "SyncCursorNotFoundError",
     "SyncCursorRecord",
+    "SyncCycleAccountRecord",
+    "SyncCyclePlan",
+    "SyncCycleRecord",
     "SyncRunNotFoundError",
     "SyncRunRecord",
     "SyncTransitionError",
