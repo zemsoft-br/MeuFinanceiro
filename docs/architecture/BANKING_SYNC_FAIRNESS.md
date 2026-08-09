@@ -6,7 +6,7 @@ Status: **implementação da Epic #63 / issue #117**.
 
 A primeira orquestração manual (#115) usa limites globais por run e recovery cursor por conta. O cursor representa exclusivamente uma paginação interrompida e é removido na página terminal.
 
-Sem estado adicional, uma nova operação não distingue uma conta que já concluiu o full-scan de outra que ainda não foi percorrida no ciclo multi-conta. Em cardinalidades acima dos limites, contas anteriores poderiam ser lidas repetidamente antes de contas posteriores.
+Sem estado adicional, uma nova operação não distingue uma conta que já concluiu o full-scan de outra que ainda não foi percorrida no ciclo multi-conta. Além disso, uma única conta com paginação longa poderia consumir repetidamente todo o orçamento de páginas antes das demais.
 
 ## Decisão
 
@@ -44,6 +44,7 @@ residence_id
 connection_id
 external_account_record_id  # UUID local de integrations.external_accounts
 active_in_latest_snapshot
+pages_committed              # scheduler metadata local
 completed_at
 ```
 
@@ -51,9 +52,11 @@ O identificador externo do provider não é duplicado nessa tabela. O store reso
 
 A migration adiciona uma candidate key explícita `(id, connection_id, residence_id)` em `external_accounts`, permitindo que a FK de membership feche o escopo da conta local no próprio PostgreSQL.
 
+`pages_committed` começa em zero e é incrementado somente depois que uma nova página é confirmada. Ele não contém cursor, quantidade de transações nem valor financeiro; existe exclusivamente para ordenar o orçamento entre contas.
+
 O estado não depende da ordem retornada pelo provider nem usa o identificador externo como marcador de progresso.
 
-Uma conta é concluída somente quando sua página terminal foi confirmada. Página não terminal nunca grava `completed_at`.
+Uma conta é concluída somente quando sua página terminal foi confirmada. Página não terminal incrementa `pages_committed`, mas nunca grava `completed_at`.
 
 ## Reconciliação do snapshot
 
@@ -67,26 +70,43 @@ Na mesma transação local:
 4. resolve e valida os UUIDs locais das contas na mesma residência/conexão;
 5. rejeita qualquer conta persistida com tipo não transacional;
 6. cria/reativa memberships do snapshot corrente;
-7. preserva `completed_at` de contas já concluídas;
+7. preserva `pages_committed` e `completed_at` de memberships já existentes;
 8. se nenhuma conta ativa estiver pendente, conclui o ciclo.
 
-Uma conta que desaparece do snapshot não é apagada, desconectada nem inferida como removida. Ela apenas deixa de bloquear o ciclo corrente. Se reaparecer em um ciclo futuro, volta a participar normalmente.
+Uma conta que desaparece do snapshot não é apagada, desconectada nem inferida como removida. Ela apenas deixa de bloquear o ciclo corrente. Se reaparecer no mesmo ciclo, seu progresso anterior é preservado; se reaparecer em ciclo futuro, participa do novo full-scan normalmente.
 
 ## Fairness entre runs
 
-O orquestrador consulta o plano persistente e processa apenas contas ativas ainda pendentes.
-
-Dentro desse conjunto, contas com recovery cursor continuam prioritárias. Assim:
+O plano persistente ordena as contas ativas por:
 
 ```text
-run 1 -> conta A conclui -> limite atingido
-run 2 -> A é ignorada; conta B recebe orçamento
-run 3 -> B é ignorada; conta C recebe orçamento
+1. menor pages_committed
+2. recovery cursor primeiro, em caso de empate
+3. ordem local estável de membership
 ```
+
+O orquestrador preserva essa ordem e só então aplica os limites do run.
+
+Essa regra resolve dois casos:
+
+```text
+run 1 -> conta A conclui -> limite de contas
+run 2 -> A é ignorada; conta B recebe orçamento
+```
+
+E também paginação longa:
+
+```text
+run 1 -> A confirma página 1 e atinge limite de páginas
+run 2 -> B/C (0 páginas) vêm antes de A (1 página)
+run posterior -> A retoma pelo cursor persistido
+```
+
+Assim o recovery cursor continua prioritário entre contas igualmente atendidas, mas não pode monopolizar indefinidamente as contas com menos serviço confirmado.
 
 Quando a última conta ativa conclui, o ciclo muda para `completed`. O próximo run inicia um novo full-scan completo.
 
-## Atomicidade da página terminal
+## Atomicidade da página
 
 No caminho cycle-aware, `apply_transaction_page` executa uma única transação PostgreSQL:
 
@@ -96,14 +116,15 @@ set residence context
   -> lock/validate cycle + local membership
   -> apply normalized observations
   -> confirm/remove recovery cursor
+  -> increment pages_committed
   -> terminal? mark cycle account completed
   -> last active pending account? mark cycle completed
   -> COMMIT
 ```
 
-Qualquer falha reverte observações, cursor e progresso de fairness juntos.
+Qualquer falha reverte observações, cursor, contador de serviço e progresso de conclusão juntos.
 
-Um replay terminal de uma conta já concluída é tolerado de forma idempotente; uma página não terminal após conclusão falha fechado.
+Replay de uma página não terminal já confirmada retorna antes de incrementar novamente `pages_committed`. Um replay terminal de uma conta já concluída também não altera o contador. Uma página não terminal após conclusão falha fechado.
 
 ## RLS e integridade
 
@@ -141,7 +162,7 @@ Os DTOs de ciclo não exibem:
 - descrição;
 - UUID de ciclo/conexão/residência.
 
-O resultado público de sincronização permanece inalterado.
+`pages_committed` pode aparecer em diagnóstico local redigido porque é apenas um contador operacional do scheduler. O resultado público de sincronização permanece inalterado.
 
 ## Fora do escopo
 
@@ -157,6 +178,6 @@ O resultado público de sincronização permanece inalterado.
 
 ## Validação
 
-Os testes adicionados cobrem migration, persistência do ciclo, terminal atômico, mudança de membership, isolamento de escopo, RLS, redaction e progressão entre múltiplos runs limitados.
+Os testes adicionados cobrem migration, persistência do ciclo, terminal atômico, mudança de membership, isolamento de escopo, RLS, redaction, limite de contas e rotação por limite de páginas.
 
 GitHub Actions não é gate operacional deste projeto. Validações não executadas nesta sessão permanecem declaradas como não executadas.
