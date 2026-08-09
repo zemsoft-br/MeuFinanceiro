@@ -28,6 +28,7 @@ from meufinanceiro_persistence import (
     StoredSyncStatus,
     StoredTransactionObservationStatus,
     SyncCursorRecord,
+    SyncCyclePlan,
     SyncRunRecord,
     TransactionObservationSnapshot,
 )
@@ -68,7 +69,7 @@ class ContextualBankingReadService(Protocol):
 
 @runtime_checkable
 class ManualSyncStore(Protocol):
-    """Persistence operations required by the manual synchronization boundary."""
+    """Persistence operations required by the bounded sync boundary."""
 
     def begin_manual_sync(
         self,
@@ -133,6 +134,34 @@ class ManualSyncStore(Protocol):
         cursor: str | None,
         source_window: str,
         committed_at: datetime,
+    ) -> AppliedTransactionPage: ...
+
+
+@runtime_checkable
+class SyncFairnessStore(Protocol):
+    """Optional explicit-cycle extension implemented by the canonical PostgreSQL store."""
+
+    def prepare_sync_cycle(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+        eligible_external_account_ids: tuple[str, ...],
+    ) -> SyncCyclePlan: ...
+
+    def apply_transaction_page(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+        external_account_id: str,
+        observations: tuple[TransactionObservationSnapshot, ...],
+        cursor: str | None,
+        source_window: str,
+        committed_at: datetime,
+        sync_cycle_id: UUID | None = None,
     ) -> AppliedTransactionPage: ...
 
 
@@ -205,6 +234,7 @@ class ManualBankingSyncService:
             raise TypeError("clock must be callable")
         self._reader = reader
         self._store = store
+        self._fairness_store = store if isinstance(store, SyncFairnessStore) else None
         self._limits = ManualSyncLimits() if limits is None else limits
         self._clock = clock
 
@@ -265,11 +295,31 @@ class ManualBankingSyncService:
                 for account in accounts
                 if account.account_type in _TRANSACTION_ACCOUNT_TYPES
             )
+            cycle_id: UUID | None = None
+            accounts_to_process = eligible_accounts
+            preserve_fair_order = False
+            if self._fairness_store is not None:
+                cycle_plan = self._fairness_store.prepare_sync_cycle(
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    connection_id=connection_id,
+                    eligible_external_account_ids=tuple(
+                        account.external_account_id for account in eligible_accounts
+                    ),
+                )
+                cycle_id = cycle_plan.cycle.id
+                accounts_to_process = _pending_cycle_accounts(
+                    eligible_accounts,
+                    cycle_plan,
+                )
+                preserve_fair_order = True
+
             prioritized = self._prioritize_accounts_with_cursors(
                 installation_id=installation_id,
                 residence_id=residence_id,
                 connection_id=connection_id,
-                accounts=eligible_accounts,
+                accounts=accounts_to_process,
+                preserve_input_order=preserve_fair_order,
             )
 
             processed_accounts = 0
@@ -351,19 +401,33 @@ class ManualBankingSyncService:
                             "cursor sequence"
                         )
 
-                    applied = self._store.apply_transaction_page(
-                        installation_id=installation_id,
-                        residence_id=residence_id,
-                        connection_id=connection_id,
-                        external_account_id=account.external_account_id,
-                        observations=tuple(
-                            _transaction_snapshot(transaction, page.retrieved_at)
-                            for transaction in page.records
-                        ),
-                        cursor=next_cursor,
-                        source_window=page.source_window,
-                        committed_at=page.retrieved_at,
+                    observations = tuple(
+                        _transaction_snapshot(transaction, page.retrieved_at)
+                        for transaction in page.records
                     )
+                    if self._fairness_store is not None and cycle_id is not None:
+                        applied = self._fairness_store.apply_transaction_page(
+                            installation_id=installation_id,
+                            residence_id=residence_id,
+                            connection_id=connection_id,
+                            external_account_id=account.external_account_id,
+                            observations=observations,
+                            cursor=next_cursor,
+                            source_window=page.source_window,
+                            committed_at=page.retrieved_at,
+                            sync_cycle_id=cycle_id,
+                        )
+                    else:
+                        applied = self._store.apply_transaction_page(
+                            installation_id=installation_id,
+                            residence_id=residence_id,
+                            connection_id=connection_id,
+                            external_account_id=account.external_account_id,
+                            observations=observations,
+                            cursor=next_cursor,
+                            source_window=page.source_window,
+                            committed_at=page.retrieved_at,
+                        )
                     records_seen += applied.records_seen
                     records_applied += applied.records_applied
                     pages_committed += 1
@@ -435,7 +499,9 @@ class ManualBankingSyncService:
         residence_id: UUID,
         connection_id: UUID,
         accounts: tuple[ExternalAccount, ...],
+        preserve_input_order: bool = False,
     ) -> tuple[tuple[ExternalAccount, SyncCursorRecord | None], ...]:
+        ordered: list[tuple[ExternalAccount, SyncCursorRecord | None]] = []
         pending: list[tuple[ExternalAccount, SyncCursorRecord | None]] = []
         fresh: list[tuple[ExternalAccount, SyncCursorRecord | None]] = []
         for account in accounts:
@@ -445,9 +511,12 @@ class ManualBankingSyncService:
                 connection_id=connection_id,
                 external_account_id=account.external_account_id,
             )
+            if preserve_input_order:
+                ordered.append((account, cursor))
+                continue
             target = pending if cursor is not None else fresh
             target.append((account, cursor))
-        return tuple(pending + fresh)
+        return tuple(ordered if preserve_input_order else pending + fresh)
 
     def _finish_partial(
         self,
@@ -580,6 +649,36 @@ class ManualBankingSyncService:
         )
 
 
+def _pending_cycle_accounts(
+    eligible_accounts: tuple[ExternalAccount, ...],
+    cycle_plan: SyncCyclePlan,
+) -> tuple[ExternalAccount, ...]:
+    eligible_by_id = {account.external_account_id: account for account in eligible_accounts}
+    if len(eligible_by_id) != len(eligible_accounts):
+        raise ManualSyncExecutionError(
+            "manual banking synchronization received duplicate account identities"
+        )
+    plan_by_id = {account.external_account_id: account for account in cycle_plan.accounts}
+    if len(plan_by_id) != len(cycle_plan.accounts) or set(plan_by_id) != set(eligible_by_id):
+        raise ManualSyncExecutionError(
+            "manual banking synchronization cycle does not match the account snapshot"
+        )
+    pending_accounts = cycle_plan.pending_accounts
+    if cycle_plan.is_completed:
+        if pending_accounts:
+            raise ManualSyncExecutionError(
+                "completed banking synchronization cycle still has pending accounts"
+            )
+        return ()
+    if not pending_accounts and eligible_accounts:
+        raise ManualSyncExecutionError(
+            "open banking synchronization cycle has no pending account"
+        )
+    return tuple(
+        eligible_by_id[account.external_account_id] for account in pending_accounts
+    )
+
+
 def _account_snapshot(
     account: ExternalAccount,
     *,
@@ -640,4 +739,5 @@ __all__ = [
     "ContextualBankingReadService",
     "ManualBankingSyncService",
     "ManualSyncStore",
+    "SyncFairnessStore",
 ]

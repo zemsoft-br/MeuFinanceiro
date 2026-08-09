@@ -1,4 +1,4 @@
-"""Atomic persistence of normalized transaction pages and their confirmed cursor."""
+"""Atomic persistence of normalized transaction pages and confirmed sync progress."""
 
 from __future__ import annotations
 
@@ -10,6 +10,11 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Connection, Engine, RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from meufinanceiro_persistence.banking_fairness_models import StoredSyncCycleStatus
+from meufinanceiro_persistence.banking_fairness_schema import (
+    sync_cycle_accounts,
+    sync_cycles,
+)
 from meufinanceiro_persistence.banking_models import (
     BankingPersistenceError,
     ConnectionNotFoundError,
@@ -45,6 +50,7 @@ class BankingTransactionObservationStoreMixin:
         cursor: str | None,
         source_window: str,
         committed_at: datetime,
+        sync_cycle_id: UUID | None = None,
     ) -> AppliedTransactionPage:
         normalized_account_id = clean_external_account_id(external_account_id)
         normalized_cursor = None if cursor is None else clean_cursor(cursor)
@@ -87,6 +93,15 @@ class BankingTransactionObservationStoreMixin:
                     connection_id=connection_id,
                     external_account_id=normalized_account_id,
                 )
+                cycle_account_id: UUID | None = None
+                if sync_cycle_id is not None:
+                    cycle_account_id = _require_cycle_progress(
+                        connection,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                        external_account_id=normalized_account_id,
+                        sync_cycle_id=sync_cycle_id,
+                    )
                 if _page_cursor_already_committed(
                     connection,
                     residence_id=residence_id,
@@ -176,6 +191,15 @@ class BankingTransactionObservationStoreMixin:
                     source_window=normalized_window,
                     committed_at=committed_at,
                 )
+                if cycle_account_id is not None and sync_cycle_id is not None:
+                    _advance_cycle_account(
+                        connection,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                        cycle_account_id=cycle_account_id,
+                        sync_cycle_id=sync_cycle_id,
+                        terminal=normalized_cursor is None,
+                    )
         except BankingPersistenceError:
             raise
         except IntegrityError as error:
@@ -260,6 +284,144 @@ def _lock_external_account(
     )
     if value is None:
         raise ExternalAccountNotFoundError("external banking account was not found")
+
+
+def _require_cycle_progress(
+    connection: Connection,
+    *,
+    residence_id: UUID,
+    connection_id: UUID,
+    external_account_id: str,
+    sync_cycle_id: UUID,
+) -> UUID:
+    row = (
+        connection.execute(
+            select(
+                sync_cycle_accounts.c.id,
+                sync_cycles.c.status,
+                sync_cycle_accounts.c.active_in_latest_snapshot,
+                sync_cycle_accounts.c.completed_at,
+            )
+            .select_from(
+                sync_cycle_accounts.join(
+                    sync_cycles,
+                    (sync_cycle_accounts.c.cycle_id == sync_cycles.c.id)
+                    & (
+                        sync_cycle_accounts.c.connection_id
+                        == sync_cycles.c.connection_id
+                    )
+                    & (
+                        sync_cycle_accounts.c.residence_id
+                        == sync_cycles.c.residence_id
+                    ),
+                ).join(
+                    external_accounts,
+                    (
+                        sync_cycle_accounts.c.external_account_record_id
+                        == external_accounts.c.id
+                    )
+                    & (
+                        sync_cycle_accounts.c.connection_id
+                        == external_accounts.c.connection_id
+                    )
+                    & (
+                        sync_cycle_accounts.c.residence_id
+                        == external_accounts.c.residence_id
+                    ),
+                )
+            )
+            .where(
+                sync_cycle_accounts.c.cycle_id == sync_cycle_id,
+                sync_cycle_accounts.c.residence_id == residence_id,
+                sync_cycle_accounts.c.connection_id == connection_id,
+                external_accounts.c.external_account_id == external_account_id,
+            )
+            .with_for_update()
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise SyncConflictError("banking sync cycle account was not found")
+    if not row["active_in_latest_snapshot"]:
+        raise SyncConflictError("banking sync cycle account is not active")
+
+    cycle_account_id = row["id"]
+    if not isinstance(cycle_account_id, UUID):
+        raise SyncConflictError("banking sync cycle account identity is invalid")
+    if (
+        row["status"] == StoredSyncCycleStatus.COMPLETED.value
+        or row["completed_at"] is not None
+    ):
+        raise SyncConflictError("banking sync cycle account is already completed")
+    return cycle_account_id
+
+
+def _advance_cycle_account(
+    connection: Connection,
+    *,
+    residence_id: UUID,
+    connection_id: UUID,
+    cycle_account_id: UUID,
+    sync_cycle_id: UUID,
+    terminal: bool,
+) -> None:
+    statement = update(sync_cycle_accounts).where(
+        sync_cycle_accounts.c.id == cycle_account_id,
+        sync_cycle_accounts.c.cycle_id == sync_cycle_id,
+        sync_cycle_accounts.c.residence_id == residence_id,
+        sync_cycle_accounts.c.connection_id == connection_id,
+        sync_cycle_accounts.c.active_in_latest_snapshot.is_(True),
+        sync_cycle_accounts.c.completed_at.is_(None),
+    )
+    if terminal:
+        statement = statement.values(
+            pages_committed=sync_cycle_accounts.c.pages_committed + 1,
+            completed_at=func.transaction_timestamp(),
+            updated_at=func.transaction_timestamp(),
+        )
+    else:
+        statement = statement.values(
+            pages_committed=sync_cycle_accounts.c.pages_committed + 1,
+            updated_at=func.transaction_timestamp(),
+        )
+
+    advanced_id = connection.scalar(statement.returning(sync_cycle_accounts.c.id))
+    if advanced_id != cycle_account_id:
+        raise SyncConflictError("banking sync cycle progress is inconsistent")
+
+    if not terminal:
+        return
+
+    pending_count = connection.scalar(
+        select(func.count())
+        .select_from(sync_cycle_accounts)
+        .where(
+            sync_cycle_accounts.c.cycle_id == sync_cycle_id,
+            sync_cycle_accounts.c.residence_id == residence_id,
+            sync_cycle_accounts.c.connection_id == connection_id,
+            sync_cycle_accounts.c.active_in_latest_snapshot.is_(True),
+            sync_cycle_accounts.c.completed_at.is_(None),
+        )
+    )
+    if pending_count == 0:
+        cycle_id = connection.scalar(
+            update(sync_cycles)
+            .where(
+                sync_cycles.c.id == sync_cycle_id,
+                sync_cycles.c.residence_id == residence_id,
+                sync_cycles.c.connection_id == connection_id,
+                sync_cycles.c.status == StoredSyncCycleStatus.OPEN.value,
+            )
+            .values(
+                status=StoredSyncCycleStatus.COMPLETED.value,
+                completed_at=func.transaction_timestamp(),
+                updated_at=func.transaction_timestamp(),
+            )
+            .returning(sync_cycles.c.id)
+        )
+        if cycle_id != sync_cycle_id:
+            raise SyncConflictError("banking sync cycle completion is inconsistent")
 
 
 def _page_cursor_already_committed(

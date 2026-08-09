@@ -10,6 +10,7 @@ from .service import (
     ContextualBankingReadService,
     ManualBankingSyncService,
     ManualSyncStore,
+    SyncFairnessStore,
 )
 
 __all__ = [
@@ -20,6 +21,7 @@ __all__ = [
     "ManualSyncResult",
     "ManualSyncStopReason",
     "ManualSyncStore",
+    "SyncFairnessStore",
 ]
 
 __version__ = "0.1.0"
