@@ -297,6 +297,7 @@ class ManualBankingSyncService:
             )
             cycle_id: UUID | None = None
             accounts_to_process = eligible_accounts
+            preserve_fair_order = False
             if self._fairness_store is not None:
                 cycle_plan = self._fairness_store.prepare_sync_cycle(
                     installation_id=installation_id,
@@ -311,12 +312,14 @@ class ManualBankingSyncService:
                     eligible_accounts,
                     cycle_plan,
                 )
+                preserve_fair_order = True
 
             prioritized = self._prioritize_accounts_with_cursors(
                 installation_id=installation_id,
                 residence_id=residence_id,
                 connection_id=connection_id,
                 accounts=accounts_to_process,
+                preserve_input_order=preserve_fair_order,
             )
 
             processed_accounts = 0
@@ -496,7 +499,9 @@ class ManualBankingSyncService:
         residence_id: UUID,
         connection_id: UUID,
         accounts: tuple[ExternalAccount, ...],
+        preserve_input_order: bool = False,
     ) -> tuple[tuple[ExternalAccount, SyncCursorRecord | None], ...]:
+        ordered: list[tuple[ExternalAccount, SyncCursorRecord | None]] = []
         pending: list[tuple[ExternalAccount, SyncCursorRecord | None]] = []
         fresh: list[tuple[ExternalAccount, SyncCursorRecord | None]] = []
         for account in accounts:
@@ -506,9 +511,12 @@ class ManualBankingSyncService:
                 connection_id=connection_id,
                 external_account_id=account.external_account_id,
             )
+            if preserve_input_order:
+                ordered.append((account, cursor))
+                continue
             target = pending if cursor is not None else fresh
             target.append((account, cursor))
-        return tuple(pending + fresh)
+        return tuple(ordered if preserve_input_order else pending + fresh)
 
     def _finish_partial(
         self,
@@ -655,21 +663,19 @@ def _pending_cycle_accounts(
         raise ManualSyncExecutionError(
             "manual banking synchronization cycle does not match the account snapshot"
         )
-    pending_ids = {
-        account.external_account_id for account in cycle_plan.pending_accounts
-    }
+    pending_accounts = cycle_plan.pending_accounts
     if cycle_plan.is_completed:
-        if pending_ids:
+        if pending_accounts:
             raise ManualSyncExecutionError(
                 "completed banking synchronization cycle still has pending accounts"
             )
         return ()
-    if not pending_ids and eligible_accounts:
+    if not pending_accounts and eligible_accounts:
         raise ManualSyncExecutionError(
             "open banking synchronization cycle has no pending account"
         )
     return tuple(
-        account for account in eligible_accounts if account.external_account_id in pending_ids
+        eligible_by_id[account.external_account_id] for account in pending_accounts
     )
 
 
