@@ -353,13 +353,16 @@ def _require_cycle_progress(
     if not row["active_in_latest_snapshot"]:
         raise SyncConflictError("banking sync cycle account is not active")
 
+    cycle_account_id = row["id"]
+    if not isinstance(cycle_account_id, UUID):
+        raise SyncConflictError("banking sync cycle account identity is invalid")
     cycle_completed = row["status"] == StoredSyncCycleStatus.COMPLETED.value
     account_completed = row["completed_at"] is not None
     if cycle_completed or account_completed:
         if terminal and account_completed:
-            return row["id"], True
+            return cycle_account_id, True
         raise SyncConflictError("banking sync cycle account is already completed")
-    return row["id"], False
+    return cycle_account_id, False
 
 
 def _advance_cycle_account(
@@ -371,26 +374,27 @@ def _advance_cycle_account(
     sync_cycle_id: UUID,
     terminal: bool,
 ) -> None:
-    values: dict[str, object] = {
-        "pages_committed": sync_cycle_accounts.c.pages_committed + 1,
-        "updated_at": func.transaction_timestamp(),
-    }
-    if terminal:
-        values["completed_at"] = func.transaction_timestamp()
-
-    advanced_id = connection.scalar(
-        update(sync_cycle_accounts)
-        .where(
-            sync_cycle_accounts.c.id == cycle_account_id,
-            sync_cycle_accounts.c.cycle_id == sync_cycle_id,
-            sync_cycle_accounts.c.residence_id == residence_id,
-            sync_cycle_accounts.c.connection_id == connection_id,
-            sync_cycle_accounts.c.active_in_latest_snapshot.is_(True),
-            sync_cycle_accounts.c.completed_at.is_(None),
-        )
-        .values(**values)
-        .returning(sync_cycle_accounts.c.id)
+    statement = update(sync_cycle_accounts).where(
+        sync_cycle_accounts.c.id == cycle_account_id,
+        sync_cycle_accounts.c.cycle_id == sync_cycle_id,
+        sync_cycle_accounts.c.residence_id == residence_id,
+        sync_cycle_accounts.c.connection_id == connection_id,
+        sync_cycle_accounts.c.active_in_latest_snapshot.is_(True),
+        sync_cycle_accounts.c.completed_at.is_(None),
     )
+    if terminal:
+        statement = statement.values(
+            pages_committed=sync_cycle_accounts.c.pages_committed + 1,
+            completed_at=func.transaction_timestamp(),
+            updated_at=func.transaction_timestamp(),
+        )
+    else:
+        statement = statement.values(
+            pages_committed=sync_cycle_accounts.c.pages_committed + 1,
+            updated_at=func.transaction_timestamp(),
+        )
+
+    advanced_id = connection.scalar(statement.returning(sync_cycle_accounts.c.id))
     if advanced_id != cycle_account_id:
         raise SyncConflictError("banking sync cycle progress is inconsistent")
 
