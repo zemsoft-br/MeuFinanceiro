@@ -183,7 +183,7 @@ def _apply(
     )
 
 
-def test_provider_identity_updates_same_canonical_row_across_status_and_payload_changes(
+def test_provider_identity_updates_same_row_across_status_and_payload_changes(
     engine: Engine,
     store: BankingIntegrationStore,
     create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
@@ -223,11 +223,7 @@ def test_provider_identity_updates_same_canonical_row_across_status_and_payload_
     assert not created.has_more
 
     with engine.begin() as connection:
-        first = (
-            connection.execute(select(reconciled_transactions))
-            .mappings()
-            .one()
-        )
+        first = connection.execute(select(reconciled_transactions)).mappings().one()
     canonical_id = first["id"]
     assert first["status"] == StoredTransactionObservationStatus.PENDING.value
     assert first["identity_kind"] == "PROVIDER_ID"
@@ -353,7 +349,7 @@ def test_absence_never_infers_deleted_state(
     assert status == StoredTransactionObservationStatus.CONFIRMED.value
 
 
-def test_fingerprint_fallback_stays_isolated_from_provider_identity(
+def test_fingerprint_and_distinct_provider_ids_remain_separate_identities(
     engine: Engine,
     store: BankingIntegrationStore,
     create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
@@ -390,7 +386,15 @@ def test_fingerprint_fallback_stays_isolated_from_provider_identity(
                 account_id=account_id,
                 status=StoredTransactionObservationStatus.CONFIRMED,
                 observed_at=observed_at,
-                external_resource_id="provider-id-same-financial-shape",
+                external_resource_id="provider-id-a",
+                amount="10.00",
+                description="Inferred A",
+            ),
+            _observation(
+                account_id=account_id,
+                status=StoredTransactionObservationStatus.CONFIRMED,
+                observed_at=observed_at,
+                external_resource_id="provider-id-b",
                 amount="10.00",
                 description="Inferred A",
             ),
@@ -403,14 +407,19 @@ def test_fingerprint_fallback_stays_isolated_from_provider_identity(
         residence_id=residence_id,
         connection_id=connection_id,
     )
-    assert result.observations_seen == 3
-    assert result.identities_created == 3
+    assert result.observations_seen == 4
+    assert result.identities_created == 4
 
     with engine.begin() as connection:
         kinds = connection.execute(
             select(reconciled_transactions.c.identity_kind)
         ).scalars().all()
-    assert sorted(kinds) == ["FINGERPRINT", "FINGERPRINT", "PROVIDER_ID"]
+    assert sorted(kinds) == [
+        "FINGERPRINT",
+        "FINGERPRINT",
+        "PROVIDER_ID",
+        "PROVIDER_ID",
+    ]
 
 
 def test_reconciliation_is_bounded_and_resumes_from_local_dirty_state(
@@ -485,6 +494,75 @@ def test_reconciliation_is_bounded_and_resumes_from_local_dirty_state(
         )
 
 
+def test_older_observation_never_regresses_newer_canonical_state(
+    engine: Engine,
+    store: BankingIntegrationStore,
+    create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
+) -> None:
+    installation_id, residence_id, connection_id, account_id = _setup(
+        store,
+        create_canonical_residences,
+    )
+    observed_at = NOW + timedelta(seconds=1)
+    _apply(
+        store,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        account_id=account_id,
+        observations=(
+            _observation(
+                account_id=account_id,
+                status=StoredTransactionObservationStatus.PENDING,
+                observed_at=observed_at,
+                external_resource_id="provider-stale-observation",
+            ),
+        ),
+        committed_at=observed_at,
+    )
+    store.reconcile_transaction_observations(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
+
+    with engine.begin() as connection:
+        observation_id = connection.scalar(select(external_observations.c.id))
+        target_id = connection.scalar(select(reconciled_transactions.c.id))
+        assert observation_id is not None
+        assert target_id is not None
+        connection.execute(
+            update(reconciled_transactions)
+            .where(reconciled_transactions.c.id == target_id)
+            .values(
+                status=StoredTransactionObservationStatus.CONFIRMED.value,
+                source_observed_at=observed_at + timedelta(seconds=10),
+            )
+        )
+        connection.execute(
+            update(external_observations)
+            .where(external_observations.c.id == observation_id)
+            .values(updated_at=func.transaction_timestamp())
+        )
+
+    result = store.reconcile_transaction_observations(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
+    assert result.observations_seen == 1
+    assert result.identities_unchanged == 1
+    with engine.begin() as connection:
+        row = connection.execute(
+            select(
+                reconciled_transactions.c.status,
+                reconciled_transactions.c.source_observed_at,
+            ).where(reconciled_transactions.c.id == target_id)
+        ).one()
+    assert row.status == StoredTransactionObservationStatus.CONFIRMED.value
+    assert row.source_observed_at == observed_at + timedelta(seconds=10)
+
+
 def test_same_timestamp_incompatible_canonical_state_fails_closed(
     engine: Engine,
     store: BankingIntegrationStore,
@@ -530,7 +608,7 @@ def test_same_timestamp_incompatible_canonical_state_fails_closed(
         connection.execute(
             update(external_observations)
             .where(external_observations.c.id == observation_id)
-            .values(updated_at=NOW + timedelta(seconds=5))
+            .values(updated_at=func.transaction_timestamp())
         )
 
     with pytest.raises(TransactionReconciliationConflictError):
