@@ -299,19 +299,29 @@ def _run(
     )
 
 
-def test_account_limit_advances_to_new_accounts_across_runs() -> None:
-    reader = FairReader()
-    store = FairStore()
-    service = ManualBankingSyncService(
+def _service(
+    reader: FairReader,
+    store: FairStore,
+    *,
+    max_accounts: int = 3,
+    max_pages: int = 10,
+) -> ManualBankingSyncService:
+    return ManualBankingSyncService(
         reader,
         store,
         limits=ManualSyncLimits(
-            max_accounts_per_run=1,
-            max_pages_per_run=10,
+            max_accounts_per_run=max_accounts,
+            max_pages_per_run=max_pages,
             max_records_per_run=100,
         ),
         clock=lambda: NOW,
     )
+
+
+def test_account_limit_advances_to_new_accounts_across_runs() -> None:
+    reader = FairReader()
+    store = FairStore()
+    service = _service(reader, store, max_accounts=1)
 
     first = _run(service, "fair-run-1")
     second = _run(service, "fair-run-2")
@@ -328,6 +338,25 @@ def test_account_limit_advances_to_new_accounts_across_runs() -> None:
     assert store.completed == {"account-a", "account-b", "account-c"}
 
 
+def test_terminal_page_at_page_limit_does_not_block_following_accounts() -> None:
+    reader = FairReader()
+    store = FairStore()
+    service = _service(reader, store, max_pages=1)
+
+    first = _run(service, "terminal-page-run-1")
+    second = _run(service, "terminal-page-run-2")
+    third = _run(service, "terminal-page-run-3")
+
+    assert first.status is StoredSyncStatus.PARTIAL
+    assert second.status is StoredSyncStatus.PARTIAL
+    assert third.status is StoredSyncStatus.SUCCEEDED
+    assert reader.transaction_calls == [
+        ("account-a", None),
+        ("account-b", None),
+        ("account-c", None),
+    ]
+
+
 def test_page_limit_rotates_long_recovery_before_it_can_starve_fresh_account() -> None:
     reader = FairReader(
         page_sequences={
@@ -335,16 +364,7 @@ def test_page_limit_rotates_long_recovery_before_it_can_starve_fresh_account() -
         }
     )
     store = FairStore()
-    service = ManualBankingSyncService(
-        reader,
-        store,
-        limits=ManualSyncLimits(
-            max_accounts_per_run=3,
-            max_pages_per_run=1,
-            max_records_per_run=100,
-        ),
-        clock=lambda: NOW,
-    )
+    service = _service(reader, store, max_pages=1)
 
     first = _run(service, "page-fair-run-1")
     second = _run(service, "page-fair-run-2")
