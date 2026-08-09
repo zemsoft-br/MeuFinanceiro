@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import Connection, Engine, func, or_, select, update
@@ -162,55 +163,53 @@ def _dirty_observations(
     connection_id: UUID,
     limit: int,
 ) -> tuple[RowMapping, ...]:
-    source_join = reconciled_transaction_sources
-    rows = (
-        connection.execute(
-            select(
-                external_observations.c.id.label("observation_id"),
-                external_accounts.c.id.label("external_account_record_id"),
-                external_observations.c.external_resource_id,
-                external_observations.c.stable_fingerprint,
-                external_observations.c.status,
-                external_observations.c.last_seen_at,
-                external_observations.c.updated_at.label("observation_updated_at"),
-            )
-            .select_from(
-                external_observations.join(
-                    external_accounts,
-                    (external_observations.c.connection_id == external_accounts.c.connection_id)
-                    & (external_observations.c.residence_id == external_accounts.c.residence_id)
-                    & (
-                        external_observations.c.external_account_id
-                        == external_accounts.c.external_account_id
-                    ),
-                ).outerjoin(
-                    source_join,
-                    (source_join.c.source_observation_id == external_observations.c.id)
-                    & (source_join.c.connection_id == external_observations.c.connection_id)
-                    & (source_join.c.residence_id == external_observations.c.residence_id),
-                )
-            )
-            .where(
-                external_observations.c.residence_id == residence_id,
-                external_observations.c.connection_id == connection_id,
-                external_observations.c.resource_type == "transactions",
-                or_(
-                    source_join.c.id.is_(None),
-                    source_join.c.observation_updated_at
-                    != external_observations.c.updated_at,
-                ),
-            )
-            .order_by(
-                external_observations.c.updated_at,
-                external_observations.c.id,
-            )
-            .limit(limit)
-            .with_for_update(of=external_observations)
+    source = reconciled_transaction_sources
+    observation_account_join = (
+        (external_observations.c.connection_id == external_accounts.c.connection_id)
+        & (external_observations.c.residence_id == external_accounts.c.residence_id)
+        & (
+            external_observations.c.external_account_id
+            == external_accounts.c.external_account_id
         )
-        .mappings()
-        .all()
     )
-    return tuple(rows)
+    source_join = (
+        (source.c.source_observation_id == external_observations.c.id)
+        & (source.c.connection_id == external_observations.c.connection_id)
+        & (source.c.residence_id == external_observations.c.residence_id)
+    )
+    statement = (
+        select(
+            external_observations.c.id.label("observation_id"),
+            external_accounts.c.id.label("external_account_record_id"),
+            external_observations.c.external_resource_id,
+            external_observations.c.stable_fingerprint,
+            external_observations.c.status,
+            external_observations.c.last_seen_at,
+            external_observations.c.updated_at.label("observation_updated_at"),
+        )
+        .select_from(
+            external_observations.join(
+                external_accounts,
+                observation_account_join,
+            ).outerjoin(source, source_join)
+        )
+        .where(
+            external_observations.c.residence_id == residence_id,
+            external_observations.c.connection_id == connection_id,
+            external_observations.c.resource_type == "transactions",
+            or_(
+                source.c.id.is_(None),
+                source.c.observation_updated_at != external_observations.c.updated_at,
+            ),
+        )
+        .order_by(
+            external_observations.c.updated_at,
+            external_observations.c.id,
+        )
+        .limit(limit)
+        .with_for_update(of=external_observations)
+    )
+    return tuple(connection.execute(statement).mappings().all())
 
 
 def _reconcile_observation(
@@ -220,15 +219,16 @@ def _reconcile_observation(
     connection_id: UUID,
     observation: RowMapping,
 ) -> str:
-    observation_id = observation["observation_id"]
-    account_record_id = observation["external_account_record_id"]
-    observation_updated_at = observation["observation_updated_at"]
-    observed_at = observation["last_seen_at"]
-
-    if not isinstance(observation_id, UUID) or not isinstance(account_record_id, UUID):
-        raise TransactionReconciliationError(
-            "transaction reconciliation found invalid local identities"
-        )
+    observation_id = _uuid_value(observation["observation_id"], "observation_id")
+    account_record_id = _uuid_value(
+        observation["external_account_record_id"],
+        "external_account_record_id",
+    )
+    observation_updated_at = _aware_datetime(
+        observation["observation_updated_at"],
+        "observation_updated_at",
+    )
+    observed_at = _aware_datetime(observation["last_seen_at"], "last_seen_at")
 
     source_progress = _locked_source_progress(
         connection,
@@ -237,7 +237,10 @@ def _reconcile_observation(
         observation_id=observation_id,
     )
     if source_progress is not None:
-        source_updated_at = source_progress["observation_updated_at"]
+        source_updated_at = _aware_datetime(
+            source_progress["observation_updated_at"],
+            "source observation_updated_at",
+        )
         if source_updated_at > observation_updated_at:
             raise TransactionReconciliationConflictError(
                 "transaction reconciliation source progress is ahead of observation state"
@@ -286,7 +289,7 @@ def _reconcile_observation(
         )
         action = "created"
     else:
-        target_id = target["id"]
+        target_id = _uuid_value(target["id"], "reconciled transaction id")
         if source_progress is not None and (
             source_progress["reconciled_transaction_id"] != target_id
         ):
@@ -294,7 +297,10 @@ def _reconcile_observation(
                 "transaction reconciliation source points to another canonical identity"
             )
 
-        current_observed_at = target["source_observed_at"]
+        current_observed_at = _aware_datetime(
+            target["source_observed_at"],
+            "canonical source_observed_at",
+        )
         if current_observed_at > observed_at:
             action = "unchanged"
         elif current_observed_at == observed_at:
@@ -313,7 +319,8 @@ def _reconcile_observation(
                     reconciled_transactions.c.id == target_id,
                     reconciled_transactions.c.residence_id == residence_id,
                     reconciled_transactions.c.connection_id == connection_id,
-                    reconciled_transactions.c.source_observed_at == current_observed_at,
+                    reconciled_transactions.c.source_observed_at
+                    == current_observed_at,
                 )
                 .values(
                     status=status.value,
@@ -407,7 +414,7 @@ def _record_source_progress(
     connection_id: UUID,
     reconciled_transaction_id: UUID,
     observation_id: UUID,
-    observation_updated_at: object,
+    observation_updated_at: datetime,
     existing: RowMapping | None,
 ) -> None:
     if existing is None:
@@ -429,14 +436,18 @@ def _record_source_progress(
         raise TransactionReconciliationConflictError(
             "transaction reconciliation source target changed unexpectedly"
         )
-    if existing["observation_updated_at"] > observation_updated_at:
+    previous_updated_at = _aware_datetime(
+        existing["observation_updated_at"],
+        "source observation_updated_at",
+    )
+    if previous_updated_at > observation_updated_at:
         raise TransactionReconciliationConflictError(
             "transaction reconciliation source progress would regress"
         )
-    if existing["observation_updated_at"] == observation_updated_at:
+    if previous_updated_at == observation_updated_at:
         return
 
-    source_id = existing["id"]
+    source_id = _uuid_value(existing["id"], "reconciliation source id")
     updated_id = connection.scalar(
         update(reconciled_transaction_sources)
         .where(
@@ -444,7 +455,7 @@ def _record_source_progress(
             reconciled_transaction_sources.c.residence_id == residence_id,
             reconciled_transaction_sources.c.connection_id == connection_id,
             reconciled_transaction_sources.c.observation_updated_at
-            == existing["observation_updated_at"],
+            == previous_updated_at,
         )
         .values(
             observation_updated_at=observation_updated_at,
@@ -467,7 +478,14 @@ def _identity(
     stable_fingerprint: object,
 ) -> tuple[ReconciledTransactionIdentityKind, str]:
     if external_resource_id is None:
-        if not isinstance(stable_fingerprint, str) or len(stable_fingerprint) != 64:
+        if (
+            not isinstance(stable_fingerprint, str)
+            or len(stable_fingerprint) != 64
+            or any(
+                character not in "0123456789abcdef"
+                for character in stable_fingerprint
+            )
+        ):
             raise TransactionReconciliationError(
                 "transaction reconciliation found an invalid fingerprint identity"
             )
@@ -506,6 +524,26 @@ def _stored_status(value: object) -> StoredTransactionObservationStatus:
         raise TransactionReconciliationError(
             "transaction reconciliation found an invalid observation status"
         ) from None
+
+
+def _aware_datetime(value: object, field_name: str) -> datetime:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
+        raise TransactionReconciliationError(
+            f"transaction reconciliation found invalid {field_name}"
+        )
+    return value
+
+
+def _uuid_value(value: object, field_name: str) -> UUID:
+    if not isinstance(value, UUID):
+        raise TransactionReconciliationError(
+            f"transaction reconciliation found invalid {field_name}"
+        )
+    return value
 
 
 def _clean_limit(value: int) -> int:
