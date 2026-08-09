@@ -82,9 +82,13 @@ def upgrade() -> None:
             connection_id uuid NOT NULL,
             external_account_record_id uuid NOT NULL,
             active_in_latest_snapshot boolean NOT NULL,
+            pages_committed integer NOT NULL,
             completed_at timestamptz NULL,
             created_at timestamptz NOT NULL,
             updated_at timestamptz NOT NULL,
+            CONSTRAINT ck_sync_cycle_accounts_pages_committed CHECK (
+                pages_committed >= 0
+            ),
             CONSTRAINT fk_sync_cycle_accounts_cycle_scope FOREIGN KEY (
                 cycle_id, connection_id, residence_id
             ) REFERENCES integrations.sync_cycles (
@@ -104,7 +108,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_sync_cycle_accounts_active_pending "
         "ON integrations.sync_cycle_accounts "
-        "(residence_id, connection_id, cycle_id) "
+        "(residence_id, connection_id, cycle_id, pages_committed) "
         "WHERE active_in_latest_snapshot AND completed_at IS NULL"
     )
 
