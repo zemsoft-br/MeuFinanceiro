@@ -39,7 +39,7 @@ def upgrade() -> None:
     op.execute(
         "CREATE INDEX ix_external_observations_reconciliation_scan "
         "ON integrations.external_observations "
-        "(residence_id, connection_id, last_seen_at, id)"
+        "(residence_id, connection_id, updated_at, id)"
     )
 
     op.execute(
