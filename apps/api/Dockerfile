@@ -10,6 +10,8 @@ RUN groupadd --system --gid 10001 app \
 
 WORKDIR /workspace
 
+COPY packages/finance/pyproject.toml ./packages/finance/
+COPY packages/finance/src ./packages/finance/src
 COPY packages/banking/pyproject.toml ./packages/banking/
 COPY packages/banking/src ./packages/banking/src
 COPY packages/banking-pluggy/pyproject.toml ./packages/banking-pluggy/
@@ -23,6 +25,7 @@ COPY packages/banking-pluggy-execution/src ./packages/banking-pluggy-execution/s
 COPY apps/api/pyproject.toml ./apps/api/
 COPY apps/api/app ./apps/api/app
 RUN python -m pip install \
+    ./packages/finance \
     ./packages/banking \
     ./packages/banking-pluggy \
     ./packages/security \

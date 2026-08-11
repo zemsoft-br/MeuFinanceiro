@@ -10,6 +10,7 @@ requires-python = ">=3.13,<3.14"
 license = "AGPL-3.0-only"
 dependencies = [
   "alembic==1.18.5",
+  "meufinanceiro-finance==0.1.0",
   "meufinanceiro-security==0.1.0",
   "psycopg[binary]==3.3.4",
   "pydantic-settings==2.14.2",

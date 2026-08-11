@@ -68,6 +68,12 @@ from meufinanceiro_persistence.demo import (
     DemoModeDisabledError,
     unloaded_demo_status,
 )
+from meufinanceiro_persistence.financial_account_store import (
+    FinancialAccountAccessError,
+    FinancialAccountNotFoundError,
+    FinancialAccountPersistenceError,
+    FinancialAccountStore,
+)
 from meufinanceiro_persistence.health import (
     PersistenceHealth,
     inspect_persistence_health,
@@ -129,6 +135,10 @@ __all__ = [
     "ExternalAccountNotFoundError",
     "ExternalAccountRecord",
     "ExternalAccountSnapshot",
+    "FinancialAccountAccessError",
+    "FinancialAccountNotFoundError",
+    "FinancialAccountPersistenceError",
+    "FinancialAccountStore",
     "HouseholdBootstrapConflictError",
     "HouseholdPersistenceError",
     "IdentityBootstrapConflictError",

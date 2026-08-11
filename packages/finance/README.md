@@ -88,4 +88,44 @@ Idempotency key, correlation ID, reconciliation ID e transfer ID são conceitos 
 
 O ADR-0017 mantém geração canônica server-side. Client-generated IDs para eventual modo offline exigem decisão própria de idempotência e conflitos.
 
-Conversão cambial, regras de moeda específica, persistência de grants, saldo de abertura, contas e movimentações permanecem fora deste pacote inicial.
+## Contas financeiras
+
+A primeira entidade financeira canônica usa contratos provider-neutral:
+
+```python
+from meufinanceiro_finance import (
+    FinancialAccountDraft,
+    FinancialAccountStatus,
+    FinancialAccountType,
+    FinancialVisibilityScope,
+)
+
+account = FinancialAccountDraft(
+    name="Conta principal",
+    currency="BRL",
+    account_type=FinancialAccountType.CHECKING,
+    visibility_scope=FinancialVisibilityScope.PERSONAL,
+)
+```
+
+Tipos iniciais:
+
+```text
+CHECKING
+SAVINGS
+CASH
+DIGITAL_WALLET
+INVESTMENT
+BENEFIT
+CUSTOM
+```
+
+`CUSTOM` exige um nome de tipo explícito. Os demais tipos não aceitam esse campo.
+
+A conta possui moeda, mas **não possui amount ou saldo**. Saldo de abertura e saldo calculado serão derivados do futuro livro financeiro, não de uma coluna autoritativa na conta.
+
+O estado persistente prevê `ACTIVE` e `ARCHIVED`, porém o primeiro store cria somente `ACTIVE`; arquivamento exige caso de uso, capacidade por papel e auditoria próprios.
+
+A persistência da #133 aplica a audiência do ADR-0016 e os IDs do ADR-0017 diretamente no PostgreSQL. Grants persistentes existem somente para contas `SHARED`.
+
+Conversão cambial, regras de moeda específica, saldo de abertura, movements, categorias, edição de grants, API e Flutter permanecem fora deste recorte.
