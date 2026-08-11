@@ -165,12 +165,15 @@ def test_absence_is_distinct_from_explicit_zero(
     )
     store = FinancialOpeningBalanceStore(runtime_engine)
 
-    assert store.get_opening_balance(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        account_id=account_id,
-    ) is None
+    assert (
+        store.get_opening_balance(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            account_id=account_id,
+        )
+        is None
+    )
 
     created = store.create_opening_balance(
         installation_id=installation_id,
@@ -180,12 +183,15 @@ def test_absence_is_distinct_from_explicit_zero(
         draft=_draft("0"),
     )
     assert created.amount.amount == Decimal("0")
-    assert store.get_opening_balance(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        account_id=account_id,
-    ) == created
+    assert (
+        store.get_opening_balance(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            account_id=account_id,
+        )
+        == created
+    )
 
 
 def test_second_opening_balance_for_same_account_fails_closed(
@@ -264,12 +270,15 @@ def test_household_member_can_read_anchor_but_cannot_create_it(
         draft=_draft("50"),
     )
 
-    assert store.get_opening_balance(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-        account_id=account_id,
-    ) == created
+    assert (
+        store.get_opening_balance(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=member_id,
+            account_id=account_id,
+        )
+        == created
+    )
 
     second_account_id = _create_account(
         runtime_engine,
@@ -309,12 +318,15 @@ def test_personal_anchor_is_hidden_from_other_member(
         draft=_draft("10"),
     )
 
-    assert store.get_opening_balance(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-        account_id=account_id,
-    ) is None
+    assert (
+        store.get_opening_balance(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=member_id,
+            account_id=account_id,
+        )
+        is None
+    )
 
 
 def test_archived_account_rejects_new_opening_balance(

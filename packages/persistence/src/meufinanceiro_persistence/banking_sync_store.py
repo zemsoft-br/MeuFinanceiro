@@ -388,12 +388,9 @@ class BankingManualSyncStoreMixin:
                                 "last_seen_at": snapshot.observed_at,
                                 "updated_at": func.transaction_timestamp(),
                             },
-                            where=(
-                                external_accounts.c.residence_id == residence_id
-                            )
+                            where=(external_accounts.c.residence_id == residence_id)
                             & (
-                                external_accounts.c.last_seen_at
-                                <= snapshot.observed_at
+                                external_accounts.c.last_seen_at <= snapshot.observed_at
                             ),
                         )
                     )

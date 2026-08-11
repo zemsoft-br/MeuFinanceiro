@@ -350,6 +350,8 @@ def test_cross_residence_persistence_conflict_is_sanitized() -> None:
             item_id=ITEM_ID,
         )
 
-    assert captured.value.code is PluggyConnectionRegistrationErrorCode.CONNECTION_CONFLICT
+    assert (
+        captured.value.code is PluggyConnectionRegistrationErrorCode.CONNECTION_CONFLICT
+    )
     assert "sensitive-item-association" not in str(captured.value)
     assert store.capability_calls == []

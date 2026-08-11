@@ -167,9 +167,7 @@ class PluggyConnectTokenService:
             credentials: EnabledProviderCredentials,
         ) -> IssuedPluggyConnectToken:
             if credentials.provider != "pluggy":
-                raise PluggyConnectTokenError(
-                    PluggyConnectTokenErrorCode.INTERNAL
-                )
+                raise PluggyConnectTokenError(PluggyConnectTokenErrorCode.INTERNAL)
             transport: ConnectTokenTransport | None = None
             active_error: BaseException | None = None
             try:
