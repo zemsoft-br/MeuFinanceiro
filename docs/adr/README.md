@@ -14,6 +14,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0013 — Autenticação local de operador e sessões opacas](0013-local-operator-authentication.md)
 - [ADR-0014 — Residência primária derivada da associação do operador](0014-primary-residence-context.md)
 - [ADR-0015 — Representação monetária e arredondamento canônicos](0015-canonical-money-representation-and-rounding.md)
+- [ADR-0016 — Visibilidade e autorização de recursos financeiros](0016-financial-resource-visibility-and-authorization.md)
 
 ## Decisões propostas
 
