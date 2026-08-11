@@ -50,9 +50,7 @@ class BankingConnectionsService:
         if not isinstance(store, LocalBankingConnectionStore):
             raise TypeError("store must satisfy LocalBankingConnectionStore")
         self._store = store
-        self._pluggy_reauthentication_available = (
-            pluggy_reauthentication_available
-        )
+        self._pluggy_reauthentication_available = pluggy_reauthentication_available
 
     def list_connections(
         self,

@@ -89,9 +89,7 @@ def test_quantization_requires_explicit_scale_and_rounding() -> None:
     assert amount.quantize(scale=2, rounding=RoundingMode.HALF_UP).amount == Decimal(
         "1.01"
     )
-    assert amount.quantize(scale=2, rounding=RoundingMode.DOWN).amount == Decimal(
-        "1"
-    )
+    assert amount.quantize(scale=2, rounding=RoundingMode.DOWN).amount == Decimal("1")
 
     with pytest.raises(TypeError):
         amount.quantize(scale=2, rounding="HALF_UP")  # type: ignore[arg-type]

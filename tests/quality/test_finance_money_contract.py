@@ -5,14 +5,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = ROOT / "packages" / "finance" / "pyproject.toml"
-MONEY = (
-    ROOT
-    / "packages"
-    / "finance"
-    / "src"
-    / "meufinanceiro_finance"
-    / "money.py"
-)
+MONEY = ROOT / "packages" / "finance" / "src" / "meufinanceiro_finance" / "money.py"
 ADR = ROOT / "docs" / "adr" / "0015-canonical-money-representation-and-rounding.md"
 QUALITY = ROOT / "infra" / "scripts" / "run-quality.py"
 WORKFLOW = ROOT / ".github" / "workflows" / "quality.yml"
@@ -33,7 +26,7 @@ def _imports(path: Path) -> set[str]:
 def test_finance_package_has_no_runtime_dependencies() -> None:
     pyproject = PYPROJECT.read_text(encoding="utf-8")
 
-    assert 'dependencies = []' in pyproject
+    assert "dependencies = []" in pyproject
     assert "fastapi" not in pyproject.lower()
     assert "sqlalchemy" not in pyproject.lower()
     assert "httpx" not in pyproject.lower()

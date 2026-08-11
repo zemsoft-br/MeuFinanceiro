@@ -41,18 +41,18 @@ class PluggyReauthenticationState {
   });
 
   const PluggyReauthenticationState.idle()
-      : this._(phase: PluggyReauthenticationPhase.idle);
+    : this._(phase: PluggyReauthenticationPhase.idle);
 
   const PluggyReauthenticationState.phase(PluggyReauthenticationPhase phase)
-      : this._(phase: phase);
+    : this._(phase: phase);
 
   PluggyReauthenticationState.updated(RegisteredPluggyConnection connection)
-      : this._(
-          phase: PluggyReauthenticationPhase.updated,
-          connectionId: connection.connectionId,
-          connectionStatus: connection.status,
-          requiresUserAction: connection.requiresUserAction,
-        );
+    : this._(
+        phase: PluggyReauthenticationPhase.updated,
+        connectionId: connection.connectionId,
+        connectionStatus: connection.status,
+        requiresUserAction: connection.requiresUserAction,
+      );
 
   final PluggyReauthenticationPhase phase;
   final String? connectionId;
@@ -61,12 +61,12 @@ class PluggyReauthenticationState {
   final int focusReturnRevision;
 
   bool get isBusy => switch (phase) {
-        PluggyReauthenticationPhase.requestingToken ||
-        PluggyReauthenticationPhase.loadingWidget ||
-        PluggyReauthenticationPhase.widgetOpen ||
-        PluggyReauthenticationPhase.registeringConnection => true,
-        _ => false,
-      };
+    PluggyReauthenticationPhase.requestingToken ||
+    PluggyReauthenticationPhase.loadingWidget ||
+    PluggyReauthenticationPhase.widgetOpen ||
+    PluggyReauthenticationPhase.registeringConnection => true,
+    _ => false,
+  };
 
   PluggyReauthenticationState withFocusReturn(int revision) =>
       PluggyReauthenticationState._(
@@ -90,13 +90,14 @@ final pluggyReauthenticationApiProvider = Provider<PluggyConnectApi>(
   (ref) => PluggyConnectApi(ref.watch(authenticatedApiClientProvider)),
 );
 
-final pluggyReauthenticationControllerProvider = NotifierProvider.autoDispose<
-    PluggyReauthenticationController, PluggyReauthenticationState>(
-  PluggyReauthenticationController.new,
-);
+final pluggyReauthenticationControllerProvider =
+    NotifierProvider.autoDispose<
+      PluggyReauthenticationController,
+      PluggyReauthenticationState
+    >(PluggyReauthenticationController.new);
 
 class PluggyReauthenticationController
-    extends AutoDisposeNotifier<PluggyReauthenticationState> {
+    extends Notifier<PluggyReauthenticationState> {
   int _generation = 0;
   int _focusReturnRevision = 0;
   bool _flowActive = false;
@@ -185,7 +186,9 @@ class PluggyReauthenticationController
         PluggyReauthenticationPhase.loadingWidget,
       );
       try {
-        await ref.read(pluggyReauthenticationLauncherProvider).launch(
+        await ref
+            .read(pluggyReauthenticationLauncherProvider)
+            .launch(
               connectToken: launchMaterial.connectToken,
               updateItem: launchMaterial.updateItem,
               onCallback: (callback) {
@@ -229,20 +232,22 @@ class PluggyReauthenticationController
     if (!_isCurrent(generation)) {
       return;
     }
-    _callbackTail = _callbackTail.then((_) async {
-      if (_isCurrent(generation)) {
-        await _processCallback(generation, callback);
-      }
-    }).catchError((Object error, StackTrace stackTrace) {
-      if (_isCurrent(generation)) {
-        _flowActive = false;
-        _widgetOpen = false;
-        _expectedUpdateItem = null;
-        state = const PluggyReauthenticationState.phase(
-          PluggyReauthenticationPhase.genericFailure,
-        );
-      }
-    });
+    _callbackTail = _callbackTail
+        .then((_) async {
+          if (_isCurrent(generation)) {
+            await _processCallback(generation, callback);
+          }
+        })
+        .catchError((Object error, StackTrace stackTrace) {
+          if (_isCurrent(generation)) {
+            _flowActive = false;
+            _widgetOpen = false;
+            _expectedUpdateItem = null;
+            state = const PluggyReauthenticationState.phase(
+              PluggyReauthenticationPhase.genericFailure,
+            );
+          }
+        });
   }
 
   Future<void> _processCallback(
@@ -341,8 +346,7 @@ class PluggyReauthenticationController
     }
   }
 
-  bool _isCurrent(int generation) =>
-      generation == _generation && _flowActive;
+  bool _isCurrent(int generation) => generation == _generation && _flowActive;
 }
 
 bool _isCanonicalUuid(String value) =>
@@ -365,7 +369,8 @@ PluggyReauthenticationPhase _phaseForFailure(
     }
     return switch (error.statusCode) {
       403 => PluggyReauthenticationPhase.connectionUnavailable,
-      404 when registering => PluggyReauthenticationPhase.invalidProviderResponse,
+      404 when registering =>
+        PluggyReauthenticationPhase.invalidProviderResponse,
       404 => PluggyReauthenticationPhase.connectionNotFound,
       409 => PluggyReauthenticationPhase.connectionUnavailable,
       502 => PluggyReauthenticationPhase.invalidProviderResponse,

@@ -124,7 +124,9 @@ class FakeReader:
     def __init__(
         self,
         accounts: tuple[ExternalAccount, ...],
-        pages: dict[str, list[ExternalPage[ExternalTransaction] | BankingProviderError]],
+        pages: dict[
+            str, list[ExternalPage[ExternalTransaction] | BankingProviderError]
+        ],
         *,
         accounts_error: BankingProviderError | None = None,
     ) -> None:
@@ -323,7 +325,9 @@ def _run(service: ManualBankingSyncService):
     )
 
 
-def test_success_maps_accounts_and_all_transaction_statuses_without_external_leaks() -> None:
+def test_success_maps_accounts_and_all_transaction_statuses_without_external_leaks() -> (
+    None
+):
     bank = _account("bank-account")
     other = _account("other-account", account_type=AccountType.OTHER)
     records = (
