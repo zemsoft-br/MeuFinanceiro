@@ -71,7 +71,7 @@ def _create_household(
                     installation_id=installation_id,
                     login_name=f"synthetic-{index}",
                     password_hash="synthetic-password-hash-material-000000000000",
-                    role="installation_admin" if index == 0 else "member",
+                    role="installation_admin",
                     status="active",
                     failed_attempts=0,
                     locked_until=None,
