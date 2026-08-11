@@ -118,7 +118,7 @@ class ManualSyncExecutionError(RuntimeError):
     """Sanitized orchestration failure without provider or financial material."""
 
 
-class ManualSyncReconciliationExecutionError(RuntimeError):
+class ManualSyncReconciliationExecutionError(ManualSyncExecutionError):
     """Sanitized post-sync reconciliation failure after the sync run is finalized."""
 
 
