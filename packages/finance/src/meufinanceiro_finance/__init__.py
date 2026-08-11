@@ -24,6 +24,10 @@ from meufinanceiro_finance.money import (
     RoundingMode,
     validate_currency_code,
 )
+from meufinanceiro_finance.opening_balances import (
+    FinancialOpeningBalanceDraft,
+    FinancialOpeningBalanceRecord,
+)
 
 __all__ = [
     "CurrencyMismatchError",
@@ -33,6 +37,8 @@ __all__ = [
     "FinancialAccountStatus",
     "FinancialAccountType",
     "FinancialActorContext",
+    "FinancialOpeningBalanceDraft",
+    "FinancialOpeningBalanceRecord",
     "FinancialResourceAudience",
     "FinancialVisibilityScope",
     "Money",

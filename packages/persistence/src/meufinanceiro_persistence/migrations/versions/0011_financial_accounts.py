@@ -153,12 +153,8 @@ def upgrade() -> None:
         "ON finance.account_grants (residence_id, owner_operator_id, account_id)"
     )
 
-    residence = (
-        "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
-    )
-    operator = (
-        "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
-    )
+    residence = "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
+    operator = "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
     grant_membership = (
         "EXISTS (SELECT 1 FROM household.memberships m "
         "WHERE m.residence_id = account_grants.residence_id "

@@ -64,9 +64,7 @@ class TransactionObservationSnapshot:
             self.status is StoredTransactionObservationStatus.INFERRED
             and external_resource_id is not None
         ):
-            raise ValueError(
-                "inferred observation cannot claim a provider resource ID"
-            )
+            raise ValueError("inferred observation cannot claim a provider resource ID")
         object.__setattr__(self, "external_resource_id", external_resource_id)
         object.__setattr__(self, "amount", _clean_amount(self.amount))
         object.__setattr__(self, "currency", _clean_currency(self.currency))
@@ -230,10 +228,7 @@ def _canonical_decimal(value: Decimal) -> str:
 
 
 def _join_fingerprint_parts(kind: str, *parts: str) -> str:
-    escaped = [
-        part.replace("\\", "\\\\").replace("\x1f", "\\x1f")
-        for part in parts
-    ]
+    escaped = [part.replace("\\", "\\\\").replace("\x1f", "\\x1f") for part in parts]
     return "\x1f".join((_FINGERPRINT_NAMESPACE, kind, *escaped))
 
 

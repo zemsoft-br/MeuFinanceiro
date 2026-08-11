@@ -5,8 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
 MIGRATION = (
-    PERSISTENCE
-    / "migrations/versions/0008_banking_transaction_observations.py"
+    PERSISTENCE / "migrations/versions/0008_banking_transaction_observations.py"
 ).read_text(encoding="utf-8")
 SCHEMA = (PERSISTENCE / "banking_observation_schema.py").read_text(encoding="utf-8")
 MODELS = (PERSISTENCE / "banking_observation_models.py").read_text(encoding="utf-8")

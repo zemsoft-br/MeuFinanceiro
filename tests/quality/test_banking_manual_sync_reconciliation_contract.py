@@ -49,7 +49,9 @@ def test_post_sync_reconciliation_is_one_bounded_batch_without_drain_loop() -> N
     assert "has_more" not in service_body
 
 
-def test_post_sync_boundary_uses_only_local_scope_and_provider_neutral_contracts() -> None:
+def test_post_sync_boundary_uses_only_local_scope_and_provider_neutral_contracts() -> (
+    None
+):
     assert "installation_id" in POST_SYNC
     assert "residence_id" in POST_SYNC
     assert "connection_id" in POST_SYNC

@@ -271,14 +271,20 @@ def test_terminal_page_and_cycle_completion_are_atomic(
         sync_cycle_id=plan.cycle.id,
     )
     with engine.begin() as connection:
-        assert connection.scalar(
-            select(sync_cycle_accounts.c.completed_at).where(
-                sync_cycle_accounts.c.cycle_id == plan.cycle.id
+        assert (
+            connection.scalar(
+                select(sync_cycle_accounts.c.completed_at).where(
+                    sync_cycle_accounts.c.cycle_id == plan.cycle.id
+                )
             )
-        ) is None
-        assert connection.scalar(
-            select(sync_cycles.c.status).where(sync_cycles.c.id == plan.cycle.id)
-        ) == StoredSyncCycleStatus.OPEN.value
+            is None
+        )
+        assert (
+            connection.scalar(
+                select(sync_cycles.c.status).where(sync_cycles.c.id == plan.cycle.id)
+            )
+            == StoredSyncCycleStatus.OPEN.value
+        )
 
     _complete_account(
         store,
@@ -290,14 +296,20 @@ def test_terminal_page_and_cycle_completion_are_atomic(
         offset=1,
     )
     with engine.begin() as connection:
-        assert connection.scalar(
-            select(sync_cycle_accounts.c.completed_at).where(
-                sync_cycle_accounts.c.cycle_id == plan.cycle.id
+        assert (
+            connection.scalar(
+                select(sync_cycle_accounts.c.completed_at).where(
+                    sync_cycle_accounts.c.cycle_id == plan.cycle.id
+                )
             )
-        ) is not None
-        assert connection.scalar(
-            select(sync_cycles.c.status).where(sync_cycles.c.id == plan.cycle.id)
-        ) == StoredSyncCycleStatus.COMPLETED.value
+            is not None
+        )
+        assert (
+            connection.scalar(
+                select(sync_cycles.c.status).where(sync_cycles.c.id == plan.cycle.id)
+            )
+            == StoredSyncCycleStatus.COMPLETED.value
+        )
 
 
 def test_snapshot_membership_change_finishes_old_cycle_without_inference(
