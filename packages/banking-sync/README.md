@@ -9,10 +9,11 @@ O pacote compõe fronteiras injetadas:
 ```text
 ContextualBankingReadService
 ManualSyncStore
-SyncFairnessStore        # extensão estrutural do store canônico
+SyncFairnessStore                    # extensão estrutural do store canônico
+TransactionReconciliationStore       # reconciliação local pós-sync
 ```
 
-Fluxo canônico:
+Fluxo canônico do sincronizador:
 
 ```text
 begin_manual_sync
@@ -28,7 +29,7 @@ begin_manual_sync
 
 O pacote não conhece SDK, transporte HTTP, credencial, Item ID ou payload específico de provider.
 
-## Limites padrão
+## Limites padrão do sync
 
 ```text
 max_accounts_per_run = 20
@@ -65,9 +66,44 @@ Neste estágio, páginas de transações são solicitadas somente para contas `B
 
 O scheduler persiste somente o UUID local de `external_accounts`, escopo residência/conexão, estado de membership e contador de páginas. O identificador externo não é duplicado nas tabelas de fairness.
 
+## Reconciliação local explícita após o sync
+
+`ManualBankingSyncService.run` continua responsável exclusivamente pelo sync.
+
+A composição opcional:
+
+```text
+ManualBankingSyncReconciliationService
+```
+
+recebe um `ManualSyncRunner` e um `TransactionReconciliationStore` e executa:
+
+```text
+manual_sync.run(...)
+  -> SUCCEEDED ou PARTIAL?
+       reconcile_transaction_observations(...)
+```
+
+`FAILED`, `RUNNING`/`ALREADY_RUNNING` e `CANCELLED` não disparam reconciliação.
+
+Um run terminal replayado continua elegível quando seu status persistido é `SUCCEEDED` ou `PARTIAL`. Isso permite retentar somente o post-processing local com a mesma `idempotency_key`, sem exigir nova leitura do provider.
+
+A composição executa no máximo **um batch** de reconciliação por chamada:
+
+```text
+default = 500 observações
+máximo = 1000 observações
+```
+
+`has_more=true` permanece no resultado e não gera loop automático.
+
+Sync e reconciliação são transações separadas. Se a reconciliação falhar depois do sync terminal, o run já confirmado não é reaberto nem modificado; a fronteira lança apenas `ManualSyncReconciliationExecutionError` sanitizado.
+
 ## Resultado
 
 `ManualSyncResult` retorna somente IDs locais e contagens operacionais. O `repr` omite o UUID do run e não contém cursor, IDs externos, valores financeiros ou descrição de transação.
+
+`ManualSyncReconciliationResult` agrega o `ManualSyncResult` e, quando elegível, o `TransactionReconciliationResult` local já redigido. Seu `repr` também omite o UUID do run e qualquer material externo/financeiro.
 
 ## Fora do escopo
 
@@ -75,7 +111,9 @@ O scheduler persiste somente o UUID local de `external_accounts`, escopo residê
 - Flutter;
 - worker/fila/polling;
 - refresh manual do provider;
-- reconciliação com lançamentos financeiros;
+- criação ou alteração de lançamentos financeiros do usuário;
+- fuzzy matching entre identidades;
+- loop automático para drenar reconciliação;
 - `changed_since` incremental;
 - recovery automático de run órfão;
 - cartões/faturas;

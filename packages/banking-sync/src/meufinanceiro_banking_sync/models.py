@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
-from meufinanceiro_persistence import StoredSyncStatus
+from meufinanceiro_persistence import (
+    StoredSyncStatus,
+    TransactionReconciliationResult,
+)
 
 
 class ManualSyncStopReason(StrEnum):
@@ -74,13 +77,56 @@ class ManualSyncResult:
         )
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class ManualSyncReconciliationResult:
+    """Redacted composition result for one sync intent plus at most one local batch."""
+
+    sync_result: ManualSyncResult
+    reconciliation_result: TransactionReconciliationResult | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.sync_result, ManualSyncResult):
+            raise TypeError("sync_result must be ManualSyncResult")
+        if self.reconciliation_result is not None and not isinstance(
+            self.reconciliation_result,
+            TransactionReconciliationResult,
+        ):
+            raise TypeError(
+                "reconciliation_result must be TransactionReconciliationResult or None"
+            )
+
+    @property
+    def reconciliation_attempted(self) -> bool:
+        return self.reconciliation_result is not None
+
+    def __repr__(self) -> str:
+        reconciliation = (
+            "None"
+            if self.reconciliation_result is None
+            else repr(self.reconciliation_result)
+        )
+        return (
+            "ManualSyncReconciliationResult("
+            f"sync_status={self.sync_result.status.value!r}, "
+            f"sync_stop_reason={self.sync_result.stop_reason.value!r}, "
+            f"reconciliation_result={reconciliation}, "
+            "<sync-run-id-redacted>)"
+        )
+
+
 class ManualSyncExecutionError(RuntimeError):
     """Sanitized orchestration failure without provider or financial material."""
+
+
+class ManualSyncReconciliationExecutionError(ManualSyncExecutionError):
+    """Sanitized post-sync reconciliation failure after the sync run is finalized."""
 
 
 __all__ = [
     "ManualSyncExecutionError",
     "ManualSyncLimits",
+    "ManualSyncReconciliationExecutionError",
+    "ManualSyncReconciliationResult",
     "ManualSyncResult",
     "ManualSyncStopReason",
 ]

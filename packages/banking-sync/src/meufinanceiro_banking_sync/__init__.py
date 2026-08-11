@@ -3,8 +3,15 @@
 from .models import (
     ManualSyncExecutionError,
     ManualSyncLimits,
+    ManualSyncReconciliationExecutionError,
+    ManualSyncReconciliationResult,
     ManualSyncResult,
     ManualSyncStopReason,
+)
+from .post_sync import (
+    ManualBankingSyncReconciliationService,
+    ManualSyncRunner,
+    TransactionReconciliationStore,
 )
 from .service import (
     ContextualBankingReadService,
@@ -15,13 +22,18 @@ from .service import (
 
 __all__ = [
     "ContextualBankingReadService",
+    "ManualBankingSyncReconciliationService",
     "ManualBankingSyncService",
     "ManualSyncExecutionError",
     "ManualSyncLimits",
+    "ManualSyncReconciliationExecutionError",
+    "ManualSyncReconciliationResult",
     "ManualSyncResult",
+    "ManualSyncRunner",
     "ManualSyncStopReason",
     "ManualSyncStore",
     "SyncFairnessStore",
+    "TransactionReconciliationStore",
 ]
 
 __version__ = "0.1.0"

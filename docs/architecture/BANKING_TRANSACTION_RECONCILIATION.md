@@ -1,6 +1,6 @@
 # Reconciliação local de observações bancárias
 
-Status: **implementação da Epic #63 / issue #119**.
+Status: **implementação da Epic #63 / issue #119, composta manualmente pela #121**.
 
 ## Objetivo
 
@@ -235,14 +235,46 @@ A migration adiciona uma candidate key local a `external_observations` para que 
 de source fechem residência e conexão no PostgreSQL. O estado canônico referencia a
 conta por UUID local e FK composta com `connection_id` + `residence_id`.
 
-## Integração com a sincronização
+## Integração manual com a sincronização — #121
 
-A #119 permanece deliberadamente desacoplada de `ManualBankingSyncService.run`.
+`ManualBankingSyncService.run` permanece deliberadamente sem chamada implícita para a
+reconciliação.
 
-A sincronização pode produzir/atualizar observações. A reconciliação é uma operação
-local explícita e repetível sobre o backlog persistido. A composição automática entre
-as duas fronteiras será decidida somente depois de validar replay, concorrência e UX
-do fluxo manual.
+A #121 adiciona no pacote `packages/banking-sync` uma composição separada:
+
+```text
+ManualBankingSyncReconciliationService
+```
+
+Ela executa:
+
+```text
+manual_sync.run(...)
+  -> se status = SUCCEEDED ou PARTIAL
+       reconcile_transaction_observations(..., limit=N)
+```
+
+Existe no máximo um batch de reconciliação por chamada. `has_more=true` informa
+backlog local restante, mas não dispara loop automático.
+
+A composição também preserva recovery por idempotência:
+
+```text
+sync run já terminal
+  -> replay local do ManualBankingSyncService
+  -> nenhuma nova leitura do provider
+  -> nova tentativa do batch local de reconciliação
+```
+
+Isso permite recuperar uma falha ocorrida depois do commit do sync sem reabrir ou
+reescrever o run terminal.
+
+Não há post-processing quando o sync está `FAILED`, `RUNNING`/`ALREADY_RUNNING` ou
+`CANCELLED`.
+
+Sync e reconciliação continuam transações PostgreSQL separadas. Falha no segundo
+estágio não desfaz, modifica nem compensa o primeiro; ela é reduzida a erro sanitizado
+de post-processing e pode ser retentada por replay.
 
 ## Fora do escopo
 
@@ -252,6 +284,7 @@ do fluxo manual.
 - endpoint FastAPI e Flutter;
 - `changed_since` incremental do provider;
 - worker/background sync;
+- loop automático para drenar backlog de reconciliação;
 - cartões, faturas e parcelas;
 - investimentos e empréstimos;
 - webhooks;
@@ -262,7 +295,7 @@ do fluxo manual.
 ## Validação
 
 Os testes adicionados são sintéticos e cobrem identidade, transições explícitas,
-bounded processing, replay, conflito temporal e RLS.
+bounded processing, replay, conflito temporal, RLS e composição manual pós-sync.
 
 GitHub Actions não é gate operacional desta etapa. Qualquer validação que não tenha
 sido realmente executada nesta sessão deve permanecer declarada como não executada.
