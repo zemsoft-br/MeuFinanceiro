@@ -90,9 +90,12 @@ jobs:
           old = '        row: Mapping[str, Any] | None = (\n'
           new = '        row = (\n'
           if old in text:
-              identity.write_text(text.replace(old, new, 1), encoding='utf-8')
+              text = text.replace(old, new, 1)
           elif new not in text:
               raise SystemExit('identity row assignment marker not found')
+          text = text.replace('from collections.abc import Mapping\n', '')
+          text = text.replace('from typing import Any, NoReturn\n', 'from typing import NoReturn\n')
+          identity.write_text(text, encoding='utf-8')
           PY
 
       - name: Format candidate files
