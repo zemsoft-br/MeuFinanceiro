@@ -53,6 +53,9 @@ def test_account_types_visibility_and_archive_shape_are_closed() -> None:
     assert "custom_type_name IS NOT NULL" in MIGRATION
     assert "account_type <> 'CUSTOM' AND custom_type_name IS NULL" in MIGRATION
     assert "currency ~ '^[A-Z]{3}$'" in MIGRATION
+    assert "ck_finance_accounts_id_uuid4" in MIGRATION
+    assert "ck_finance_accounts_id_uuid4" in SCHEMA
+    assert "-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-" in MIGRATION
 
 
 def test_account_rls_is_operator_aware_and_non_recursive() -> None:
@@ -72,6 +75,18 @@ def test_account_rls_is_operator_aware_and_non_recursive() -> None:
         maxsplit=1,
     )[1].split("ALTER TABLE finance.accounts", maxsplit=1)[0]
     assert "FROM finance.accounts" not in grants_policy
+
+
+def test_account_insert_policy_is_owner_bound_and_active_only() -> None:
+    insert_policy = MIGRATION.split(
+        "CREATE POLICY finance_accounts_insert",
+        maxsplit=1,
+    )[1].split("GRANT USAGE ON SCHEMA finance", maxsplit=1)[0]
+    assert "accounts.residence_id" in insert_policy
+    assert "accounts.owner_operator_id" in insert_policy
+    assert "accounts.status = 'ACTIVE'" in insert_policy
+    assert "accounts.archived_at IS NULL" in insert_policy
+    assert "m.status = 'active'" in insert_policy
 
 
 def test_runtime_privileges_are_read_create_only_for_accounts() -> None:
