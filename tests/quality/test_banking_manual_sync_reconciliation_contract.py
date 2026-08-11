@@ -28,7 +28,7 @@ def test_only_succeeded_and_partial_sync_states_are_eligible() -> None:
     eligible = POST_SYNC.split(
         "_RECONCILIATION_ELIGIBLE_STATUSES =",
         maxsplit=1,
-    )[1].split(")\n\n\n@runtime_checkable", maxsplit=1)[0]
+    )[1].split("_POST_PROCESSING_ERROR", maxsplit=1)[0]
     assert "StoredSyncStatus.SUCCEEDED" in eligible
     assert "StoredSyncStatus.PARTIAL" in eligible
     assert "StoredSyncStatus.FAILED" not in eligible
