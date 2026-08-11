@@ -24,6 +24,7 @@ TOOLS = (
     "ruff==0.15.22",
 )
 PYTHON_PATHS = (
+    "packages/finance",
     "packages/banking",
     "packages/banking-pluggy",
     "packages/banking-pluggy-execution",
@@ -152,6 +153,8 @@ def ensure_python_environment(recreate: bool) -> Path:
             "--disable-pip-version-check",
             *TOOLS,
             "-e",
+            "./packages/finance[test]",
+            "-e",
             "./packages/banking[test]",
             "-e",
             "./packages/banking-pluggy[test]",
@@ -181,6 +184,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             "-m",
             "mypy",
             "--strict",
+            "packages/finance/src",
             "packages/banking/src",
             "packages/banking-pluggy/src",
             "packages/banking-pluggy-execution/src",
@@ -197,6 +201,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             str(python),
             "-m",
             "pytest",
+            "packages/finance/tests",
             "packages/banking/tests",
             "packages/banking-pluggy/tests",
             "packages/banking-pluggy-execution/tests",
