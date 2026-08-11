@@ -57,6 +57,7 @@ jobs:
           python-version: '3.13'
           cache: pip
           cache-dependency-path: |
+            packages/finance/pyproject.toml
             packages/banking/pyproject.toml
             packages/banking-pluggy/pyproject.toml
             packages/banking-pluggy-execution/pyproject.toml
@@ -140,6 +141,7 @@ jobs:
             mypy==2.3.0 \
             pip-audit==2.10.1 \
             ruff==0.15.22 \
+            -e './packages/finance[test]' \
             -e './packages/banking[test]' \
             -e './packages/banking-pluggy[test]' \
             -e './packages/banking-pluggy-execution[test]' \
@@ -152,21 +154,23 @@ jobs:
       - name: Lint Python
         run: >-
           .quality-venv/bin/python -m ruff check
-          packages/banking packages/banking-pluggy packages/banking-pluggy-execution
-          packages/banking-sync packages/security packages/persistence
-          apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
+          packages/finance packages/banking packages/banking-pluggy
+          packages/banking-pluggy-execution packages/banking-sync
+          packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
 
       - name: Check Python formatting
         run: >-
           .quality-venv/bin/python -m ruff format --check
-          packages/banking packages/banking-pluggy packages/banking-pluggy-execution
-          packages/banking-sync packages/security packages/persistence
-          apps/api apps/worker infra/scripts tests/quality tools/pluggy-spike
+          packages/finance packages/banking packages/banking-pluggy
+          packages/banking-pluggy-execution packages/banking-sync
+          packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
 
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
-          packages/banking/src packages/banking-pluggy/src
+          packages/finance/src packages/banking/src packages/banking-pluggy/src
           packages/banking-pluggy-execution/src packages/banking-sync/src
           packages/security/src packages/persistence/src apps/api/app apps/worker/worker
           tools/pluggy-spike/pluggy_spike.py
@@ -177,10 +181,10 @@ jobs:
         run: |
           set -o pipefail
           .quality-venv/bin/python -m pytest \
-            packages/banking/tests packages/banking-pluggy/tests \
-            packages/banking-pluggy-execution/tests packages/banking-sync/tests \
-            packages/security/tests packages/persistence/tests \
-            apps/api/tests apps/worker/tests tests/quality \
+            packages/finance/tests packages/banking/tests \
+            packages/banking-pluggy/tests packages/banking-pluggy-execution/tests \
+            packages/banking-sync/tests packages/security/tests \
+            packages/persistence/tests apps/api/tests apps/worker/tests tests/quality \
             2>&1 | tee "$RUNNER_TEMP/python-tests.log"
 
       - name: Upload Python test diagnostics
