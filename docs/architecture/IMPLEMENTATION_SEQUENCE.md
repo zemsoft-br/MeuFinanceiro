@@ -37,7 +37,7 @@ Concluir:
 
 Trabalho de backend independente pode avançar quando não depender de contratos ainda abertos e não antecipar uma decisão estrutural.
 
-A Fase 1 está organizada pela Epic #124. A decisão de dinheiro foi concluída pela #125 / ADR-0015; IDs financeiros, autorização/escopo e imutabilidade ainda precisam de recortes explícitos antes dos agregados que dependam deles.
+A Fase 1 está organizada pela Epic #124. A decisão de dinheiro foi concluída pela #125 / ADR-0015 e a audiência financeira pela #129 / ADR-0016. IDs financeiros, capacidade por papel e imutabilidade ainda precisam de recortes explícitos antes dos agregados que dependam deles.
 
 ## 3. Decisões estruturais imediatas
 
@@ -55,19 +55,22 @@ ADR-0015 define:
 
 O value object inicial está em `packages/finance`.
 
-### 3.2 Identidade, residência e autorização
+### 3.2 Identidade, residência e audiência financeira — resolvido para o primeiro schema
 
-Definir/completar:
+Autenticação local, operador e residência primária foram antecipados pelas issues #84/#85 e #88/#89.
 
-- usuário local e sessão;
-- residência e associação;
-- papéis e escopos;
-- proprietário de recurso;
-- filtros nos casos de uso;
-- eventual RLS financeira;
-- revogação.
+ADR-0016 / #129 define a audiência dos recursos financeiros:
 
-Autenticação local, operador e residência primária já foram parcialmente antecipados pelas issues #84/#85 e #88/#89. A política de escopo dos recursos financeiros ainda precisa de decisão própria.
+- todo recurso possui `residence_id`, `owner_operator_id` e `visibility_scope`;
+- `PERSONAL` pertence somente ao proprietário;
+- `SHARED` exige grant explícito além de membership ativa;
+- `HOUSEHOLD` pertence à audiência de todas as memberships ativas da residência;
+- papel administrativo não concede bypass para conteúdo pessoal;
+- ator e residência efetivos são derivados server-side;
+- persistência financeira futura usa RLS com `app.current_residence_id` e `app.current_operator_id`;
+- capacidade de mutação por papel permanece separada da audiência.
+
+A primeira tabela de contas já pode aplicar esse contrato sem inventar visibilidade ad hoc. Matriz completa de papéis, convites e troca de residência continuam em issues próprias.
 
 ### 3.3 Livro financeiro
 
@@ -98,20 +101,20 @@ Não implementar por inferência do termo local-first. SQLite, WASM ou cache fin
 
 Ordem recomendada:
 
-1. autenticação local mínima;
-2. residência e associações;
-3. autorização e escopos;
-4. categorias-base;
-5. contas;
+1. autenticação local mínima — fundação entregue;
+2. residência e associações — fundação entregue;
+3. audiência financeira pessoal/compartilhada/familiar — ADR-0016 / #129;
+4. contrato canônico de conta financeira;
+5. categorias-base;
 6. saldo de abertura;
 7. movimentações;
 8. transferências;
 9. rateios;
 10. anexos;
 11. auditoria financeira;
-12. dashboard inicial.
+12. API/Flutter e dashboard inicial.
 
-A autenticação local e a residência primária já possuem fundação executável. A implementação financeira deve continuar pela política de autorização/escopo e pelos contratos de domínio restantes, sem repetir essas fundações.
+A próxima entrega deve ser o contrato canônico de conta financeira e sua persistência mínima, aplicando Money do ADR-0015 e audiência do ADR-0016 desde o primeiro schema.
 
 Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter quando isso reduzir risco. Interface começa após contrato de API e autorização estar estável ou mockado por contrato versionado.
 
