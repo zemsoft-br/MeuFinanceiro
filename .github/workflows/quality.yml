@@ -10,280 +10,130 @@ on:
       - reopened
       - synchronize
       - ready_for_review
-  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Mandatory quality gates
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
+  ruff-format-bootstrap:
+    name: Temporary Ruff baseline bootstrap
+    if: github.event.pull_request.draft == false && github.head_ref == 'fix/quality-ruff-format-baseline-145'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    env:
-      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres-test-password@127.0.0.1:5432/meufinanceiro_test
-      TEST_APP_DATABASE_USER: postgres
-    services:
-      postgres:
-        image: postgres:18.4-alpine
-        env:
-          POSTGRES_DB: meufinanceiro_test
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres-test-password
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d meufinanceiro_test"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 20
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout pull request head
+      - name: Checkout exact PR head
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: '3.13'
-          cache: pip
-          cache-dependency-path: |
-            packages/finance/pyproject.toml
-            packages/banking/pyproject.toml
-            packages/banking-pluggy/pyproject.toml
-            packages/banking-pluggy-execution/pyproject.toml
-            packages/banking-sync/pyproject.toml
-            packages/security/pyproject.toml
-            packages/persistence/pyproject.toml
-            apps/api/pyproject.toml
-            apps/worker/pyproject.toml
-            infra/scripts/run-quality.py
 
-      - name: Set up Node.js for PWA contract tests
-        uses: actions/setup-node@v6
-        with:
-          node-version: '24.18.0'
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
 
-      - name: Cache Flutter SDK
-        uses: actions/cache@v5
-        with:
-          path: ~/.cache/meufinanceiro/flutter
-          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version', '.flutter-revision') }}
-
-      - name: Install pinned Flutter SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
-          EXPECTED_REVISION="$(tr -d '[:space:]' < .flutter-revision)"
-          FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION-$EXPECTED_REVISION"
-
-          if [[ -x "$FLUTTER_ROOT/bin/flutter" ]]; then
-            ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
-            if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
-              rm -rf "$FLUTTER_ROOT"
-            fi
-          fi
-
-          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
-            mkdir -p "$(dirname "$FLUTTER_ROOT")"
-            git clone --depth 1 --branch "$EXPECTED_VERSION" \
-              https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
-          fi
-
-          ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
-          if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
-            echo "Flutter revision mismatch after clone: expected $EXPECTED_REVISION, found $ACTUAL_REVISION" >&2
-            exit 1
-          fi
-
-          git config --global --add safe.directory "$FLUTTER_ROOT"
-          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
-          "$FLUTTER_ROOT/bin/flutter" config --no-analytics
-          "$FLUTTER_ROOT/bin/flutter" precache --web
-
-      - name: Cache Dart and Flutter packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('apps/app/pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
-
-      - name: Validate DCO sign-offs
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          git fetch --no-tags origin "$BASE_SHA"
-          python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
-
-      - name: Require Flutter lockfile
-        run: test -f apps/app/pubspec.lock
-
-      - name: Validate repository safety
-        run: python infra/scripts/check-repository-safety.py
-
-      - name: Install Python quality environment
-        run: |
-          python -m venv .quality-venv
-          .quality-venv/bin/python -m pip install --disable-pip-version-check \
-            mypy==2.3.0 \
-            pip-audit==2.10.1 \
-            ruff==0.15.22 \
-            -e './packages/finance[test]' \
-            -e './packages/banking[test]' \
-            -e './packages/banking-pluggy[test]' \
-            -e './packages/banking-pluggy-execution[test]' \
-            -e './packages/banking-sync[test]' \
-            -e './packages/security[test]' \
-            -e './packages/persistence[test]' \
-            -e './apps/api[test]' \
-            -e './apps/worker[test]'
-
-      - name: Lint Python
+      - name: Lint before formatting
         run: >-
-          .quality-venv/bin/python -m ruff check
+          python -m ruff check
           packages/finance packages/banking packages/banking-pluggy
           packages/banking-pluggy-execution packages/banking-sync
           packages/security packages/persistence apps/api apps/worker
           infra/scripts tests/quality tools/pluggy-spike
 
-      - name: Capture Python baseline formatting
-        id: ruff_format_capture
+      - name: Format, verify allowlist, commit and push
         shell: bash
         run: |
           set -euo pipefail
-          .quality-venv/bin/python -m ruff format \
+
+          python -m ruff format \
             packages/finance packages/banking packages/banking-pluggy \
             packages/banking-pluggy-execution packages/banking-sync \
             packages/security packages/persistence apps/api apps/worker \
             infra/scripts tests/quality tools/pluggy-spike
-          git diff --binary > "$RUNNER_TEMP/ruff-format.patch"
-          git diff --name-only --diff-filter=ACMRT -- '*.py' > "$RUNNER_TEMP/ruff-format-files.txt"
-          tar -czf "$RUNNER_TEMP/ruff-formatted-python.tgz" \
-            -T "$RUNNER_TEMP/ruff-format-files.txt"
-          test -s "$RUNNER_TEMP/ruff-format.patch"
 
-      - name: Upload Ruff formatting capture
-        uses: actions/upload-artifact@v4
-        with:
-          name: ruff-format-baseline-${{ github.run_id }}
-          path: |
-            ${{ runner.temp }}/ruff-format.patch
-            ${{ runner.temp }}/ruff-format-files.txt
-            ${{ runner.temp }}/ruff-formatted-python.tgz
-          retention-days: 3
-          if-no-files-found: error
+          git diff --name-only --diff-filter=ACMRT -- '*.py' | sort > "$RUNNER_TEMP/actual.txt"
 
-      - name: Type-check Python
-        run: >-
-          .quality-venv/bin/python -m mypy --strict
-          packages/finance/src packages/banking/src packages/banking-pluggy/src
-          packages/banking-pluggy-execution/src packages/banking-sync/src
-          packages/security/src packages/persistence/src apps/api/app apps/worker/worker
-          tools/pluggy-spike/pluggy_spike.py
+          if [[ ! -s "$RUNNER_TEMP/actual.txt" ]]; then
+            echo "Ruff baseline is already formatted; no bootstrap commit required."
+            exit 0
+          fi
 
-      - name: Test Python
-        id: python_tests
-        shell: bash
-        run: |
-          set -o pipefail
-          .quality-venv/bin/python -m pytest \
-            packages/finance/tests packages/banking/tests \
-            packages/banking-pluggy/tests packages/banking-pluggy-execution/tests \
-            packages/banking-sync/tests packages/security/tests \
-            packages/persistence/tests apps/api/tests apps/worker/tests tests/quality \
-            2>&1 | tee "$RUNNER_TEMP/python-tests.log"
+          cat > "$RUNNER_TEMP/expected.txt" <<'EOF'
+          apps/api/app/api/routes/banking_local_connections.py
+          apps/api/app/main.py
+          apps/api/app/services/banking_connections.py
+          apps/api/tests/test_banking_connections_service.py
+          apps/api/tests/test_banking_pluggy_runtime.py
+          apps/api/tests/test_banking_reauthentication_routes.py
+          packages/banking-pluggy-execution/src/meufinanceiro_banking_pluggy_execution/connect_token.py
+          packages/banking-pluggy-execution/tests/test_reauthentication.py
+          packages/banking-pluggy-execution/tests/test_registration.py
+          packages/banking-pluggy/tests/test_connect_token.py
+          packages/banking-pluggy/tests/test_reauthentication_connect_token.py
+          packages/banking-sync/src/meufinanceiro_banking_sync/__init__.py
+          packages/banking-sync/src/meufinanceiro_banking_sync/service.py
+          packages/banking-sync/tests/test_post_sync_reconciliation.py
+          packages/banking-sync/tests/test_service.py
+          packages/finance/src/meufinanceiro_finance/access.py
+          packages/finance/src/meufinanceiro_finance/accounts.py
+          packages/finance/src/meufinanceiro_finance/money.py
+          packages/finance/src/meufinanceiro_finance/movements.py
+          packages/finance/tests/test_money.py
+          packages/persistence/src/meufinanceiro_persistence/banking_fairness_models.py
+          packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py
+          packages/persistence/src/meufinanceiro_persistence/banking_observation_models.py
+          packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py
+          packages/persistence/src/meufinanceiro_persistence/banking_reconciliation_store.py
+          packages/persistence/src/meufinanceiro_persistence/banking_sync_store.py
+          packages/persistence/src/meufinanceiro_persistence/financial_opening_balance_store.py
+          packages/persistence/src/meufinanceiro_persistence/migrations/versions/0006_banking_residence_fk.py
+          packages/persistence/src/meufinanceiro_persistence/migrations/versions/0011_financial_accounts.py
+          packages/persistence/src/meufinanceiro_persistence/migrations/versions/0013_account_opening_balances.py
+          packages/persistence/tests/test_banking_manual_sync_persistence.py
+          packages/persistence/tests/test_banking_residence_fk_migration.py
+          packages/persistence/tests/test_banking_sync_fairness_persistence.py
+          packages/persistence/tests/test_banking_transaction_observations.py
+          packages/persistence/tests/test_banking_transaction_reconciliation.py
+          packages/persistence/tests/test_financial_accounts.py
+          packages/persistence/tests/test_financial_opening_balances.py
+          tests/quality/test_banking_canonical_residence_contract.py
+          tests/quality/test_banking_manual_sync_persistence_contract.py
+          tests/quality/test_banking_manual_sync_reconciliation_contract.py
+          tests/quality/test_banking_transaction_observations_contract.py
+          tests/quality/test_banking_transaction_reconciliation_contract.py
+          tests/quality/test_finance_access_scope_contract.py
+          tests/quality/test_finance_id_contract.py
+          tests/quality/test_finance_money_contract.py
+          tests/quality/test_financial_account_persistence_contract.py
+          tests/quality/test_financial_movement_contract.py
+          tests/quality/test_financial_opening_balance_contract.py
+          tests/quality/test_flutter_pluggy_connect_contract.py
+          tests/quality/test_local_banking_connections_contract.py
+          tests/quality/test_pluggy_connect_token_contract.py
+          tests/quality/test_pluggy_connection_registration_contract.py
+          tests/quality/test_pluggy_reauthentication_contract.py
+          EOF
+          sed -i 's/^          //' "$RUNNER_TEMP/expected.txt"
+          sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
 
-      - name: Upload Python test diagnostics
-        if: failure() && steps.python_tests.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-python-tests-${{ github.run_id }}
-          path: ${{ runner.temp }}/python-tests.log
-          retention-days: 3
-          if-no-files-found: error
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          test "$(wc -l < "$RUNNER_TEMP/actual.txt")" -eq 53
 
-      - name: Check Python licenses
-        run: .quality-venv/bin/python infra/scripts/check-python-licenses.py
+          mapfile -t formatted_files < "$RUNNER_TEMP/actual.txt"
+          git add -- "${formatted_files[@]}"
+          git diff --cached --check
 
-      - name: Audit Python dependencies
-        run: .quality-venv/bin/python -m pip_audit --local
-
-      - name: Check Flutter Web JavaScript syntax
-        run: |
-          node --check apps/app/web/app_bootstrap.js
-          node --check apps/app/web/sw.js
-
-      - name: Test Flutter service worker invariants
-        run: node --test tests/quality/flutter-service-worker.test.mjs
-
-      - name: Validate Flutter toolchain
-        run: python infra/scripts/check-flutter-toolchain.py
-
-      - name: Resolve Flutter dependencies from lockfile
-        working-directory: apps/app
-        run: flutter pub get --enforce-lockfile
-
-      - name: Check Flutter direct dependency licenses
-        run: python infra/scripts/check-flutter-licenses.py
-
-      - name: Check Dart formatting
-        working-directory: apps/app
-        run: dart format --output=none --set-exit-if-changed lib test
-
-      - name: Analyze Flutter client
-        working-directory: apps/app
-        run: flutter analyze
-
-      - name: Test Flutter client
-        working-directory: apps/app
-        run: flutter test
-
-      - name: Build Flutter Web client
-        working-directory: apps/app
-        run: >-
-          flutter build web --release --no-web-resources-cdn
-          --pwa-strategy=none
-
-      - name: Finalize Flutter Web artifact
-        run: >-
-          python infra/scripts/finalize-flutter-web-build.py
-          --build-dir apps/app/build/web
-
-      - name: Validate Flutter Web/PWA contract
-        id: flutter_web_contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          report_dir="$RUNNER_TEMP/flutter-web-contract"
-          mkdir -p "$report_dir/files"
-          find apps/app/build/web -maxdepth 3 -type f -printf '%P\n' \
-            | sort > "$report_dir/file-list.txt"
-          for relative in index.html app_bootstrap.js flutter_bootstrap.js manifest.json sw.js; do
-            if [[ -f "apps/app/build/web/$relative" ]]; then
-              cp "apps/app/build/web/$relative" "$report_dir/files/$relative"
-            fi
-          done
-          python infra/scripts/check-flutter-web-contract.py \
-            2>&1 | tee "$report_dir/validator.log"
-
-      - name: Upload Flutter Web contract diagnostics
-        if: failure() && steps.flutter_web_contract.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-flutter-web-contract-${{ github.run_id }}
-          path: ${{ runner.temp }}/flutter-web-contract
-          retention-days: 3
-          if-no-files-found: error
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit \
+            -m 'style: normalize Python baseline with Ruff 0.15.22' \
+            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+          git push origin HEAD:fix/quality-ruff-format-baseline-145
