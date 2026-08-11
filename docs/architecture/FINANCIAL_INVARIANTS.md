@@ -352,7 +352,22 @@ Autorização é aplicada:
 
 O contrato puro inicial está em `meufinanceiro-finance`. A matriz completa de permissões por papel da membership permanece decisão separada da visibilidade.
 
-## 19. Testes mínimos por regra
+## 19. Identificadores financeiros
+
+A identidade local canônica foi aceita no ADR-0017 / #131.
+
+- recursos financeiros usam UUID v4 RFC 4122 local e opaco;
+- UUID nil, outra versão/variant ou tipo não UUID são inválidos;
+- strings não são convertidas implicitamente no contrato de domínio;
+- IDs não codificam residência, proprietário, tipo, timestamp, valor, moeda ou provider;
+- conhecer um UUID nunca prova autorização;
+- IDs externos, FITID, hashes e fingerprints permanecem identidades de fonte;
+- idempotency key, correlation ID, reconciliation ID e transfer ID não são resource IDs;
+- geração canônica é server-side até existir decisão explícita para criação offline.
+
+O helper inicial está em `meufinanceiro-finance` e não depende de persistência ou provider.
+
+## 20. Testes mínimos por regra
 
 Para cada operação financeira relevante:
 
@@ -369,12 +384,13 @@ Para cada operação financeira relevante:
 11. falha no meio da transação;
 12. ausência de dupla contabilização.
 
-## 20. Decisões ainda necessárias
+## 21. Decisões ainda necessárias
 
 Resolvido antes do núcleo financeiro:
 
 - representação monetária e arredondamento: ADR-0015 / #125;
-- visibilidade e audiência financeira: ADR-0016 / #129.
+- visibilidade e audiência financeira: ADR-0016 / #129;
+- identificadores financeiros canônicos: ADR-0017 / #131.
 
 Ainda pendentes:
 
@@ -382,7 +398,6 @@ Ainda pendentes:
 - estratégia de imutabilidade;
 - modelo de saldo de abertura;
 - matriz de capacidade por papel da membership;
-- convenções de IDs financeiros;
 - versionamento de agregados;
 - retenção de observações externas;
 - armazenamento de anexos.
