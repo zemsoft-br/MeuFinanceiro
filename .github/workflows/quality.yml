@@ -4,32 +4,52 @@ on:
   pull_request:
     branches:
       - develop
+      - main
     types:
       - opened
       - reopened
       - synchronize
       - ready_for_review
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  mypy-baseline-probe:
-    name: Temporary strict mypy baseline probe
-    if: github.head_ref == 'fix/quality-mypy-baseline-147'
+  quality:
+    name: Mandatory quality gates
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 45
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres-test-password@127.0.0.1:5432/meufinanceiro_test
+      TEST_APP_DATABASE_USER: postgres
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: meufinanceiro_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meufinanceiro_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout pull request head
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -46,12 +66,80 @@ jobs:
             packages/persistence/pyproject.toml
             apps/api/pyproject.toml
             apps/worker/pyproject.toml
+            infra/scripts/run-quality.py
 
-      - name: Install canonical Python quality environment
+      - name: Set up Node.js for PWA contract tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.18.0'
+
+      - name: Cache Flutter SDK
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/meufinanceiro/flutter
+          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version', '.flutter-revision') }}
+
+      - name: Install pinned Flutter SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
+          EXPECTED_REVISION="$(tr -d '[:space:]' < .flutter-revision)"
+          FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION-$EXPECTED_REVISION"
+
+          if [[ -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+            if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+              rm -rf "$FLUTTER_ROOT"
+            fi
+          fi
+
+          if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
+            mkdir -p "$(dirname "$FLUTTER_ROOT")"
+            git clone --depth 1 --branch "$EXPECTED_VERSION" \
+              https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
+          fi
+
+          ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
+          if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+            echo "Flutter revision mismatch after clone: expected $EXPECTED_REVISION, found $ACTUAL_REVISION" >&2
+            exit 1
+          fi
+
+          git config --global --add safe.directory "$FLUTTER_ROOT"
+          echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
+          "$FLUTTER_ROOT/bin/flutter" config --no-analytics
+          "$FLUTTER_ROOT/bin/flutter" precache --web
+
+      - name: Cache Dart and Flutter packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('apps/app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Validate DCO sign-offs
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "$BASE_SHA"
+          python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Require Flutter lockfile
+        run: test -f apps/app/pubspec.lock
+
+      - name: Validate repository safety
+        run: python infra/scripts/check-repository-safety.py
+
+      - name: Install Python quality environment
         run: |
           python -m venv .quality-venv
           .quality-venv/bin/python -m pip install --disable-pip-version-check \
             mypy==2.3.0 \
+            pip-audit==2.10.1 \
             ruff==0.15.22 \
             -e './packages/finance[test]' \
             -e './packages/banking[test]' \
@@ -62,124 +150,6 @@ jobs:
             -e './packages/persistence[test]' \
             -e './apps/api[test]' \
             -e './apps/worker[test]'
-
-      - name: Apply typed banking metadata facade candidate
-        shell: bash
-        run: |
-          set -euo pipefail
-          package='packages/persistence/src/meufinanceiro_persistence'
-
-          cat > "$package/banking_sync_schema.py" <<'PYFILE'
-          """Typed access to banking sync tables registered in shared metadata."""
-
-          from __future__ import annotations
-
-          from sqlalchemy import Table
-
-          from meufinanceiro_persistence.schema import metadata
-
-
-          def _registered_table(qualified_name: str) -> Table:
-              table = metadata.tables.get(qualified_name)
-              if table is None:
-                  raise RuntimeError("required banking metadata table is not registered")
-              return table
-
-
-          external_accounts = _registered_table("integrations.external_accounts")
-          sync_cursors = _registered_table("integrations.sync_cursors")
-          sync_runs = _registered_table("integrations.sync_runs")
-
-          __all__ = ["external_accounts", "sync_cursors", "sync_runs"]
-          PYFILE
-
-          .quality-venv/bin/python - <<'PY'
-          from pathlib import Path
-
-          package = Path('packages/persistence/src/meufinanceiro_persistence')
-          replacements = {
-              'banking_sync_store.py': (
-                  'from meufinanceiro_persistence.schema import (\n'
-                  '    connections,\n'
-                  '    external_accounts,\n'
-                  '    sync_cursors,\n'
-                  '    sync_runs,\n'
-                  ')\n',
-                  'from meufinanceiro_persistence.banking_sync_schema import (\n'
-                  '    external_accounts,\n'
-                  '    sync_cursors,\n'
-                  '    sync_runs,\n'
-                  ')\n'
-                  'from meufinanceiro_persistence.schema import connections\n',
-              ),
-              'banking_fairness_schema.py': (
-                  'from meufinanceiro_persistence.schema import external_accounts, metadata\n',
-                  'from meufinanceiro_persistence.banking_sync_schema import external_accounts\n'
-                  'from meufinanceiro_persistence.schema import metadata\n',
-              ),
-              'banking_observation_store.py': (
-                  'from meufinanceiro_persistence.schema import (\n'
-                  '    connections,\n'
-                  '    external_accounts,\n'
-                  '    sync_cursors,\n'
-                  ')\n',
-                  'from meufinanceiro_persistence.banking_sync_schema import (\n'
-                  '    external_accounts,\n'
-                  '    sync_cursors,\n'
-                  ')\n'
-                  'from meufinanceiro_persistence.schema import connections\n',
-              ),
-              'banking_fairness_store.py': (
-                  'from meufinanceiro_persistence.schema import (\n'
-                  '    connections,\n'
-                  '    external_accounts,\n'
-                  '    sync_cursors,\n'
-                  ')\n',
-                  'from meufinanceiro_persistence.banking_sync_schema import (\n'
-                  '    external_accounts,\n'
-                  '    sync_cursors,\n'
-                  ')\n'
-                  'from meufinanceiro_persistence.schema import connections\n',
-              ),
-              'banking_reconciliation_store.py': (
-                  'from meufinanceiro_persistence.schema import connections, external_accounts\n',
-                  'from meufinanceiro_persistence.banking_sync_schema import external_accounts\n'
-                  'from meufinanceiro_persistence.schema import connections\n',
-              ),
-          }
-
-          for filename, (old, new) in replacements.items():
-              path = package / filename
-              text = path.read_text(encoding='utf-8')
-              if old in text:
-                  path.write_text(text.replace(old, new, 1), encoding='utf-8')
-              elif new not in text:
-                  raise SystemExit(f'import marker not found in {filename}')
-
-          identity = package / 'identity_store.py'
-          text = identity.read_text(encoding='utf-8')
-          old = '        row: Mapping[str, Any] | None = (\n'
-          new = '        row = (\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-              text = text.replace('from collections.abc import Mapping\n', '')
-              text = text.replace('from typing import Any, NoReturn\n', 'from typing import NoReturn\n')
-              identity.write_text(text, encoding='utf-8')
-          elif new not in text:
-              raise SystemExit('identity row assignment marker not found')
-          PY
-
-      - name: Format candidate files
-        run: >-
-          .quality-venv/bin/python -m ruff format
-          packages/persistence/src/meufinanceiro_persistence/banking_sync_schema.py
-          packages/persistence/src/meufinanceiro_persistence/banking_sync_store.py
-          packages/persistence/src/meufinanceiro_persistence/banking_fairness_schema.py
-          packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py
-          packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py
-          packages/persistence/src/meufinanceiro_persistence/banking_reconciliation_store.py
-          packages/persistence/src/meufinanceiro_persistence/identity_store.py
-          packages/finance/src/meufinanceiro_finance/__init__.py
 
       - name: Lint Python
         run: >-
@@ -197,19 +167,6 @@ jobs:
           packages/security packages/persistence apps/api apps/worker
           infra/scripts tests/quality tools/pluggy-spike
 
-      - name: Smoke typed metadata facade
-        run: |
-          .quality-venv/bin/python - <<'PY'
-          from meufinanceiro_persistence.banking_sync_schema import (
-              external_accounts,
-              sync_cursors,
-              sync_runs,
-          )
-          assert external_accounts.fullname == 'integrations.external_accounts'
-          assert sync_cursors.fullname == 'integrations.sync_cursors'
-          assert sync_runs.fullname == 'integrations.sync_runs'
-          PY
-
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
@@ -218,26 +175,96 @@ jobs:
           packages/security/src packages/persistence/src apps/api/app apps/worker/worker
           tools/pluggy-spike/pluggy_spike.py
 
-      - name: Commit successful candidate fixes
+      - name: Test Python
+        id: python_tests
+        shell: bash
+        run: |
+          set -o pipefail
+          .quality-venv/bin/python -m pytest \
+            packages/finance/tests packages/banking/tests \
+            packages/banking-pluggy/tests packages/banking-pluggy-execution/tests \
+            packages/banking-sync/tests packages/security/tests \
+            packages/persistence/tests apps/api/tests apps/worker/tests tests/quality \
+            2>&1 | tee "$RUNNER_TEMP/python-tests.log"
+
+      - name: Upload Python test diagnostics
+        if: failure() && steps.python_tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-python-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/python-tests.log
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Check Python licenses
+        run: .quality-venv/bin/python infra/scripts/check-python-licenses.py
+
+      - name: Audit Python dependencies
+        run: .quality-venv/bin/python -m pip_audit --local
+
+      - name: Check Flutter Web JavaScript syntax
+        run: |
+          node --check apps/app/web/app_bootstrap.js
+          node --check apps/app/web/sw.js
+
+      - name: Test Flutter service worker invariants
+        run: node --test tests/quality/flutter-service-worker.test.mjs
+
+      - name: Validate Flutter toolchain
+        run: python infra/scripts/check-flutter-toolchain.py
+
+      - name: Resolve Flutter dependencies from lockfile
+        working-directory: apps/app
+        run: flutter pub get --enforce-lockfile
+
+      - name: Check Flutter direct dependency licenses
+        run: python infra/scripts/check-flutter-licenses.py
+
+      - name: Check Dart formatting
+        working-directory: apps/app
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze Flutter client
+        working-directory: apps/app
+        run: flutter analyze
+
+      - name: Test Flutter client
+        working-directory: apps/app
+        run: flutter test
+
+      - name: Build Flutter Web client
+        working-directory: apps/app
+        run: >-
+          flutter build web --release --no-web-resources-cdn
+          --pwa-strategy=none
+
+      - name: Finalize Flutter Web artifact
+        run: >-
+          python infra/scripts/finalize-flutter-web-build.py
+          --build-dir apps/app/build/web
+
+      - name: Validate Flutter Web/PWA contract
+        id: flutter_web_contract
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check
-          git add \
-            packages/persistence/src/meufinanceiro_persistence/banking_sync_schema.py \
-            packages/persistence/src/meufinanceiro_persistence/banking_sync_store.py \
-            packages/persistence/src/meufinanceiro_persistence/banking_fairness_schema.py \
-            packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py \
-            packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py \
-            packages/persistence/src/meufinanceiro_persistence/banking_reconciliation_store.py \
-            packages/persistence/src/meufinanceiro_persistence/identity_store.py
-          if git diff --cached --quiet; then
-            echo 'Candidate fixes are already committed.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit \
-            -m 'fix(persistence): add typed banking metadata facade' \
-            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
-          git push origin HEAD:fix/quality-mypy-baseline-147
+          report_dir="$RUNNER_TEMP/flutter-web-contract"
+          mkdir -p "$report_dir/files"
+          find apps/app/build/web -maxdepth 3 -type f -printf '%P\n' \
+            | sort > "$report_dir/file-list.txt"
+          for relative in index.html app_bootstrap.js flutter_bootstrap.js manifest.json sw.js; do
+            if [[ -f "apps/app/build/web/$relative" ]]; then
+              cp "apps/app/build/web/$relative" "$report_dir/files/$relative"
+            fi
+          done
+          python infra/scripts/check-flutter-web-contract.py \
+            2>&1 | tee "$report_dir/validator.log"
+
+      - name: Upload Flutter Web contract diagnostics
+        if: failure() && steps.flutter_web_contract.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-flutter-web-contract-${{ github.run_id }}
+          path: ${{ runner.temp }}/flutter-web-contract
+          retention-days: 3
+          if-no-files-found: error
