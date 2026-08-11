@@ -37,7 +37,7 @@ Concluir:
 
 Trabalho de backend independente pode avançar quando não depender de contratos ainda abertos e não antecipar uma decisão estrutural.
 
-A Fase 1 está organizada pela Epic #124. A decisão de dinheiro foi concluída pela #125 / ADR-0015 e a audiência financeira pela #129 / ADR-0016. IDs financeiros, capacidade por papel e imutabilidade ainda precisam de recortes explícitos antes dos agregados que dependam deles.
+A Fase 1 está organizada pela Epic #124. Dinheiro foi concluído pela #125 / ADR-0015, audiência financeira pela #129 / ADR-0016 e IDs financeiros pela ADR-0017 / #131. Capacidade por papel e imutabilidade ainda exigem recortes próprios antes dos agregados que dependam diretamente delas.
 
 ## 3. Decisões estruturais imediatas
 
@@ -70,9 +70,22 @@ ADR-0016 / #129 define a audiência dos recursos financeiros:
 - persistência financeira futura usa RLS com `app.current_residence_id` e `app.current_operator_id`;
 - capacidade de mutação por papel permanece separada da audiência.
 
-A primeira tabela de contas já pode aplicar esse contrato sem inventar visibilidade ad hoc. Matriz completa de papéis, convites e troca de residência continuam em issues próprias.
+### 3.3 Identificadores financeiros — resolvido
 
-### 3.3 Livro financeiro
+ADR-0017 / #131 define:
+
+- UUID v4 RFC 4122 local e opaco como ID canônico;
+- geração server-side por `uuid4()`;
+- sem coerção implícita de string;
+- sem codificar residência, proprietário, tipo, timestamp, valor ou provider;
+- IDs externos/importadores permanecem identidades de fonte;
+- conhecer o UUID nunca prova autorização;
+- idempotência, correlação, reconciliação e transfer IDs são conceitos separados;
+- criação client-side/offline exige decisão própria.
+
+Com Money, audiência e IDs resolvidos, a primeira tabela de contas pode aplicar contratos estáveis desde o primeiro schema.
+
+### 3.4 Livro financeiro
 
 Definir:
 
@@ -83,7 +96,7 @@ Definir:
 - transferências e rateios;
 - auditoria.
 
-### 3.4 Anexos
+### 3.5 Anexos
 
 Definir:
 
@@ -93,7 +106,7 @@ Definir:
 - autorização;
 - backup e restauração.
 
-### 3.5 Persistência local do cliente
+### 3.6 Persistência local do cliente
 
 Não implementar por inferência do termo local-first. SQLite, WASM ou cache financeiro no Flutter exige issue e ADR específicos para autoridade, sincronização, criptografia, expiração, revogação, migrações e conflitos.
 
@@ -104,17 +117,18 @@ Ordem recomendada:
 1. autenticação local mínima — fundação entregue;
 2. residência e associações — fundação entregue;
 3. audiência financeira pessoal/compartilhada/familiar — ADR-0016 / #129;
-4. contrato canônico de conta financeira;
-5. categorias-base;
-6. saldo de abertura;
-7. movimentações;
-8. transferências;
-9. rateios;
-10. anexos;
-11. auditoria financeira;
-12. API/Flutter e dashboard inicial.
+4. identificadores financeiros — ADR-0017 / #131;
+5. contrato canônico de conta financeira;
+6. categorias-base;
+7. saldo de abertura;
+8. movimentações;
+9. transferências;
+10. rateios;
+11. anexos;
+12. auditoria financeira;
+13. API/Flutter e dashboard inicial.
 
-A próxima entrega deve ser o contrato canônico de conta financeira e sua persistência mínima, aplicando Money do ADR-0015 e audiência do ADR-0016 desde o primeiro schema.
+A próxima entrega deve ser o contrato canônico de conta financeira e sua persistência mínima, aplicando Money do ADR-0015, audiência do ADR-0016 e IDs do ADR-0017 desde o primeiro schema.
 
 Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter quando isso reduzir risco. Interface começa após contrato de API e autorização estar estável ou mockado por contrato versionado.
 
