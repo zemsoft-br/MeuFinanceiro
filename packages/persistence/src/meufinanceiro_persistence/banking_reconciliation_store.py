@@ -319,8 +319,7 @@ def _reconcile_observation(
                     reconciled_transactions.c.id == target_id,
                     reconciled_transactions.c.residence_id == residence_id,
                     reconciled_transactions.c.connection_id == connection_id,
-                    reconciled_transactions.c.source_observed_at
-                    == current_observed_at,
+                    reconciled_transactions.c.source_observed_at == current_observed_at,
                 )
                 .values(
                     status=status.value,
@@ -482,8 +481,7 @@ def _identity(
             not isinstance(stable_fingerprint, str)
             or len(stable_fingerprint) != 64
             or any(
-                character not in "0123456789abcdef"
-                for character in stable_fingerprint
+                character not in "0123456789abcdef" for character in stable_fingerprint
             )
         ):
             raise TransactionReconciliationError(
@@ -550,9 +548,7 @@ def _clean_limit(value: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError("limit must be an integer")
     if value < 1 or value > _MAX_RECONCILIATION_LIMIT:
-        raise ValueError(
-            f"limit must be between 1 and {_MAX_RECONCILIATION_LIMIT}"
-        )
+        raise ValueError(f"limit must be between 1 and {_MAX_RECONCILIATION_LIMIT}")
     return value
 
 

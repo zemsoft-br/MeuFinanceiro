@@ -190,32 +190,46 @@ def test_banking_residence_fk_migration_fails_closed_and_roundtrips(
         assert _constraint_delete_action(engine) == "r"
 
         with engine.connect() as connection:
-            assert connection.scalar(
-                select(func.count()).select_from(connections).where(
-                    connections.c.id == connection_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(connections)
+                    .where(connections.c.id == connection_id)
                 )
-            ) == 1
-            assert connection.scalar(
-                select(func.count()).select_from(household_residences).where(
-                    household_residences.c.id == residence_id,
-                    household_residences.c.installation_id == installation_id,
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(household_residences)
+                    .where(
+                        household_residences.c.id == residence_id,
+                        household_residences.c.installation_id == installation_id,
+                    )
                 )
-            ) == 1
+                == 1
+            )
 
         command.downgrade(config, _PREVIOUS_REVISION)
         assert current_revision(engine) == _PREVIOUS_REVISION
         assert _constraint_delete_action(engine) is None
         with engine.connect() as connection:
-            assert connection.scalar(
-                select(func.count()).select_from(connections).where(
-                    connections.c.id == connection_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(connections)
+                    .where(connections.c.id == connection_id)
                 )
-            ) == 1
-            assert connection.scalar(
-                select(func.count()).select_from(household_residences).where(
-                    household_residences.c.id == residence_id
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(household_residences)
+                    .where(household_residences.c.id == residence_id)
                 )
-            ) == 1
+                == 1
+            )
     finally:
         _clean_banking_rows(engine)
         command.upgrade(config, "head")

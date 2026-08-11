@@ -564,9 +564,7 @@ class ManualBankingSyncService:
         error: BankingProviderError,
     ) -> ManualSyncResult:
         status = (
-            StoredSyncStatus.PARTIAL
-            if pages_committed > 0
-            else StoredSyncStatus.FAILED
+            StoredSyncStatus.PARTIAL if pages_committed > 0 else StoredSyncStatus.FAILED
         )
         category = _PROVIDER_ERROR_CATEGORIES.get(
             error.category,
@@ -619,9 +617,7 @@ class ManualBankingSyncService:
         pages_committed: int,
     ) -> ManualSyncResult:
         status = (
-            StoredSyncStatus.PARTIAL
-            if pages_committed > 0
-            else StoredSyncStatus.FAILED
+            StoredSyncStatus.PARTIAL if pages_committed > 0 else StoredSyncStatus.FAILED
         )
         try:
             finished = self._store.finish_sync(
@@ -653,13 +649,19 @@ def _pending_cycle_accounts(
     eligible_accounts: tuple[ExternalAccount, ...],
     cycle_plan: SyncCyclePlan,
 ) -> tuple[ExternalAccount, ...]:
-    eligible_by_id = {account.external_account_id: account for account in eligible_accounts}
+    eligible_by_id = {
+        account.external_account_id: account for account in eligible_accounts
+    }
     if len(eligible_by_id) != len(eligible_accounts):
         raise ManualSyncExecutionError(
             "manual banking synchronization received duplicate account identities"
         )
-    plan_by_id = {account.external_account_id: account for account in cycle_plan.accounts}
-    if len(plan_by_id) != len(cycle_plan.accounts) or set(plan_by_id) != set(eligible_by_id):
+    plan_by_id = {
+        account.external_account_id: account for account in cycle_plan.accounts
+    }
+    if len(plan_by_id) != len(cycle_plan.accounts) or set(plan_by_id) != set(
+        eligible_by_id
+    ):
         raise ManualSyncExecutionError(
             "manual banking synchronization cycle does not match the account snapshot"
         )

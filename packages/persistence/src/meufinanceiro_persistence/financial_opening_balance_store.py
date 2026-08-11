@@ -185,7 +185,10 @@ class FinancialOpeningBalanceStore:
                     .mappings()
                     .one_or_none()
                 )
-        except (FinancialOpeningBalanceAccessError, FinancialOpeningBalancePersistenceError):
+        except (
+            FinancialOpeningBalanceAccessError,
+            FinancialOpeningBalancePersistenceError,
+        ):
             raise
         except DBAPIError:
             raise FinancialOpeningBalancePersistenceError(

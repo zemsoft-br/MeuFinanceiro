@@ -47,7 +47,9 @@ def _record(
         last_attempt_at=NOW,
         next_refresh_allowed_at=None,
         consent_expires_at=None,
-        disconnected_at=(NOW if status is StoredConnectionStatus.DISCONNECTED else None),
+        disconnected_at=(
+            NOW if status is StoredConnectionStatus.DISCONNECTED else None
+        ),
         created_at=NOW,
         updated_at=NOW,
     )
@@ -55,9 +57,7 @@ def _record(
 
 def test_reauthentication_availability_is_derived_without_provider_io() -> None:
     store = FakeStore(
-        (
-            _record(status=StoredConnectionStatus.REAUTHENTICATION_REQUIRED),
-        )
+        (_record(status=StoredConnectionStatus.REAUTHENTICATION_REQUIRED),)
     )
     service = BankingConnectionsService(
         store,
@@ -75,7 +75,9 @@ def test_reauthentication_availability_is_derived_without_provider_io() -> None:
     assert store.calls == [(INSTALLATION_ID, RESIDENCE_ID)]
 
 
-def test_reauthentication_is_unavailable_when_runtime_or_connection_disallows_it() -> None:
+def test_reauthentication_is_unavailable_when_runtime_or_connection_disallows_it() -> (
+    None
+):
     for record, runtime_available in (
         (_record(), False),
         (_record(status=StoredConnectionStatus.DISCONNECTED), True),
