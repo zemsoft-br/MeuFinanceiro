@@ -12,7 +12,6 @@ from decimal import (
 )
 from enum import StrEnum
 from functools import total_ordering
-from typing import Any
 
 _MAX_SCALE = 8
 _MAX_INTEGER_DIGITS = 16
@@ -55,6 +54,9 @@ def _canonical_decimal(value: Decimal) -> Decimal:
         raise ValueError("amount must be finite")
 
     sign, digits, exponent = value.as_tuple()
+    if not isinstance(exponent, int):  # Defensive typing for DecimalTuple specials.
+        raise ValueError("amount must be finite")
+
     mutable_digits = list(digits)
     mutable_exponent = exponent
 
@@ -137,13 +139,13 @@ class Money:
 
     def __add__(self, other: object) -> Money:
         if not isinstance(other, Money):
-            return NotImplemented
+            raise TypeError("money addition requires Money")
         self._require_same_currency(other)
         return Money(self.amount + other.amount, self.currency)
 
     def __sub__(self, other: object) -> Money:
         if not isinstance(other, Money):
-            return NotImplemented
+            raise TypeError("money subtraction requires Money")
         self._require_same_currency(other)
         return Money(self.amount - other.amount, self.currency)
 
@@ -153,9 +155,9 @@ class Money:
     def __abs__(self) -> Money:
         return Money(abs(self.amount), self.currency)
 
-    def __lt__(self, other: Any) -> bool:
+    def __lt__(self, other: object) -> bool:
         if not isinstance(other, Money):
-            return NotImplemented
+            raise TypeError("money ordering requires Money")
         self._require_same_currency(other)
         return self.amount < other.amount
 
