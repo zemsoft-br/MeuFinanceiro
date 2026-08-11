@@ -22,12 +22,19 @@ Essas regras devem ser protegidas em:
 
 ## 2. Dinheiro
 
-- Nunca usar `float`.
-- Persistir valores em `numeric` com escala definida ou unidade mínima, mediante ADR específico.
-- Moeda é explícita.
-- Arredondamento é explícito, determinístico e testado.
+A representação monetária canônica foi aceita no ADR-0015.
+
+- Nunca usar `float` como autoridade financeira.
+- O backend usa `Decimal` finito e o contrato futuro de persistência é `NUMERIC(24,8)` com moeda separada.
+- Moeda é código ASCII uppercase de três letras.
+- APIs financeiras serializam amount como string decimal fixed-point, nunca JSON number/float autoritativo.
+- Até oito casas decimais são preservadas sem arredondamento implícito.
+- Arredondamento exige escala e modo explícitos no caso de uso.
+- Soma, subtração e comparação ordenada exigem a mesma moeda.
+- Conversão de moeda exige taxa, data, fonte e arredondamento rastreáveis.
 - Totais derivados não são aceitos como entrada autoritativa quando podem ser recalculados.
-- Alteração de moeda exige taxa, data, fonte e arredondamento rastreáveis.
+
+O value object inicial está em `meufinanceiro-finance`. Regras de minor units e câmbio permanecem casos de uso separados.
 
 ## 3. Tempo financeiro
 
@@ -338,14 +345,17 @@ Para cada operação financeira relevante:
 
 ## 20. Decisões ainda necessárias
 
-Antes do núcleo financeiro:
+Resolvido antes do núcleo financeiro:
 
-- representação monetária;
+- representação monetária e arredondamento: ADR-0015 / #125.
+
+Ainda pendentes:
+
 - semântica exata de `Movement`;
 - estratégia de imutabilidade;
 - modelo de saldo de abertura;
 - escopo de RLS versus filtros da aplicação;
-- convenções de IDs;
+- convenções de IDs financeiros;
 - versionamento de agregados;
 - retenção de observações externas;
 - armazenamento de anexos.
