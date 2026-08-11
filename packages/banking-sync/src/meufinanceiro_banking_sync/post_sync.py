@@ -26,6 +26,9 @@ _RECONCILIATION_ELIGIBLE_STATUSES = frozenset(
         StoredSyncStatus.PARTIAL,
     }
 )
+_POST_PROCESSING_ERROR = (
+    "manual banking synchronization post-processing could not be completed"
+)
 
 
 @runtime_checkable
@@ -90,6 +93,8 @@ class ManualBankingSyncReconciliationService:
             connection_id=connection_id,
             idempotency_key=idempotency_key,
         )
+        if not isinstance(sync_result, ManualSyncResult):
+            raise ManualSyncReconciliationExecutionError(_POST_PROCESSING_ERROR)
         if sync_result.status not in _RECONCILIATION_ELIGIBLE_STATUSES:
             return ManualSyncReconciliationResult(
                 sync_result=sync_result,
@@ -107,13 +112,15 @@ class ManualBankingSyncReconciliationService:
             )
         except (TransactionReconciliationError, BankingPersistenceError):
             raise ManualSyncReconciliationExecutionError(
-                "manual banking synchronization post-processing could not be completed"
+                _POST_PROCESSING_ERROR
             ) from None
         except Exception:
             raise ManualSyncReconciliationExecutionError(
-                "manual banking synchronization post-processing could not be completed"
+                _POST_PROCESSING_ERROR
             ) from None
 
+        if not isinstance(reconciliation_result, TransactionReconciliationResult):
+            raise ManualSyncReconciliationExecutionError(_POST_PROCESSING_ERROR)
         return ManualSyncReconciliationResult(
             sync_result=sync_result,
             reconciliation_result=reconciliation_result,
