@@ -66,4 +66,26 @@ A capacidade de executar uma mutação continua separada da audiência. Casos de
 
 O ADR-0016 exige que persistência financeira futura use RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade.
 
+## Identificadores canônicos
+
+Recursos financeiros locais usam UUID v4 RFC 4122 opaco:
+
+```python
+from meufinanceiro_finance import (
+    new_financial_resource_id,
+    validate_financial_resource_id,
+)
+
+resource_id = new_financial_resource_id()
+validate_financial_resource_id(resource_id)
+```
+
+O contrato não converte strings implicitamente e rejeita UUID nil, versões diferentes de v4 e variants fora de RFC 4122.
+
+O ID local não contém residência, proprietário, tipo, timestamp, valor, moeda ou material de provider. IDs de provider/importador, FITID, hashes e fingerprints continuam sendo identidades de fonte e nunca substituem o UUID canônico do recurso.
+
+Idempotency key, correlation ID, reconciliation ID e transfer ID são conceitos independentes mesmo quando algum deles também vier a usar UUID.
+
+O ADR-0017 mantém geração canônica server-side. Client-generated IDs para eventual modo offline exigem decisão própria de idempotência e conflitos.
+
 Conversão cambial, regras de moeda específica, persistência de grants, saldo de abertura, contas e movimentações permanecem fora deste pacote inicial.
