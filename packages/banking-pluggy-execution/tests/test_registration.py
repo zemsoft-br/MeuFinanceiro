@@ -23,7 +23,6 @@ from meufinanceiro_banking_pluggy_execution import (
 )
 from meufinanceiro_persistence import (
     BankingConnectionRecord,
-    CapabilitySnapshot,
     ConfigurationNotFoundError,
     ConnectionConflictError,
     EnabledProviderCredentials,
