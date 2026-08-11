@@ -45,6 +45,8 @@ Neste primeiro recorte o runtime cria somente `ACTIVE`.
 
 `ARCHIVED` já possui constraint estrutural para uso futuro, mas nenhuma permissão runtime de `UPDATE` ou `DELETE` é concedida. O caso de uso de arquivamento será implementado somente após a matriz de capacidades por papel e auditoria correspondente.
 
+A policy de `INSERT` também exige `ACTIVE` + `archived_at IS NULL`, portanto SQL runtime fora do store não consegue antecipar um estado arquivado.
+
 ## Estrutura
 
 Tabela principal:
@@ -86,6 +88,8 @@ Saldo de abertura e saldo calculado pertencem a etapas posteriores do livro fina
 
 `id` é UUID v4 RFC 4122 local e opaco, gerado pelo backend conforme ADR-0017.
 
+Além da validação no domínio, `finance.accounts` possui constraint PostgreSQL para aceitar somente UUID v4 com variant RFC 4122.
+
 A conta não contém ID Pluggy, FITID, external account ID, fingerprint ou qualquer identidade de provider.
 
 Integrações futuras poderão vincular observações externas à conta local por uma relação explícita; nunca substituirão o UUID canônico.
@@ -118,15 +122,21 @@ Tabela:
 finance.account_grants
 ```
 
-Cada grant contém o UUID local da conta, residência, owner copiado da conta e operador compartilhado.
+Cada grant contém o UUID local da conta, residência, owner e `visibility_scope` copiados da conta, além do operador compartilhado.
+
+A tabela exige:
+
+```text
+visibility_scope = SHARED
+```
 
 A FK composta:
 
 ```text
-(account_id, installation_id, residence_id, owner_operator_id)
+(account_id, installation_id, residence_id, owner_operator_id, visibility_scope)
 ```
 
-fecha o grant sobre a conta correta. Outra FK exige que o target seja membership da mesma residência.
+fecha o grant sobre a conta e seu escopo exatos. Assim nem uma conexão administrativa consegue persistir grant para conta `PERSONAL` ou `HOUSEHOLD` usando um scope artificial. Outra FK exige que o target seja membership da mesma residência.
 
 Owner redundante é proibido por constraint.
 
@@ -166,6 +176,8 @@ Exige:
 ```text
 mesma residência
 owner_operator_id = current_operator_id
+status = ACTIVE
+archived_at IS NULL
 membership ativa
 ```
 
@@ -242,6 +254,6 @@ Não existe amount na conta neste estágio.
 
 ## Validação
 
-Foram adicionados testes sintéticos para contrato de domínio, migration, RLS, acesso `PERSONAL`/`SHARED`/`HOUSEHOLD`, membership inativa, cross-residence e permissões runtime.
+Foram adicionados testes sintéticos para contrato de domínio, migration, RLS, acesso `PERSONAL`/`SHARED`/`HOUSEHOLD`, membership inativa, cross-residence, owner spoofing, UUID não-v4, grant em escopo inválido e permissões runtime.
 
 Nesta sessão, a revisão é estática via GitHub; Ruff, Ruff format, mypy, pytest, PostgreSQL integration e Quality integral só podem ser declarados quando forem realmente executados.
