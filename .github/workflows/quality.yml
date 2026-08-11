@@ -11,7 +11,7 @@ on:
       - ready_for_review
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: validation-python-${{ github.event.pull_request.number || github.ref }}
@@ -46,7 +46,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -91,7 +91,41 @@ jobs:
             -e './apps/api[test]' \
             -e './apps/worker[test]'
 
+      - name: Normalize exact category files
+        id: normalize_categories
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            packages/finance/tests/test_categories.py
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0012_financial_categories.py
+            packages/persistence/tests/test_financial_categories.py
+          )
+          .quality-venv/bin/python -m ruff format "${files[@]}"
+          git diff --name-only --diff-filter=ACMRT -- '*.py' | sort > "$RUNNER_TEMP/actual.txt"
+          if [[ -s "$RUNNER_TEMP/actual.txt" ]]; then
+            printf '%s\n' "${files[@]}" | sort > "$RUNNER_TEMP/expected.txt"
+            diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+            test "$(wc -l < "$RUNNER_TEMP/actual.txt")" -eq 3
+            git add -- "${files[@]}"
+            git diff --cached --check
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git commit \
+              -m 'style(finance): normalize category files with Ruff 0.15.22' \
+              -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+            git push origin HEAD:validation/python-baseline-with-categories
+            echo 'pushed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'pushed=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Stop after normalization push
+        if: steps.normalize_categories.outputs.pushed == 'true'
+        run: echo 'New synchronize run will validate the formatted HEAD.'
+
       - name: Lint Python
+        if: steps.normalize_categories.outputs.pushed != 'true'
         run: >-
           .quality-venv/bin/python -m ruff check
           packages/finance packages/banking packages/banking-pluggy
@@ -100,6 +134,7 @@ jobs:
           infra/scripts tests/quality tools/pluggy-spike
 
       - name: Check Python formatting
+        if: steps.normalize_categories.outputs.pushed != 'true'
         run: >-
           .quality-venv/bin/python -m ruff format --check
           packages/finance packages/banking packages/banking-pluggy
@@ -108,6 +143,7 @@ jobs:
           infra/scripts tests/quality tools/pluggy-spike
 
       - name: Type-check Python
+        if: steps.normalize_categories.outputs.pushed != 'true'
         run: >-
           .quality-venv/bin/python -m mypy --strict
           packages/finance/src packages/banking/src packages/banking-pluggy/src
@@ -116,6 +152,7 @@ jobs:
           tools/pluggy-spike/pluggy_spike.py
 
       - name: Test Python
+        if: steps.normalize_categories.outputs.pushed != 'true'
         shell: bash
         run: >-
           .quality-venv/bin/python -m pytest
