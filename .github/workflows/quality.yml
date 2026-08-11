@@ -63,36 +63,97 @@ jobs:
             -e './apps/api[test]' \
             -e './apps/worker[test]'
 
-      - name: Apply minimal candidate fixes
+      - name: Apply typed banking metadata facade candidate
         shell: bash
         run: |
           set -euo pipefail
           .quality-venv/bin/python - <<'PY'
           from pathlib import Path
 
-          schema = Path('packages/persistence/src/meufinanceiro_persistence/schema.py')
-          text = schema.read_text(encoding='utf-8')
-          marker = 'metadata = MetaData()\n'
-          declarations = (
-              'metadata = MetaData()\n\n'
-              '# Explicit forward declarations keep late banking metadata visible to strict mypy.\n'
-              'external_accounts: Table\n'
-              'sync_cursors: Table\n'
-              'sync_runs: Table\n'
+          package = Path('packages/persistence/src/meufinanceiro_persistence')
+          facade = package / 'banking_sync_schema.py'
+          facade.write_text(
+              '''"""Typed access to banking sync tables registered in shared metadata."""\n\n'
+              'from __future__ import annotations\n\n'
+              'from sqlalchemy import Table\n\n'
+              'from meufinanceiro_persistence.schema import metadata\n\n\n'
+              'def _registered_table(qualified_name: str) -> Table:\n'
+              '    table = metadata.tables.get(qualified_name)\n'
+              '    if table is None:\n'
+              '        raise RuntimeError("required banking metadata table is not registered")\n'
+              '    return table\n\n\n'
+              'external_accounts = _registered_table("integrations.external_accounts")\n'
+              'sync_cursors = _registered_table("integrations.sync_cursors")\n'
+              'sync_runs = _registered_table("integrations.sync_runs")\n\n'
+              '__all__ = ["external_accounts", "sync_cursors", "sync_runs"]\n''',
+              encoding='utf-8',
           )
-          if 'external_accounts: Table' not in text:
-              if marker not in text:
-                  raise SystemExit('schema metadata marker not found')
-              schema.write_text(text.replace(marker, declarations, 1), encoding='utf-8')
 
-          identity = Path('packages/persistence/src/meufinanceiro_persistence/identity_store.py')
+          replacements = {
+              'banking_sync_store.py': (
+                  'from meufinanceiro_persistence.schema import (\n'
+                  '    connections,\n'
+                  '    external_accounts,\n'
+                  '    sync_cursors,\n'
+                  '    sync_runs,\n'
+                  ')\n',
+                  'from meufinanceiro_persistence.banking_sync_schema import (\n'
+                  '    external_accounts,\n'
+                  '    sync_cursors,\n'
+                  '    sync_runs,\n'
+                  ')\n'
+                  'from meufinanceiro_persistence.schema import connections\n',
+              ),
+              'banking_fairness_schema.py': (
+                  'from meufinanceiro_persistence.schema import external_accounts, metadata\n',
+                  'from meufinanceiro_persistence.banking_sync_schema import external_accounts\n'
+                  'from meufinanceiro_persistence.schema import metadata\n',
+              ),
+              'banking_observation_store.py': (
+                  'from meufinanceiro_persistence.schema import (\n'
+                  '    connections,\n'
+                  '    external_accounts,\n'
+                  '    sync_cursors,\n'
+                  ')\n',
+                  'from meufinanceiro_persistence.banking_sync_schema import (\n'
+                  '    external_accounts,\n'
+                  '    sync_cursors,\n'
+                  ')\n'
+                  'from meufinanceiro_persistence.schema import connections\n',
+              ),
+              'banking_fairness_store.py': (
+                  'from meufinanceiro_persistence.schema import (\n'
+                  '    connections,\n'
+                  '    external_accounts,\n'
+                  '    sync_cursors,\n'
+                  ')\n',
+                  'from meufinanceiro_persistence.banking_sync_schema import (\n'
+                  '    external_accounts,\n'
+                  '    sync_cursors,\n'
+                  ')\n'
+                  'from meufinanceiro_persistence.schema import connections\n',
+              ),
+              'banking_reconciliation_store.py': (
+                  'from meufinanceiro_persistence.schema import connections, external_accounts\n',
+                  'from meufinanceiro_persistence.banking_sync_schema import external_accounts\n'
+                  'from meufinanceiro_persistence.schema import connections\n',
+              ),
+          }
+
+          for filename, (old, new) in replacements.items():
+              path = package / filename
+              text = path.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'import marker not found in {filename}')
+              path.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          identity = package / 'identity_store.py'
           text = identity.read_text(encoding='utf-8')
           old = '        row: Mapping[str, Any] | None = (\n'
           new = '        row = (\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif new not in text:
+          if old not in text:
               raise SystemExit('identity row assignment marker not found')
+          text = text.replace(old, new, 1)
           text = text.replace('from collections.abc import Mapping\n', '')
           text = text.replace('from typing import Any, NoReturn\n', 'from typing import NoReturn\n')
           identity.write_text(text, encoding='utf-8')
@@ -101,7 +162,12 @@ jobs:
       - name: Format candidate files
         run: >-
           .quality-venv/bin/python -m ruff format
-          packages/persistence/src/meufinanceiro_persistence/schema.py
+          packages/persistence/src/meufinanceiro_persistence/banking_sync_schema.py
+          packages/persistence/src/meufinanceiro_persistence/banking_sync_store.py
+          packages/persistence/src/meufinanceiro_persistence/banking_fairness_schema.py
+          packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py
+          packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py
+          packages/persistence/src/meufinanceiro_persistence/banking_reconciliation_store.py
           packages/persistence/src/meufinanceiro_persistence/identity_store.py
           packages/finance/src/meufinanceiro_finance/__init__.py
 
@@ -121,6 +187,19 @@ jobs:
           packages/security packages/persistence apps/api apps/worker
           infra/scripts tests/quality tools/pluggy-spike
 
+      - name: Smoke typed metadata facade
+        run: |
+          .quality-venv/bin/python - <<'PY'
+          from meufinanceiro_persistence.banking_sync_schema import (
+              external_accounts,
+              sync_cursors,
+              sync_runs,
+          )
+          assert external_accounts.fullname == 'integrations.external_accounts'
+          assert sync_cursors.fullname == 'integrations.sync_cursors'
+          assert sync_runs.fullname == 'integrations.sync_runs'
+          PY
+
       - name: Type-check Python
         run: >-
           .quality-venv/bin/python -m mypy --strict
@@ -135,15 +214,16 @@ jobs:
           set -euo pipefail
           git diff --check
           git add \
-            packages/persistence/src/meufinanceiro_persistence/schema.py \
+            packages/persistence/src/meufinanceiro_persistence/banking_sync_schema.py \
+            packages/persistence/src/meufinanceiro_persistence/banking_sync_store.py \
+            packages/persistence/src/meufinanceiro_persistence/banking_fairness_schema.py \
+            packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py \
+            packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py \
+            packages/persistence/src/meufinanceiro_persistence/banking_reconciliation_store.py \
             packages/persistence/src/meufinanceiro_persistence/identity_store.py
-          if git diff --cached --quiet; then
-            echo 'Candidate fixes are already committed.'
-            exit 0
-          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit \
-            -m 'fix(persistence): restore strict mypy metadata visibility' \
+            -m 'fix(persistence): add typed banking metadata facade' \
             -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
           git push origin HEAD:fix/quality-mypy-baseline-147
