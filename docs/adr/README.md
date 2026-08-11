@@ -15,6 +15,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0014 — Residência primária derivada da associação do operador](0014-primary-residence-context.md)
 - [ADR-0015 — Representação monetária e arredondamento canônicos](0015-canonical-money-representation-and-rounding.md)
 - [ADR-0016 — Visibilidade e autorização de recursos financeiros](0016-financial-resource-visibility-and-authorization.md)
+- [ADR-0017 — Identificadores canônicos de recursos financeiros](0017-canonical-financial-resource-identifiers.md)
 
 ## Decisões propostas
 
