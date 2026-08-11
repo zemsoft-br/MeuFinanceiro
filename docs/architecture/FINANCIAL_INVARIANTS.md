@@ -2,7 +2,7 @@
 
 - Issue: #22
 - Autoridade: domínio backend, persistência e testes
-- Estado: contrato prévio às funcionalidades financeiras
+- Estado: contrato vigente do núcleo financeiro
 
 ## 1. Objetivo
 
@@ -25,7 +25,7 @@ Essas regras devem ser protegidas em:
 A representação monetária canônica foi aceita no ADR-0015.
 
 - Nunca usar `float` como autoridade financeira.
-- O backend usa `Decimal` finito e o contrato futuro de persistência é `NUMERIC(24,8)` com moeda separada.
+- O backend usa `Decimal` finito e a persistência financeira usa `NUMERIC(24,8)` com moeda separada.
 - Moeda é código ASCII uppercase de três letras.
 - APIs financeiras serializam amount como string decimal fixed-point, nunca JSON number/float autoritativo.
 - Até oito casas decimais são preservadas sem arredondamento implícito.
@@ -54,7 +54,7 @@ Testes usam relógio injetável.
 
 ## 4. Livro financeiro único
 
-`Movement` ou nome equivalente é a fonte canônica de eventos financeiros realizados e liquidações.
+`Movement` é a fonte canônica de eventos financeiros realizados e liquidações, conforme ADR-0019. A persistence append-only base é definida por ADR-0020 / #141.
 
 Nenhum módulo pode:
 
@@ -78,8 +78,8 @@ Esses registros não substituem a movimentação canônica.
 
 Saldo calculado é derivado de:
 
-- saldo de abertura explícito;
-- movimentos efetivos;
+- saldo de abertura explícito e imutável do ADR-0018;
+- Movements efetivos;
 - reversões e ajustes explícitos.
 
 Saldo informado por instituição é observação externa com data de referência.
@@ -299,6 +299,8 @@ Preferir:
 - cancelamento;
 - arquivamento.
 
+Para o Movement base, ADR-0020 define reversão integral como novo evento único, idempotente, referenciando um `STANDARD` e com amount exatamente oposto. O original não é editado.
+
 Auditoria registra:
 
 - autor;
@@ -313,13 +315,7 @@ Auditoria registra:
 
 A audiência financeira canônica foi aceita no ADR-0016.
 
-Todo recurso financeiro pertence a uma residência e possui:
-
-```text
-residence_id
-owner_operator_id
-visibility_scope
-```
+Recursos financeiros governados diretamente por audiência possuem residência e regras explícitas de ownership/visibility. Recursos derivados, como opening balance e Movement, herdam a audiência da conta em vez de duplicar grants.
 
 Escopos:
 
@@ -336,7 +332,7 @@ Regras obrigatórias:
 - capacidade de mutação por papel é separada da audiência do recurso;
 - relatórios, exportações e agregados aplicam a audiência antes de consolidar dados;
 - payload não escolhe livremente residência nem ator efetivo;
-- persistência financeira futura usa RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade;
+- persistência financeira usa RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade;
 - `USING` e `WITH CHECK` devem impedir leitura e mudança de escopo fora da audiência.
 
 Autorização é aplicada:
@@ -384,24 +380,28 @@ Para cada operação financeira relevante:
 11. falha no meio da transação;
 12. ausência de dupla contabilização.
 
-## 21. Decisões ainda necessárias
+## 21. Estado das decisões estruturais
 
-Resolvido antes do núcleo financeiro:
+Resolvido no núcleo financeiro:
 
 - representação monetária e arredondamento: ADR-0015 / #125;
 - visibilidade e audiência financeira: ADR-0016 / #129;
-- identificadores financeiros canônicos: ADR-0017 / #131.
+- identificadores financeiros canônicos: ADR-0017 / #131;
+- conta financeira canônica: #133;
+- categorias-base: #135;
+- saldo de abertura imutável: ADR-0018 / #137;
+- semântica exata e append-only de `Movement`: ADR-0019 / #139;
+- persistence, idempotência e reversão integral de `Movement`: ADR-0020 / #141.
 
-Ainda pendentes:
+Ainda pendentes em recortes próprios:
 
-- semântica exata de `Movement`;
-- estratégia de imutabilidade;
-- modelo de saldo de abertura;
 - matriz de capacidade por papel da membership;
+- transferências atômicas;
+- rateios e vínculo classificatório do ledger;
 - versionamento de agregados;
 - retenção de observações externas;
-- armazenamento de anexos.
+- armazenamento de anexos;
+- persistência local/offline do cliente;
+- contratos de API e UX financeira.
 
-A estratégia de RLS de recursos financeiros está definida pelo ADR-0016; a implementação concreta começa junto ao primeiro schema financeiro.
-
-Essas decisões devem entrar em issues pequenas e ADRs próprios.
+Essas decisões devem continuar entrando em issues pequenas e ADRs próprios, sem reabrir invariantes já aceitos por conveniência de módulo.
