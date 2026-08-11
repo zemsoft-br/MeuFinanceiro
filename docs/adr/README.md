@@ -16,6 +16,9 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0015 — Representação monetária e arredondamento canônicos](0015-canonical-money-representation-and-rounding.md)
 - [ADR-0016 — Visibilidade e autorização de recursos financeiros](0016-financial-resource-visibility-and-authorization.md)
 - [ADR-0017 — Identificadores canônicos de recursos financeiros](0017-canonical-financial-resource-identifiers.md)
+- [ADR-0018 — Saldo de abertura imutável por conta](0018-immutable-account-opening-balance.md)
+- [ADR-0019 — Movement canônico e ledger append-only](0019-canonical-movement-append-only-ledger.md)
+- [ADR-0020 — Persistência de Movement, idempotência e integridade de reversão](0020-financial-movement-persistence-idempotency-and-reversal-integrity.md)
 
 ## Decisões propostas
 
