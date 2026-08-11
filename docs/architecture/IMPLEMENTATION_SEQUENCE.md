@@ -37,7 +37,7 @@ Concluir:
 
 Trabalho de backend independente pode avançar quando não depender de contratos ainda abertos e não antecipar uma decisão estrutural.
 
-A Fase 1 está organizada pela Epic #124. Dinheiro foi concluído pela #125 / ADR-0015, audiência financeira pela #129 / ADR-0016 e IDs financeiros pela ADR-0017 / #131. A primeira conta financeira canônica foi materializada pela #133. Capacidade por papel e imutabilidade ainda exigem recortes próprios antes dos agregados que dependam diretamente delas.
+A Fase 1 está organizada pela Epic #124. O núcleo financeiro já resolveu Money (#125 / ADR-0015), audiência (#129 / ADR-0016), IDs (#131 / ADR-0017), contas (#133), categorias-base (#135), saldo de abertura (#137 / ADR-0018) e o contrato de Movement (#139 / ADR-0019). A #141 materializa a persistence append-only, idempotência e reversão integral do ledger no PostgreSQL. Capacidade de mutação por papel continua uma decisão separada da audiência.
 
 ## 3. Decisões estruturais imediatas
 
@@ -46,7 +46,7 @@ A Fase 1 está organizada pela Epic #124. Dinheiro foi concluído pela #125 / AD
 ADR-0015 define:
 
 - `Decimal` finito como representação Python;
-- contrato futuro `NUMERIC(24,8)` + moeda separada;
+- persistência `NUMERIC(24,8)` + moeda separada;
 - moeda ASCII uppercase de três letras;
 - amount HTTP como string decimal fixed-point;
 - ausência de `float` como autoridade financeira;
@@ -61,7 +61,7 @@ Autenticação local, operador e residência primária foram antecipados pelas i
 
 ADR-0016 / #129 define a audiência dos recursos financeiros:
 
-- todo recurso possui `residence_id`, `owner_operator_id` e `visibility_scope`;
+- todo recurso possui residência e uma audiência derivável explicitamente;
 - `PERSONAL` pertence somente ao proprietário;
 - `SHARED` exige grant explícito além de membership ativa;
 - `HOUSEHOLD` pertence à audiência de todas as memberships ativas da residência;
@@ -69,6 +69,8 @@ ADR-0016 / #129 define a audiência dos recursos financeiros:
 - ator e residência efetivos são derivados server-side;
 - persistência financeira usa RLS com `app.current_residence_id` e `app.current_operator_id`;
 - capacidade de mutação por papel permanece separada da audiência.
+
+Movements e opening balances não duplicam ACL: ambos herdam a audiência da conta.
 
 ### 3.3 Identificadores financeiros — resolvido
 
@@ -97,18 +99,34 @@ A #133 materializa a primeira entidade financeira persistente:
 - nenhuma coluna de saldo;
 - nenhuma mutação runtime de conta/grant além da criação da própria conta.
 
-Saldo de abertura, saldo calculado e lifecycle de arquivamento continuam casos de uso posteriores.
+A #137 adiciona um saldo de abertura opcional e imutável por conta, separado da entidade `accounts` e sem transformar saldo em atributo mutável.
 
-### 3.5 Livro financeiro
+Lifecycle de arquivamento completo continua caso de uso posterior.
 
-Definir:
+### 3.5 Livro financeiro — base canônica resolvida
 
-- agregados e estados;
-- imutabilidade;
-- saldo de abertura;
-- reversão e liquidação;
-- transferências e rateios;
-- auditoria.
+ADR-0018, ADR-0019 e ADR-0020 fecham a primeira base do livro:
+
+- opening balance opcional, único e append-once;
+- Movement como efeito `Money` assinado em exatamente uma conta;
+- `INCOME`, `EXPENSE` e `NEUTRAL` separados da direção do amount;
+- `effective_date` e `competence_date` explícitas;
+- ledger append-only sem `UPDATE/DELETE` runtime;
+- idempotency key UUID v4 separada do resource ID;
+- replay idempotente e conflito fail-closed por digest canônico;
+- reversão integral como novo evento com amount exatamente oposto;
+- serialização concorrente da reversão por row lock protegido;
+- RLS do Movement herdando a audiência da conta;
+- novos Movements impedidos de preceder opening balance existente.
+
+Continuam como recortes próprios:
+
+- transferências atômicas;
+- rateios/classificação;
+- matriz de capacidade de mutação por papel;
+- auditoria financeira de casos de uso compostos;
+- cálculo/agregação de saldo;
+- API e cliente.
 
 ### 3.6 Anexos
 
@@ -133,16 +151,16 @@ Ordem recomendada:
 3. audiência financeira pessoal/compartilhada/familiar — ADR-0016 / #129;
 4. identificadores financeiros — ADR-0017 / #131;
 5. contrato/persistência canônica de conta financeira — #133;
-6. categorias-base;
-7. saldo de abertura;
-8. movimentações;
+6. categorias-base — #135;
+7. saldo de abertura — #137 / ADR-0018;
+8. movimentações — #139 / ADR-0019 + #141 / ADR-0020;
 9. transferências;
 10. rateios;
 11. anexos;
 12. auditoria financeira;
 13. API/Flutter e dashboard inicial.
 
-Após a #133, a próxima entrega é **categorias-base**, ainda sem criar Movement. Ela deve reutilizar os mesmos contratos de ID, residência/audiência e autorização, evitando uma taxonomia específica de provider.
+Com a persistence base de Movement fechada pela #141, os próximos recortes não devem reabrir semântica de saldo, sinal, idempotência ou reversão. Transferências devem coordenar dois Movements `NEUTRAL` atomicamente; rateios e categorias devem classificar o mesmo ledger sem copiá-lo.
 
 Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter quando isso reduzir risco. Interface começa após contrato de API e autorização estar estável ou mockado por contrato versionado.
 
