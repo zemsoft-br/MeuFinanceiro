@@ -37,4 +37,33 @@ rounded = amount.quantize(scale=2, rounding=RoundingMode.HALF_EVEN)
 
 Os modos iniciais são `HALF_EVEN`, `HALF_UP` e `DOWN`.
 
-Conversão cambial, regras de moeda específica, saldo de abertura, contas e movimentações permanecem fora deste pacote inicial.
+## Audiência de recursos financeiros
+
+Todo recurso financeiro futuro deve possuir residência, proprietário e um escopo de visibilidade:
+
+```text
+PERSONAL  -> somente proprietário
+SHARED    -> proprietário + grants explícitos
+HOUSEHOLD -> qualquer membership ativa da residência
+```
+
+O contrato puro usa:
+
+```python
+from meufinanceiro_finance import (
+    FinancialActorContext,
+    FinancialResourceAudience,
+    FinancialVisibilityScope,
+    can_access_financial_resource,
+)
+```
+
+A função de audiência não recebe papel administrativo. `owner` ou `administrator` da residência não é bypass para conteúdo `PERSONAL` de outro operador.
+
+Membership inativa ou residência divergente sempre falham fechado. Grants são válidos somente em `SHARED` e não substituem membership ativa.
+
+A capacidade de executar uma mutação continua separada da audiência. Casos de uso futuros combinam a audiência com a autorização por papel da membership.
+
+O ADR-0016 exige que persistência financeira futura use RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade.
+
+Conversão cambial, regras de moeda específica, persistência de grants, saldo de abertura, contas e movimentações permanecem fora deste pacote inicial.
