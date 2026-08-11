@@ -48,6 +48,9 @@ def upgrade() -> None:
             created_at timestamptz NOT NULL,
             updated_at timestamptz NOT NULL,
             archived_at timestamptz,
+            CONSTRAINT ck_finance_accounts_id_uuid4 CHECK (
+                id::text ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+            ),
             CONSTRAINT ck_finance_accounts_visibility CHECK (
                 visibility_scope IN ('PERSONAL', 'SHARED', 'HOUSEHOLD')
             ),
@@ -191,6 +194,8 @@ def upgrade() -> None:
         "FOR INSERT WITH CHECK ("
         f"accounts.residence_id = {residence} "
         f"AND accounts.owner_operator_id = {operator} "
+        "AND accounts.status = 'ACTIVE' "
+        "AND accounts.archived_at IS NULL "
         f"AND {account_membership})"
     )
 
