@@ -61,7 +61,9 @@ def _create_household(
                 updated_at=NOW,
             )
         )
-        for index, (operator_id, role) in enumerate(zip(operator_ids, roles, strict=True)):
+        for index, (operator_id, role) in enumerate(
+            zip(operator_ids, roles, strict=True)
+        ):
             connection.execute(
                 insert(identity_operators).values(
                     id=operator_id,
@@ -188,11 +190,14 @@ def test_personal_category_is_hidden_from_household_administrator(
         draft=_draft(name="Pessoal", scope=FinancialVisibilityScope.PERSONAL),
     )
 
-    assert store.list_categories(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=administrator_id,
-    ) == ()
+    assert (
+        store.list_categories(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=administrator_id,
+        )
+        == ()
+    )
     with pytest.raises(FinancialCategoryNotFoundError):
         store.get_category(
             installation_id=installation_id,
@@ -312,7 +317,9 @@ def test_runtime_role_cannot_update_move_disable_or_delete_category(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
-        draft=_draft(name="Imutável por enquanto", scope=FinancialVisibilityScope.PERSONAL),
+        draft=_draft(
+            name="Imutável por enquanto", scope=FinancialVisibilityScope.PERSONAL
+        ),
     )
 
     with pytest.raises(DBAPIError):
@@ -338,5 +345,7 @@ def test_runtime_role_cannot_update_move_disable_or_delete_category(
                 operator_id=owner_id,
             )
             connection.execute(
-                delete(financial_categories).where(financial_categories.c.id == created.id)
+                delete(financial_categories).where(
+                    financial_categories.c.id == created.id
+                )
             )
