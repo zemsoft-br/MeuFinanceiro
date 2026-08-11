@@ -4,11 +4,42 @@ Contratos canônicos e provider-neutral do núcleo financeiro do MeuFinanceiro.
 
 ## Money
 
-`Money` representa um valor monetário sem converter ou arredondar silenciosamente. `amount` deve ser `Decimal` finito; `float` não é aceito; moeda é ASCII uppercase de três letras; até oito casas decimais são preservadas; soma/subtração/comparação exigem a mesma moeda; serialização pública usa string decimal canônica.
+`Money` representa um valor monetário sem converter ou arredondar silenciosamente:
 
-Arredondamento não possui default implícito e exige escala + `RoundingMode` explícitos.
+```python
+from decimal import Decimal
+
+from meufinanceiro_finance import Money
+
+amount = Money(Decimal("123.45"), "BRL")
+```
+
+Invariantes:
+
+- `amount` deve ser `Decimal` finito;
+- `float` não é aceito;
+- moeda deve ser código ASCII uppercase de três letras;
+- até oito casas decimais são preservadas;
+- magnitude deve caber no contrato futuro `NUMERIC(24,8)`;
+- soma, subtração e comparação ordenada exigem a mesma moeda;
+- `repr` e `str` não exibem o valor financeiro;
+- serialização pública usa string decimal canônica, nunca `float`.
+
+## Arredondamento
+
+Arredondamento não possui default implícito. O caso de uso informa escala e modo:
+
+```python
+from meufinanceiro_finance import Money, RoundingMode
+
+rounded = amount.quantize(scale=2, rounding=RoundingMode.HALF_EVEN)
+```
+
+Os modos iniciais são `HALF_EVEN`, `HALF_UP` e `DOWN`.
 
 ## Audiência de recursos financeiros
+
+Todo recurso financeiro futuro deve possuir residência, proprietário e um escopo de visibilidade:
 
 ```text
 PERSONAL  -> somente proprietário
@@ -16,13 +47,66 @@ SHARED    -> proprietário + grants explícitos
 HOUSEHOLD -> qualquer membership ativa da residência
 ```
 
-Papel administrativo da residência não é bypass para conteúdo `PERSONAL`. O ADR-0016 exige RLS com `app.current_residence_id` e `app.current_operator_id`.
+O contrato puro usa:
+
+```python
+from meufinanceiro_finance import (
+    FinancialActorContext,
+    FinancialResourceAudience,
+    FinancialVisibilityScope,
+    can_access_financial_resource,
+)
+```
+
+A função de audiência não recebe papel administrativo. `owner` ou `administrator` da residência não é bypass para conteúdo `PERSONAL` de outro operador.
+
+Membership inativa ou residência divergente sempre falham fechado. Grants são válidos somente em `SHARED` e não substituem membership ativa.
+
+A capacidade de executar uma mutação continua separada da audiência. Casos de uso futuros combinam a audiência com a autorização por papel da membership.
+
+O ADR-0016 exige que persistência financeira futura use RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade.
 
 ## Identificadores canônicos
 
-Recursos financeiros locais usam UUID v4 RFC 4122 opaco, gerado server-side. Strings não são convertidas implicitamente. IDs externos, FITID, hashes e fingerprints permanecem identidades de fonte e não substituem o UUID local.
+Recursos financeiros locais usam UUID v4 RFC 4122 opaco:
+
+```python
+from meufinanceiro_finance import (
+    new_financial_resource_id,
+    validate_financial_resource_id,
+)
+
+resource_id = new_financial_resource_id()
+validate_financial_resource_id(resource_id)
+```
+
+O contrato não converte strings implicitamente e rejeita UUID nil, versões diferentes de v4 e variants fora de RFC 4122.
+
+O ID local não contém residência, proprietário, tipo, timestamp, valor, moeda ou material de provider. IDs de provider/importador, FITID, hashes e fingerprints continuam sendo identidades de fonte e nunca substituem o UUID canônico do recurso.
+
+Idempotency key, correlation ID, reconciliation ID e transfer ID são conceitos independentes mesmo quando algum deles também vier a usar UUID.
+
+O ADR-0017 mantém geração canônica server-side. Client-generated IDs para eventual modo offline exigem decisão própria de idempotência e conflitos.
 
 ## Contas financeiras
+
+A primeira entidade financeira canônica usa contratos provider-neutral:
+
+```python
+from meufinanceiro_finance import (
+    FinancialAccountDraft,
+    FinancialAccountStatus,
+    FinancialAccountType,
+    FinancialVisibilityScope,
+)
+
+account = FinancialAccountDraft(
+    name="Conta principal",
+    currency="BRL",
+    account_type=FinancialAccountType.CHECKING,
+    visibility_scope=FinancialVisibilityScope.PERSONAL,
+)
+```
 
 Tipos iniciais:
 
@@ -36,7 +120,13 @@ BENEFIT
 CUSTOM
 ```
 
-A conta possui moeda, owner e audiência, mas não possui amount ou saldo. A persistência da #133 aplica RLS e grants persistentes somente para contas `SHARED`.
+`CUSTOM` exige um nome de tipo explícito. Os demais tipos não aceitam esse campo.
+
+A conta possui moeda, mas **não possui amount ou saldo**. Saldo de abertura e saldo calculado serão derivados do futuro livro financeiro, não de uma coluna autoritativa na conta.
+
+O estado persistente prevê `ACTIVE` e `ARCHIVED`, porém o primeiro store cria somente `ACTIVE`; arquivamento exige caso de uso, capacidade por papel e auditoria próprios.
+
+A persistência da #133 aplica a audiência do ADR-0016 e os IDs do ADR-0017 diretamente no PostgreSQL. Grants persistentes existem somente para contas `SHARED`.
 
 ## Categorias financeiras
 
@@ -63,7 +153,7 @@ PERSONAL
 HOUSEHOLD
 ```
 
-`SHARED` é deliberadamente rejeitado até existir uma regra explícita de herança de grants em árvores. Isso evita filho mais visível que o pai ou caminhos parcialmente inacessíveis.
+`SHARED` é deliberadamente rejeitado até existir uma regra explícita de herança de grants em árvores. Isso evita filho mais visível que o pai ou paths parcialmente inacessíveis.
 
 Estados estruturais:
 
@@ -74,4 +164,4 @@ DISABLED
 
 O primeiro runtime cria somente `ACTIVE` e não possui update/move/disable/delete. Categoria não possui `income/expense kind`, amount, regra de provider ou vínculo com Movement neste estágio.
 
-Saldo de abertura, Movement, tags, regras de categorização, aprendizado, carga inicial e UI permanecem fora dos contratos atuais.
+Conversão cambial, regras de moeda específica, saldo de abertura, movements, edição de grants, carga inicial de categorias, tags, regras de categorização, aprendizado, API e Flutter permanecem fora dos contratos atuais.
