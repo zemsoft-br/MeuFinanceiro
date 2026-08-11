@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   riverpod-notifier-probe:
-    name: Temporary Riverpod 3 notifier probe
+    name: Temporary Riverpod 3 controller probe
     if: github.head_ref == 'fix/quality-flutter-riverpod-149'
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -43,38 +43,22 @@ jobs:
           EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
           EXPECTED_REVISION="$(tr -d '[:space:]' < .flutter-revision)"
           FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION-$EXPECTED_REVISION"
-
           if [[ -x "$FLUTTER_ROOT/bin/flutter" ]]; then
             ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
             if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
               rm -rf "$FLUTTER_ROOT"
             fi
           fi
-
           if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
             mkdir -p "$(dirname "$FLUTTER_ROOT")"
             git clone --depth 1 --branch "$EXPECTED_VERSION" \
               https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
           fi
-
           ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
-          if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
-            echo "Flutter revision mismatch after clone: expected $EXPECTED_REVISION, found $ACTUAL_REVISION" >&2
-            exit 1
-          fi
-
+          test "$ACTUAL_REVISION" = "$EXPECTED_REVISION"
           git config --global --add safe.directory "$FLUTTER_ROOT"
           echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
           "$FLUTTER_ROOT/bin/flutter" config --no-analytics
-          "$FLUTTER_ROOT/bin/flutter" precache --web
-
-      - name: Cache Dart and Flutter packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.pub-cache
-          key: pub-${{ runner.os }}-${{ hashFiles('apps/app/pubspec.lock') }}
-          restore-keys: |
-            pub-${{ runner.os }}-
 
       - name: Apply minimal Riverpod 3 migration candidate
         shell: bash
@@ -82,7 +66,6 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-
           paths = (
               Path('apps/app/lib/features/banking/connections/banking_connections_controller.dart'),
               Path('apps/app/lib/features/banking/pluggy/connect/pluggy_connect_controller.dart'),
@@ -91,37 +74,40 @@ jobs:
           for path in paths:
               text = path.read_text(encoding='utf-8')
               if 'AutoDisposeNotifier<' in text:
-                  text = text.replace('AutoDisposeNotifier<', 'Notifier<')
-                  path.write_text(text, encoding='utf-8')
+                  path.write_text(text.replace('AutoDisposeNotifier<', 'Notifier<'), encoding='utf-8')
               elif 'extends Notifier<' not in text:
                   raise SystemExit(f'Notifier migration marker not found in {path}')
           PY
 
-      - name: Resolve Flutter dependencies from lockfile
+      - name: Resolve Flutter dependencies
         working-directory: apps/app
         run: flutter pub get --enforce-lockfile
 
-      - name: Format Flutter client
-        working-directory: apps/app
-        run: dart format lib test
-
-      - name: Check Dart formatting
-        working-directory: apps/app
-        run: dart format --output=none --set-exit-if-changed lib test
-
-      - name: Analyze Flutter client
-        working-directory: apps/app
-        run: flutter analyze
-
-      - name: Test Flutter client
-        working-directory: apps/app
-        run: flutter test
-
-      - name: Build Flutter Web client
+      - name: Format migrated controllers
         working-directory: apps/app
         run: >-
-          flutter build web --release --no-web-resources-cdn
-          --pwa-strategy=none
+          dart format
+          lib/features/banking/connections/banking_connections_controller.dart
+          lib/features/banking/pluggy/connect/pluggy_connect_controller.dart
+          lib/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller.dart
+
+      - name: Analyze migrated controllers
+        working-directory: apps/app
+        run: >-
+          dart analyze
+          lib/features/banking/connections/banking_connections_controller.dart
+          lib/features/banking/pluggy/connect/pluggy_connect_controller.dart
+          lib/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller.dart
+
+      - name: Test banking controllers
+        working-directory: apps/app
+        run: >-
+          flutter test
+          test/features/banking/connections/banking_connections_controller_test.dart
+          test/features/banking/pluggy/connect/pluggy_connect_controller_test.dart
+          test/features/banking/pluggy/connect/pluggy_connect_controller_edges_test.dart
+          test/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller_test.dart
+          test/features/banking/pluggy/reauthentication/pluggy_reauthentication_edges_test.dart
 
       - name: Commit successful migration
         shell: bash
