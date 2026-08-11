@@ -95,7 +95,7 @@ def upgrade() -> None:
                 residence_id, operator_id
             ) ON DELETE RESTRICT,
             CONSTRAINT uq_finance_accounts_scope UNIQUE (
-                id, installation_id, residence_id, owner_operator_id
+                id, installation_id, residence_id, owner_operator_id, visibility_scope
             )
         )
         """
@@ -117,15 +117,21 @@ def upgrade() -> None:
             residence_id uuid NOT NULL,
             account_id uuid NOT NULL,
             owner_operator_id uuid NOT NULL,
+            visibility_scope varchar(16) NOT NULL,
             operator_id uuid NOT NULL,
             created_at timestamptz NOT NULL,
+            CONSTRAINT ck_finance_account_grants_shared CHECK (
+                visibility_scope = 'SHARED'
+            ),
             CONSTRAINT ck_finance_account_grants_not_owner CHECK (
                 operator_id <> owner_operator_id
             ),
             CONSTRAINT fk_finance_account_grants_account_scope FOREIGN KEY (
-                account_id, installation_id, residence_id, owner_operator_id
+                account_id, installation_id, residence_id,
+                owner_operator_id, visibility_scope
             ) REFERENCES finance.accounts (
-                id, installation_id, residence_id, owner_operator_id
+                id, installation_id, residence_id,
+                owner_operator_id, visibility_scope
             ) ON DELETE CASCADE,
             CONSTRAINT fk_finance_account_grants_membership FOREIGN KEY (
                 residence_id, operator_id
@@ -187,6 +193,7 @@ def upgrade() -> None:
         "SELECT 1 FROM finance.account_grants g "
         "WHERE g.account_id = accounts.id "
         "AND g.residence_id = accounts.residence_id "
+        "AND g.visibility_scope = accounts.visibility_scope "
         f"AND g.operator_id = {operator}))))"
     )
     op.execute(
