@@ -39,12 +39,12 @@ from meufinanceiro_persistence.banking_models import (
     require_aware,
     validate_sync_completion,
 )
-from meufinanceiro_persistence.schema import (
-    connections,
+from meufinanceiro_persistence.banking_sync_schema import (
     external_accounts,
     sync_cursors,
     sync_runs,
 )
+from meufinanceiro_persistence.schema import connections
 
 _SYNC_RUN_COLUMNS = (
     sync_runs.c.id,

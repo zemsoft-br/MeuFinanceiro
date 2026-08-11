@@ -31,11 +31,11 @@ from meufinanceiro_persistence.banking_observation_models import (
     TransactionObservationSnapshot,
 )
 from meufinanceiro_persistence.banking_observation_schema import external_observations
-from meufinanceiro_persistence.schema import (
-    connections,
+from meufinanceiro_persistence.banking_sync_schema import (
     external_accounts,
     sync_cursors,
 )
+from meufinanceiro_persistence.schema import connections
 
 
 class BankingTransactionObservationStoreMixin:

@@ -25,7 +25,8 @@ from meufinanceiro_persistence.banking_reconciliation_schema import (
     reconciled_transaction_sources,
     reconciled_transactions,
 )
-from meufinanceiro_persistence.schema import connections, external_accounts
+from meufinanceiro_persistence.banking_sync_schema import external_accounts
+from meufinanceiro_persistence.schema import connections
 
 _RECONCILIATION_IDENTITY_NAMESPACE = "meufinanceiro:reconciled-transaction:v1"
 _DEFAULT_RECONCILIATION_LIMIT = 500

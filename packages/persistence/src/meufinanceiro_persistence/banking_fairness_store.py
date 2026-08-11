@@ -27,11 +27,11 @@ from meufinanceiro_persistence.banking_models import (
     SyncConflictError,
     clean_external_account_id,
 )
-from meufinanceiro_persistence.schema import (
-    connections,
+from meufinanceiro_persistence.banking_sync_schema import (
     external_accounts,
     sync_cursors,
 )
+from meufinanceiro_persistence.schema import connections
 
 _CYCLE_COLUMNS = (
     sync_cycles.c.id,
