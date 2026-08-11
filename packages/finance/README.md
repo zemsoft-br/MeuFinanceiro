@@ -20,7 +20,7 @@ Invariantes:
 - `float` não é aceito;
 - moeda deve ser código ASCII uppercase de três letras;
 - até oito casas decimais são preservadas;
-- magnitude deve caber no contrato futuro `NUMERIC(24,8)`;
+- magnitude deve caber em `NUMERIC(24,8)`;
 - soma, subtração e comparação ordenada exigem a mesma moeda;
 - `repr` e `str` não exibem o valor financeiro;
 - serialização pública usa string decimal canônica, nunca `float`.
@@ -39,7 +39,7 @@ Os modos iniciais são `HALF_EVEN`, `HALF_UP` e `DOWN`.
 
 ## Audiência de recursos financeiros
 
-Todo recurso financeiro futuro deve possuir residência, proprietário e um escopo de visibilidade:
+A audiência financeira canônica usa residência, proprietário e escopo de visibilidade:
 
 ```text
 PERSONAL  -> somente proprietário
@@ -47,24 +47,11 @@ SHARED    -> proprietário + grants explícitos
 HOUSEHOLD -> qualquer membership ativa da residência
 ```
 
-O contrato puro usa:
+O contrato puro usa `FinancialActorContext`, `FinancialResourceAudience`, `FinancialVisibilityScope` e `can_access_financial_resource`.
 
-```python
-from meufinanceiro_finance import (
-    FinancialActorContext,
-    FinancialResourceAudience,
-    FinancialVisibilityScope,
-    can_access_financial_resource,
-)
-```
+Papel administrativo não concede bypass para conteúdo `PERSONAL` alheio. Membership inativa ou residência divergente falham fechado. Grants são válidos somente em `SHARED` e não substituem membership ativa.
 
-A função de audiência não recebe papel administrativo. `owner` ou `administrator` da residência não é bypass para conteúdo `PERSONAL` de outro operador.
-
-Membership inativa ou residência divergente sempre falham fechado. Grants são válidos somente em `SHARED` e não substituem membership ativa.
-
-A capacidade de executar uma mutação continua separada da audiência. Casos de uso futuros combinam a audiência com a autorização por papel da membership.
-
-O ADR-0016 exige que persistência financeira futura use RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade.
+A capacidade de mutação continua separada da audiência. ADR-0016 exige RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade.
 
 ## Identificadores canônicos
 
@@ -80,52 +67,79 @@ resource_id = new_financial_resource_id()
 validate_financial_resource_id(resource_id)
 ```
 
-O contrato não converte strings implicitamente e rejeita UUID nil, versões diferentes de v4 e variants fora de RFC 4122.
-
-O ID local não contém residência, proprietário, tipo, timestamp, valor, moeda ou material de provider. IDs de provider/importador, FITID, hashes e fingerprints continuam sendo identidades de fonte e nunca substituem o UUID canônico do recurso.
-
-Idempotency key, correlation ID, reconciliation ID e transfer ID são conceitos independentes mesmo quando algum deles também vier a usar UUID.
-
-O ADR-0017 mantém geração canônica server-side. Client-generated IDs para eventual modo offline exigem decisão própria de idempotência e conflitos.
+O ID local não codifica residência, proprietário, tipo, timestamp, valor, moeda ou provider. IDs externos, idempotency keys, correlation IDs, reconciliation IDs e transfer IDs são identidades distintas do resource ID.
 
 ## Contas financeiras
 
-A primeira entidade financeira canônica usa contratos provider-neutral:
+A #133 materializou contas provider-neutral com:
+
+- UUID v4 local;
+- `PERSONAL`, `SHARED` e `HOUSEHOLD`;
+- tipos `CHECKING`, `SAVINGS`, `CASH`, `DIGITAL_WALLET`, `INVESTMENT`, `BENEFIT` e `CUSTOM`;
+- moeda canônica;
+- RLS e grants persistentes para `SHARED`;
+- nenhuma coluna autoritativa de saldo.
+
+A conta possui estado `ACTIVE`/`ARCHIVED`, mas lifecycle completo de arquivamento permanece caso de uso próprio.
+
+## Categorias-base
+
+A #135 define categorias financeiras provider-neutral em árvore:
 
 ```python
 from meufinanceiro_finance import (
-    FinancialAccountDraft,
-    FinancialAccountStatus,
-    FinancialAccountType,
-    FinancialVisibilityScope,
-)
-
-account = FinancialAccountDraft(
-    name="Conta principal",
-    currency="BRL",
-    account_type=FinancialAccountType.CHECKING,
-    visibility_scope=FinancialVisibilityScope.PERSONAL,
+    FinancialCategoryDraft,
+    FinancialCategoryRecord,
+    FinancialCategoryStatus,
 )
 ```
 
-Tipos iniciais:
+Categorias suportam `PERSONAL` e `HOUSEHOLD`, parent opcional da mesma árvore/audiência e lifecycle `ACTIVE`/`DISABLED`. `SHARED` foi deliberadamente adiado porque o vínculo classificatório com contas/Movements precisa resolver audiência sem duplicar ACL.
+
+A persistência canônica fica em `finance.categories`, protegida por RLS e sem `UPDATE/DELETE` runtime neste primeiro recorte.
+
+## Saldo de abertura
+
+ADR-0018 / #137 define zero ou um saldo de abertura imutável por conta. O anchor representa o saldo no início de `effective_date` e é diferente de saldo atual, cache ou observação bancária.
+
+Ausência de anchor é diferente de um anchor explicitamente zero. A moeda é vinculada à moeda da conta por FK composta e o runtime não possui caminho destrutivo de edição.
+
+## Movement
+
+ADR-0019 / #139 define Movement como efeito monetário efetivo em exatamente uma conta:
 
 ```text
-CHECKING
-SAVINGS
-CASH
-DIGITAL_WALLET
-INVESTMENT
-BENEFIT
-CUSTOM
+amount > 0 -> aumenta saldo
+amount < 0 -> reduz saldo
+amount = 0 -> inválido
 ```
 
-`CUSTOM` exige um nome de tipo explícito. Os demais tipos não aceitam esse campo.
+Resultado econômico é separado do sinal:
 
-A conta possui moeda, mas **não possui amount ou saldo**. Saldo de abertura e saldo calculado serão derivados do futuro livro financeiro, não de uma coluna autoritativa na conta.
+```text
+INCOME
+EXPENSE
+NEUTRAL
+```
 
-O estado persistente prevê `ACTIVE` e `ARCHIVED`, porém o primeiro store cria somente `ACTIVE`; arquivamento exige caso de uso, capacidade por papel e auditoria próprios.
+O contrato possui `effective_date` e `competence_date` explícitas. Correções são novos eventos de reversão; o original não é editado.
 
-A persistência da #133 aplica a audiência do ADR-0016 e os IDs do ADR-0017 diretamente no PostgreSQL. Grants persistentes existem somente para contas `SHARED`.
+A persistence append-only, idempotência operacional e serialização de reversões estão na #141 / PR #142 e permanecem **em validação, ainda não integradas em `develop`**.
 
-Conversão cambial, regras de moeda específica, saldo de abertura, movements, categorias, edição de grants, API e Flutter permanecem fora deste recorte.
+## Estado desta reconciliação
+
+A branch da #135 restaura a entrega de categorias-base que havia permanecido fora de `develop`, embora migrations posteriores já dependessem de `0012_financial_categories`.
+
+Após essa dependência ser integrada e os quality gates de baseline serem reconciliados, a validação da persistence de Movement #141 pode prosseguir sobre uma cadeia Alembic linear e completa.
+
+## Ainda fora deste pacote base
+
+- cálculo/materialização de saldo;
+- transferências atômicas;
+- rateios e vínculo classificatório de Movement;
+- matriz completa de capacidade por papel;
+- conversão cambial;
+- API/Flutter do núcleo financeiro;
+- importadores como autoridade do ledger;
+- cartões/faturas;
+- empréstimos.
