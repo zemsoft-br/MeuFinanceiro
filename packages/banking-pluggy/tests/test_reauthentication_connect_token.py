@@ -67,8 +67,7 @@ def test_update_connect_token_does_not_replay_ambiguous_server_failure() -> None
 
     assert token_requests == 1
     assert (
-        captured.value.category
-        is PluggyTransportErrorCategory.TEMPORARILY_UNAVAILABLE
+        captured.value.category is PluggyTransportErrorCategory.TEMPORARILY_UNAVAILABLE
     )
     assert "provider-payload" not in str(captured.value)
     assert ITEM_ID not in str(captured.value)

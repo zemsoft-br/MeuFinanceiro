@@ -231,8 +231,7 @@ def test_reauthentication_openapi_has_only_local_connection_path_parameter(
     test_client, _, _ = client
     schema = test_client.get("/api/v1/openapi.json").json()
     template = (
-        "/api/v1/banking/pluggy/connections/{connection_id}/"
-        "reauthentication-token"
+        "/api/v1/banking/pluggy/connections/{connection_id}/reauthentication-token"
     )
     operation = schema["paths"][template]["post"]
 

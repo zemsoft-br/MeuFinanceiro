@@ -27,11 +27,11 @@ from meufinanceiro_persistence.banking_models import (
     SyncConflictError,
     clean_external_account_id,
 )
-from meufinanceiro_persistence.schema import (
-    connections,
+from meufinanceiro_persistence.banking_sync_schema import (
     external_accounts,
     sync_cursors,
 )
+from meufinanceiro_persistence.schema import connections
 
 _CYCLE_COLUMNS = (
     sync_cycles.c.id,
@@ -162,12 +162,8 @@ class BankingSyncFairnessStoreMixin:
                                 "active_in_latest_snapshot": True,
                                 "updated_at": func.transaction_timestamp(),
                             },
-                            where=(
-                                sync_cycle_accounts.c.residence_id == residence_id
-                            )
-                            & (
-                                sync_cycle_accounts.c.connection_id == connection_id
-                            ),
+                            where=(sync_cycle_accounts.c.residence_id == residence_id)
+                            & (sync_cycle_accounts.c.connection_id == connection_id),
                         )
                     )
 
@@ -428,8 +424,7 @@ def _active_cycle_accounts(
                         == external_accounts.c.external_account_id
                     )
                     & (
-                        sync_cursors.c.resource
-                        == StoredSyncResource.TRANSACTIONS.value
+                        sync_cursors.c.resource == StoredSyncResource.TRANSACTIONS.value
                     ),
                 )
             )

@@ -70,17 +70,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         banking_pluggy_connection_registration: (
             PluggyConnectionRegistrationService | None
         ) = None
-        banking_pluggy_reauthentication: (
-            PluggyReauthenticationTokenService | None
-        ) = None
+        banking_pluggy_reauthentication: PluggyReauthenticationTokenService | None = (
+            None
+        )
         if (
             resolved_settings.app_banking_enabled
             and resolved_settings.app_banking_pluggy_enabled
         ):
             banking_pluggy_execution = PluggyReadOnlyExecutionService(banking_store)
             banking_pluggy_connect_token = PluggyConnectTokenService(banking_store)
-            banking_pluggy_connection_registration = PluggyConnectionRegistrationService(
-                banking_store
+            banking_pluggy_connection_registration = (
+                PluggyConnectionRegistrationService(banking_store)
             )
             banking_pluggy_reauthentication = PluggyReauthenticationTokenService(
                 banking_store
@@ -95,9 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.banking_pluggy_connection_registration = (
             banking_pluggy_connection_registration
         )
-        app.state.banking_pluggy_reauthentication = (
-            banking_pluggy_reauthentication
-        )
+        app.state.banking_pluggy_reauthentication = banking_pluggy_reauthentication
         app.state.banking_connections = BankingConnectionsService(
             banking_connection_query_store,
             pluggy_reauthentication_available=(

@@ -4,12 +4,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TRANSPORT_SOURCE = (
-    ROOT
-    / "packages/banking-pluggy/src/meufinanceiro_banking_pluggy/connect_token.py"
+    ROOT / "packages/banking-pluggy/src/meufinanceiro_banking_pluggy/connect_token.py"
 ).read_text(encoding="utf-8")
 EXECUTION_SOURCE = (
-    ROOT
-    / "packages/banking-pluggy-execution/src/"
+    ROOT / "packages/banking-pluggy-execution/src/"
     "meufinanceiro_banking_pluggy_execution/connect_token.py"
 ).read_text(encoding="utf-8")
 ROUTE_SOURCE = (ROOT / "apps/api/app/api/routes/banking_connect.py").read_text(

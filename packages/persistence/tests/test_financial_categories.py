@@ -5,8 +5,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from meufinanceiro_finance import (
-    FinancialAccountDraft,
-    FinancialAccountType,
+    FinancialCategoryDraft,
     FinancialVisibilityScope,
 )
 from sqlalchemy import delete, func, insert, select, update
@@ -14,14 +13,12 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError
 
 from meufinanceiro_persistence import (
-    FinancialAccountAccessError,
-    FinancialAccountNotFoundError,
-    FinancialAccountStore,
+    FinancialCategoryAccessError,
+    FinancialCategoryNotFoundError,
+    FinancialCategoryParentNotFoundError,
+    FinancialCategoryStore,
 )
-from meufinanceiro_persistence.financial_account_schema import (
-    financial_account_grants,
-    financial_accounts,
-)
+from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.schema import (
     household_memberships,
     household_residences,
@@ -29,12 +26,12 @@ from meufinanceiro_persistence.schema import (
     identity_operators,
 )
 
-NOW = datetime(2026, 8, 11, 2, 0, tzinfo=UTC)
+NOW = datetime(2026, 8, 11, 2, 45, tzinfo=UTC)
 
 
 @pytest.fixture
-def store(runtime_engine: Engine) -> FinancialAccountStore:
-    return FinancialAccountStore(runtime_engine)
+def store(runtime_engine: Engine) -> FinancialCategoryStore:
+    return FinancialCategoryStore(runtime_engine)
 
 
 def _create_household(
@@ -58,7 +55,7 @@ def _create_household(
             insert(household_residences).values(
                 id=residence_id,
                 installation_id=installation_id,
-                name="Synthetic household",
+                name="Synthetic category household",
                 status="active",
                 created_at=NOW,
                 updated_at=NOW,
@@ -71,7 +68,7 @@ def _create_household(
                 insert(identity_operators).values(
                     id=operator_id,
                     installation_id=installation_id,
-                    login_name=f"synthetic-{index}",
+                    login_name=f"category-member-{index}",
                     password_hash="synthetic-password-hash-material-000000000000",
                     role="installation_admin",
                     status="active",
@@ -99,12 +96,16 @@ def _create_household(
     return installation_id, residence_id, operator_ids
 
 
-def _draft(scope: FinancialVisibilityScope) -> FinancialAccountDraft:
-    return FinancialAccountDraft(
-        name="Conta sintética",
-        currency="BRL",
-        account_type=FinancialAccountType.CHECKING,
+def _draft(
+    *,
+    name: str,
+    scope: FinancialVisibilityScope,
+    parent_id: UUID | None = None,
+) -> FinancialCategoryDraft:
+    return FinancialCategoryDraft(
+        name=name,
         visibility_scope=scope,
+        parent_id=parent_id,
     )
 
 
@@ -124,91 +125,102 @@ def _set_context(
     )
 
 
-def test_create_list_and_get_account_without_balance_fields(
+def test_category_tree_supports_multiple_depths_without_movement_semantics(
     engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
     installation_id, residence_id, operators = _create_household(engine)
     owner_id = operators[0]
 
-    created = store.create_account(
+    root = store.create_category(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
-        draft=_draft(FinancialVisibilityScope.PERSONAL),
+        draft=_draft(name="Alimentação", scope=FinancialVisibilityScope.HOUSEHOLD),
+    )
+    child = store.create_category(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=owner_id,
+        draft=_draft(
+            name="Mercado",
+            scope=FinancialVisibilityScope.HOUSEHOLD,
+            parent_id=root.id,
+        ),
+    )
+    grandchild = store.create_category(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=owner_id,
+        draft=_draft(
+            name="Hortifruti",
+            scope=FinancialVisibilityScope.HOUSEHOLD,
+            parent_id=child.id,
+        ),
     )
 
-    assert created.owner_operator_id == owner_id
-    assert created.residence_id == residence_id
-    assert created.currency == "BRL"
-    assert created.status.value == "ACTIVE"
-    assert created.archived_at is None
-    assert not hasattr(created, "balance")
-    assert not hasattr(created, "initial_balance")
+    assert root.parent_id is None
+    assert child.parent_id == root.id
+    assert grandchild.parent_id == child.id
+    assert grandchild.status.value == "ACTIVE"
+    assert not hasattr(grandchild, "movement_type")
+    assert not hasattr(grandchild, "kind")
 
-    listed = store.list_accounts(
+    listed = store.list_categories(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
     )
-    assert [record.id for record in listed] == [created.id]
-
-    fetched = store.get_account(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        account_id=created.id,
-    )
-    assert fetched == created
+    assert {record.id for record in listed} == {root.id, child.id, grandchild.id}
 
 
-def test_personal_account_is_hidden_from_other_active_member_even_administrator(
+def test_personal_category_is_hidden_from_household_administrator(
     engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
     installation_id, residence_id, operators = _create_household(
         engine,
         roles=("owner", "administrator"),
     )
     owner_id, administrator_id = operators
-    created = store.create_account(
+    created = store.create_category(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
-        draft=_draft(FinancialVisibilityScope.PERSONAL),
+        draft=_draft(name="Pessoal", scope=FinancialVisibilityScope.PERSONAL),
     )
 
     assert (
-        store.list_accounts(
+        store.list_categories(
             installation_id=installation_id,
             residence_id=residence_id,
             operator_id=administrator_id,
         )
         == ()
     )
-    with pytest.raises(FinancialAccountNotFoundError):
-        store.get_account(
+    with pytest.raises(FinancialCategoryNotFoundError):
+        store.get_category(
             installation_id=installation_id,
             residence_id=residence_id,
             operator_id=administrator_id,
-            account_id=created.id,
+            category_id=created.id,
         )
 
 
-def test_household_account_is_visible_to_other_active_member(
+def test_household_category_is_visible_to_other_active_member(
     engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
     installation_id, residence_id, operators = _create_household(engine)
     owner_id, member_id = operators
-    created = store.create_account(
+    created = store.create_category(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
-        draft=_draft(FinancialVisibilityScope.HOUSEHOLD),
+        draft=_draft(name="Casa", scope=FinancialVisibilityScope.HOUSEHOLD),
     )
 
-    visible = store.list_accounts(
+    visible = store.list_categories(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=member_id,
@@ -216,62 +228,38 @@ def test_household_account_is_visible_to_other_active_member(
     assert [record.id for record in visible] == [created.id]
 
 
-def test_shared_account_requires_explicit_grant_for_other_member(
+def test_child_cannot_attach_to_other_owner_household_tree(
     engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
     installation_id, residence_id, operators = _create_household(engine)
     owner_id, member_id = operators
-    created = store.create_account(
+    root = store.create_category(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
-        draft=_draft(FinancialVisibilityScope.SHARED),
+        draft=_draft(name="Raiz", scope=FinancialVisibilityScope.HOUSEHOLD),
     )
 
-    assert (
-        store.list_accounts(
+    with pytest.raises(FinancialCategoryParentNotFoundError):
+        store.create_category(
             installation_id=installation_id,
             residence_id=residence_id,
             operator_id=member_id,
-        )
-        == ()
-    )
-
-    with engine.begin() as connection:
-        connection.execute(
-            insert(financial_account_grants).values(
-                id=uuid4(),
-                installation_id=installation_id,
-                residence_id=residence_id,
-                account_id=created.id,
-                owner_operator_id=owner_id,
-                visibility_scope="SHARED",
-                operator_id=member_id,
-                created_at=NOW,
-            )
+            draft=_draft(
+                name="Filho indevido",
+                scope=FinancialVisibilityScope.HOUSEHOLD,
+                parent_id=root.id,
+            ),
         )
 
-    visible = store.list_accounts(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-    )
-    assert [record.id for record in visible] == [created.id]
 
-
-def test_disabled_membership_fails_closed_even_for_household_account(
+def test_disabled_membership_fails_closed(
     engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
     installation_id, residence_id, operators = _create_household(engine)
-    owner_id, member_id = operators
-    store.create_account(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        draft=_draft(FinancialVisibilityScope.HOUSEHOLD),
-    )
+    member_id = operators[1]
     with engine.begin() as connection:
         connection.execute(
             update(household_memberships)
@@ -282,19 +270,19 @@ def test_disabled_membership_fails_closed_even_for_household_account(
             .values(status="disabled", updated_at=NOW)
         )
 
-    with pytest.raises(FinancialAccountAccessError):
-        store.list_accounts(
+    with pytest.raises(FinancialCategoryAccessError):
+        store.list_categories(
             installation_id=installation_id,
             residence_id=residence_id,
             operator_id=member_id,
         )
 
 
-def test_cross_residence_context_fails_closed(
+def test_cross_residence_creation_fails_closed(
     engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
-    installation_id, residence_id, operators = _create_household(engine)
+    installation_id, _residence_id, operators = _create_household(engine)
     owner_id = operators[0]
     foreign_residence_id = uuid4()
     with engine.begin() as connection:
@@ -302,34 +290,36 @@ def test_cross_residence_context_fails_closed(
             insert(household_residences).values(
                 id=foreign_residence_id,
                 installation_id=installation_id,
-                name="Foreign synthetic household",
+                name="Foreign category household",
                 status="active",
                 created_at=NOW,
                 updated_at=NOW,
             )
         )
 
-    with pytest.raises(FinancialAccountAccessError):
-        store.create_account(
+    with pytest.raises(FinancialCategoryAccessError):
+        store.create_category(
             installation_id=installation_id,
             residence_id=foreign_residence_id,
             operator_id=owner_id,
-            draft=_draft(FinancialVisibilityScope.PERSONAL),
+            draft=_draft(name="Inválida", scope=FinancialVisibilityScope.PERSONAL),
         )
 
 
-def test_runtime_role_cannot_update_delete_accounts_or_insert_grants(
+def test_runtime_role_cannot_update_move_disable_or_delete_category(
     engine: Engine,
     runtime_engine: Engine,
-    store: FinancialAccountStore,
+    store: FinancialCategoryStore,
 ) -> None:
     installation_id, residence_id, operators = _create_household(engine)
-    owner_id, member_id = operators
-    created = store.create_account(
+    owner_id = operators[0]
+    created = store.create_category(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=owner_id,
-        draft=_draft(FinancialVisibilityScope.SHARED),
+        draft=_draft(
+            name="Imutável por enquanto", scope=FinancialVisibilityScope.PERSONAL
+        ),
     )
 
     with pytest.raises(DBAPIError):
@@ -341,8 +331,8 @@ def test_runtime_role_cannot_update_delete_accounts_or_insert_grants(
                 operator_id=owner_id,
             )
             connection.execute(
-                update(financial_accounts)
-                .where(financial_accounts.c.id == created.id)
+                update(financial_categories)
+                .where(financial_categories.c.id == created.id)
                 .values(name="Mutação proibida")
             )
 
@@ -355,26 +345,7 @@ def test_runtime_role_cannot_update_delete_accounts_or_insert_grants(
                 operator_id=owner_id,
             )
             connection.execute(
-                delete(financial_accounts).where(financial_accounts.c.id == created.id)
-            )
-
-    with pytest.raises(DBAPIError):
-        with runtime_engine.begin() as connection:
-            _set_context(
-                connection,
-                installation_id=installation_id,
-                residence_id=residence_id,
-                operator_id=owner_id,
-            )
-            connection.execute(
-                insert(financial_account_grants).values(
-                    id=uuid4(),
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    account_id=created.id,
-                    owner_operator_id=owner_id,
-                    visibility_scope="SHARED",
-                    operator_id=member_id,
-                    created_at=NOW,
+                delete(financial_categories).where(
+                    financial_categories.c.id == created.id
                 )
             )

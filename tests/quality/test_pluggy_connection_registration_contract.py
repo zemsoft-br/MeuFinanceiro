@@ -4,12 +4,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PARSER_SOURCE = (
-    ROOT
-    / "packages/banking-pluggy/src/meufinanceiro_banking_pluggy/connected_item.py"
+    ROOT / "packages/banking-pluggy/src/meufinanceiro_banking_pluggy/connected_item.py"
 ).read_text(encoding="utf-8")
 REGISTRATION_SOURCE = (
-    ROOT
-    / "packages/banking-pluggy-execution/src/"
+    ROOT / "packages/banking-pluggy-execution/src/"
     "meufinanceiro_banking_pluggy_execution/registration.py"
 ).read_text(encoding="utf-8")
 ROUTE_SOURCE = (ROOT / "apps/api/app/api/routes/banking_connections.py").read_text(
@@ -29,10 +27,12 @@ def test_item_ownership_is_verified_before_connection_persistence() -> None:
     assert 'payload.get("clientUserId")' in PARSER_SOURCE
     assert "client_user_id != normalized_expected_client_user_id" in PARSER_SOURCE
     assert "ITEM_OWNERSHIP_MISMATCH" in PARSER_SOURCE
-    assert 'expected_client_user_id = f"residence:{residence_id}"' in REGISTRATION_SOURCE
-    assert REGISTRATION_SOURCE.index("parse_connected_item(") < REGISTRATION_SOURCE.index(
-        "self._store.register_connection("
+    assert (
+        'expected_client_user_id = f"residence:{residence_id}"' in REGISTRATION_SOURCE
     )
+    assert REGISTRATION_SOURCE.index(
+        "parse_connected_item("
+    ) < REGISTRATION_SOURCE.index("self._store.register_connection(")
 
 
 def test_registration_request_does_not_accept_authorization_scope() -> None:
@@ -52,8 +52,12 @@ def test_registration_request_does_not_accept_authorization_scope() -> None:
 def test_public_response_contains_local_connection_state_only() -> None:
     assert 'serialization_alias="connectionId"' in ROUTE_SOURCE
     assert 'serialization_alias="requiresUserAction"' in ROUTE_SOURCE
-    response_source = ROUTE_SOURCE.split("class RegisteredPluggyConnectionResponse", 1)[1]
-    response_source = response_source.split("async def _require_registration_request", 1)[0]
+    response_source = ROUTE_SOURCE.split("class RegisteredPluggyConnectionResponse", 1)[
+        1
+    ]
+    response_source = response_source.split(
+        "async def _require_registration_request", 1
+    )[0]
     assert "item_id" not in response_source
     assert "external_connection_id" not in response_source
     assert "client_user_id" not in response_source

@@ -44,9 +44,7 @@ def test_migration_fails_closed_without_synthesizing_residences() -> None:
     assert "SELECT EXISTS" in content
     assert "LEFT JOIN household.residences" in content
     assert "residence.id = banking_connection.residence_id" in content
-    assert (
-        "residence.installation_id = banking_connection.installation_id" in content
-    )
+    assert "residence.installation_id = banking_connection.installation_id" in content
     assert "non-canonical residence references" in content
     assert 'ondelete="RESTRICT"' in content
     assert 'ondelete="CASCADE"' not in content

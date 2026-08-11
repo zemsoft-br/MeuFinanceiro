@@ -17,7 +17,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 
-from meufinanceiro_persistence.schema import external_accounts, metadata
+from meufinanceiro_persistence.banking_sync_schema import external_accounts
+from meufinanceiro_persistence.schema import metadata
 
 # The fairness membership references the local account UUID together with its trusted
 # connection/residence scope. The database migration adds the same candidate key.
