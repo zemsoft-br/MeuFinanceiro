@@ -1,6 +1,6 @@
 # Orquestração da sincronização bancária manual
 
-Status: **fundação da Epic #63 / issue #115, estendida pela #117**.
+Status: **fundação da Epic #63 / issue #115, estendida pelas #117 e #121**.
 
 ## Objetivo
 
@@ -200,6 +200,94 @@ stop_reason
 
 Seu `repr` não mostra UUID do run, cursor, IDs externos ou material financeiro.
 
+## Composição explícita com reconciliação — #121
+
+A #121 adiciona uma fronteira **separada**:
+
+```text
+ManualBankingSyncReconciliationService
+```
+
+Ela não altera `ManualBankingSyncService.run` e não injeta reconciliação como side effect oculto dentro do sincronizador.
+
+Fluxo da composição manual:
+
+```text
+ManualBankingSyncService.run(...)
+  -> sync_result local terminal ou running/failed
+  -> se status = SUCCEEDED ou PARTIAL:
+       reconcile_transaction_observations(..., limit=N)
+  -> retornar ManualSyncReconciliationResult
+```
+
+Somente `SUCCEEDED` e `PARTIAL` são elegíveis porque podem representar observações já confirmadas localmente.
+
+Não há reconciliação quando o resultado está:
+
+```text
+FAILED
+RUNNING / ALREADY_RUNNING
+CANCELLED
+```
+
+Isso evita post-processing concorrente enquanto o sync ainda está em execução e não atribui significado a um run que falhou sem estado local utilizável.
+
+### Recovery por replay
+
+Uma chave idempotente terminal continua sendo valiosa depois do sync:
+
+```text
+sync confirma observações
+  -> sync run termina
+  -> reconciliação falha
+  -> repetir a mesma idempotency_key
+  -> ManualBankingSyncService retorna REPLAYED sem provider I/O
+  -> a composição tenta novamente a reconciliação local
+```
+
+O sync run terminal não é reaberto, reescrito ou compensado por falha posterior da reconciliação.
+
+### Limite da reconciliação
+
+Por chamada da composição:
+
+```text
+default = 500 observações
+máximo = 1000 observações
+```
+
+Existe **no máximo um batch** de reconciliação por chamada.
+
+Se `TransactionReconciliationResult.has_more` for `true`, o backlog permanece explícito para uma nova invocação. Não existe loop automático para drenar toda a fila local.
+
+### Fronteiras transacionais
+
+Sync e reconciliação são commits PostgreSQL separados:
+
+```text
+provider I/O + persistência do sync
+  -> COMMIT do sync run
+  -> reconciliação local
+  -> COMMIT próprio
+```
+
+Não há tentativa de criar uma transação distribuída entre provider I/O e PostgreSQL.
+
+Falha da reconciliação é reduzida a `ManualSyncReconciliationExecutionError` sanitizado. O run de sync já terminal permanece intacto e pode ser reutilizado por replay para recovery.
+
+### Resultado composto
+
+`ManualSyncReconciliationResult` contém apenas:
+
+```text
+ManualSyncResult
+TransactionReconciliationResult | None
+```
+
+Os dois contratos já são redigidos. O `repr` composto não mostra UUID do sync run nem material externo/financeiro.
+
+A reconciliação canônica em si está descrita em `docs/architecture/BANKING_TRANSACTION_RECONCILIATION.md`.
+
 ## Segurança
 
 A orquestração não executa por conta própria:
@@ -219,8 +307,9 @@ A implementação concreta do leitor continua responsável pelas garantias conte
 
 - sync incremental por `changed_since`;
 - recovery automático de run órfão;
-- reconciliação entre observações e lançamentos financeiros;
+- merge entre observações e lançamentos financeiros;
 - inferência de deleção por ausência;
+- loop automático para drenar reconciliação;
 - cartões/faturas/parcelas;
 - investimentos e empréstimos;
 - desconexão e consentimento;
