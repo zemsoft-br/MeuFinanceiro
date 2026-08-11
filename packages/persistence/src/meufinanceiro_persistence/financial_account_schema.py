@@ -14,7 +14,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 
-from meufinanceiro_persistence.household_schema import household_memberships
 from meufinanceiro_persistence.schema import metadata
 
 financial_accounts = Table(
@@ -83,7 +82,7 @@ financial_accounts = Table(
     ),
     ForeignKeyConstraint(
         ["residence_id", "owner_operator_id"],
-        [household_memberships.c.residence_id, household_memberships.c.operator_id],
+        ["household.memberships.residence_id", "household.memberships.operator_id"],
         ondelete="RESTRICT",
         name="fk_finance_accounts_owner_membership",
     ),
@@ -140,18 +139,18 @@ financial_account_grants = Table(
             "visibility_scope",
         ],
         [
-            financial_accounts.c.id,
-            financial_accounts.c.installation_id,
-            financial_accounts.c.residence_id,
-            financial_accounts.c.owner_operator_id,
-            financial_accounts.c.visibility_scope,
+            "finance.accounts.id",
+            "finance.accounts.installation_id",
+            "finance.accounts.residence_id",
+            "finance.accounts.owner_operator_id",
+            "finance.accounts.visibility_scope",
         ],
         ondelete="CASCADE",
         name="fk_finance_account_grants_account_scope",
     ),
     ForeignKeyConstraint(
         ["residence_id", "operator_id"],
-        [household_memberships.c.residence_id, household_memberships.c.operator_id],
+        ["household.memberships.residence_id", "household.memberships.operator_id"],
         ondelete="RESTRICT",
         name="fk_finance_account_grants_membership",
     ),
