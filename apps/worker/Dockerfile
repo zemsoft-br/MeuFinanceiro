@@ -10,13 +10,19 @@ RUN groupadd --system --gid 10001 app \
 
 WORKDIR /workspace
 
+COPY packages/finance/pyproject.toml ./packages/finance/
+COPY packages/finance/src ./packages/finance/src
 COPY packages/security/pyproject.toml ./packages/security/
 COPY packages/security/src ./packages/security/src
 COPY packages/persistence/pyproject.toml ./packages/persistence/
 COPY packages/persistence/src ./packages/persistence/src
 COPY apps/worker/pyproject.toml ./apps/worker/
 COPY apps/worker/worker ./apps/worker/worker
-RUN python -m pip install ./packages/security ./packages/persistence ./apps/worker
+RUN python -m pip install \
+    ./packages/finance \
+    ./packages/security \
+    ./packages/persistence \
+    ./apps/worker
 
 WORKDIR /app
 USER app
