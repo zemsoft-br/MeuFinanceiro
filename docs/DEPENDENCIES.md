@@ -103,12 +103,15 @@ Esses pacotes não são copiados para a imagem final. Permanecem sujeitos ao inv
 
 | Pacote | Versão | Uso | Licença |
 |---|---:|---|---|
+| meufinanceiro-finance | 0.1.0 | contratos canônicos do domínio financeiro e value object `Money` | AGPL-3.0-only |
 | meufinanceiro-banking | 0.1.0 | protocolo neutro, DTOs imutáveis e provider fake sem I/O | AGPL-3.0-only |
 | meufinanceiro-banking-pluggy | 0.1.0 | adapter e transporte HTTP opcional da Pluggy | AGPL-3.0-only |
 | meufinanceiro-banking-pluggy-execution | 0.1.0 | executor read-only contextual por residência | AGPL-3.0-only |
 | meufinanceiro-banking-sync | 0.1.0 | orquestração manual provider-neutral, limitada e sem transporte | AGPL-3.0-only |
 | meufinanceiro-security | 0.1.0 | keyring, envelopes, senhas e redaction compartilhados | AGPL-3.0-only |
 | meufinanceiro-persistence | 0.1.0 | engine, transações, Alembic, health e fila PostgreSQL | AGPL-3.0-only |
+
+`meufinanceiro-finance` usa somente a biblioteca padrão do Python 3.13. O primeiro contrato materializado é `Money`: `Decimal` finito, moeda ASCII uppercase de três letras, precisão compatível com `NUMERIC(24,8)`, serialização por string e arredondamento explícito. O pacote não depende de FastAPI, SQLAlchemy, provider bancário ou transporte.
 
 `meufinanceiro-banking` usa somente a biblioteca padrão do Python 3.13. O pacote não adiciona SDK bancário, cliente HTTP, serialização, persistência ou dependência transitiva de runtime. `pytest` permanece apenas no extra de testes.
 
