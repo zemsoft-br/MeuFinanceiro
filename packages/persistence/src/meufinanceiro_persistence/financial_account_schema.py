@@ -34,6 +34,11 @@ financial_accounts = Table(
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Column("archived_at", DateTime(timezone=True), nullable=True),
     CheckConstraint(
+        "id::text ~ "
+        "'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'",
+        name="ck_finance_accounts_id_uuid4",
+    ),
+    CheckConstraint(
         "visibility_scope IN ('PERSONAL', 'SHARED', 'HOUSEHOLD')",
         name="ck_finance_accounts_visibility",
     ),
