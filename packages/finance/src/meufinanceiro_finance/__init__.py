@@ -24,6 +24,21 @@ from meufinanceiro_finance.money import (
     RoundingMode,
     validate_currency_code,
 )
+from meufinanceiro_finance.movement_records import FinancialMovementRecord
+from meufinanceiro_finance.movements import (
+    FinancialMovementDraft,
+    FinancialMovementReversalDraft,
+    FinancialMovementRole,
+    FinancialResultEffect,
+)
+from meufinanceiro_finance.opening_balances import (
+    FinancialOpeningBalanceDraft,
+    FinancialOpeningBalanceRecord,
+)
+from meufinanceiro_finance.operation_ids import (
+    new_financial_idempotency_key,
+    validate_financial_idempotency_key,
+)
 
 __all__ = [
     "CurrencyMismatchError",
@@ -33,13 +48,22 @@ __all__ = [
     "FinancialAccountStatus",
     "FinancialAccountType",
     "FinancialActorContext",
+    "FinancialMovementDraft",
+    "FinancialMovementRecord",
+    "FinancialMovementReversalDraft",
+    "FinancialMovementRole",
+    "FinancialOpeningBalanceDraft",
+    "FinancialOpeningBalanceRecord",
     "FinancialResourceAudience",
+    "FinancialResultEffect",
     "FinancialVisibilityScope",
     "Money",
     "RoundingMode",
     "can_access_financial_resource",
+    "new_financial_idempotency_key",
     "new_financial_resource_id",
     "require_financial_resource_access",
     "validate_currency_code",
+    "validate_financial_idempotency_key",
     "validate_financial_resource_id",
 ]
