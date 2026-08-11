@@ -4,31 +4,74 @@ on:
   pull_request:
     branches:
       - develop
+      - main
     types:
       - opened
       - reopened
       - synchronize
+      - ready_for_review
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: quality-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  riverpod-notifier-probe:
-    name: Temporary Riverpod 3 controller probe
-    if: github.head_ref == 'fix/quality-flutter-riverpod-149'
+  quality:
+    name: Mandatory quality gates
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
+    env:
+      TEST_DATABASE_URL: postgresql+psycopg://postgres:postgres-test-password@127.0.0.1:5432/meufinanceiro_test
+      TEST_APP_DATABASE_USER: postgres
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: meufinanceiro_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres-test-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d meufinanceiro_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
     steps:
-      - name: Checkout exact PR head
+      - name: Checkout pull request head
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            packages/finance/pyproject.toml
+            packages/banking/pyproject.toml
+            packages/banking-pluggy/pyproject.toml
+            packages/banking-pluggy-execution/pyproject.toml
+            packages/banking-sync/pyproject.toml
+            packages/security/pyproject.toml
+            packages/persistence/pyproject.toml
+            apps/api/pyproject.toml
+            apps/worker/pyproject.toml
+            infra/scripts/run-quality.py
+
+      - name: Set up Node.js for PWA contract tests
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.18.0'
 
       - name: Cache Flutter SDK
         uses: actions/cache@v5
@@ -43,88 +86,185 @@ jobs:
           EXPECTED_VERSION="$(tr -d '[:space:]' < .flutter-version)"
           EXPECTED_REVISION="$(tr -d '[:space:]' < .flutter-revision)"
           FLUTTER_ROOT="$HOME/.cache/meufinanceiro/flutter/$EXPECTED_VERSION-$EXPECTED_REVISION"
+
           if [[ -x "$FLUTTER_ROOT/bin/flutter" ]]; then
             ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
             if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
               rm -rf "$FLUTTER_ROOT"
             fi
           fi
+
           if [[ ! -x "$FLUTTER_ROOT/bin/flutter" ]]; then
             mkdir -p "$(dirname "$FLUTTER_ROOT")"
             git clone --depth 1 --branch "$EXPECTED_VERSION" \
               https://github.com/flutter/flutter.git "$FLUTTER_ROOT"
           fi
+
           ACTUAL_REVISION="$(git -C "$FLUTTER_ROOT" rev-parse HEAD)"
-          test "$ACTUAL_REVISION" = "$EXPECTED_REVISION"
+          if [[ "$ACTUAL_REVISION" != "$EXPECTED_REVISION" ]]; then
+            echo "Flutter revision mismatch after clone: expected $EXPECTED_REVISION, found $ACTUAL_REVISION" >&2
+            exit 1
+          fi
+
           git config --global --add safe.directory "$FLUTTER_ROOT"
           echo "$FLUTTER_ROOT/bin" >> "$GITHUB_PATH"
           "$FLUTTER_ROOT/bin/flutter" config --no-analytics
+          "$FLUTTER_ROOT/bin/flutter" precache --web
 
-      - name: Apply minimal Riverpod 3 migration candidate
+      - name: Cache Dart and Flutter packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('apps/app/pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: Validate DCO sign-offs
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "$BASE_SHA"
+          python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
+
+      - name: Require Flutter lockfile
+        run: test -f apps/app/pubspec.lock
+
+      - name: Validate repository safety
+        run: python infra/scripts/check-repository-safety.py
+
+      - name: Install Python quality environment
+        run: |
+          python -m venv .quality-venv
+          .quality-venv/bin/python -m pip install --disable-pip-version-check \
+            mypy==2.3.0 \
+            pip-audit==2.10.1 \
+            ruff==0.15.22 \
+            -e './packages/finance[test]' \
+            -e './packages/banking[test]' \
+            -e './packages/banking-pluggy[test]' \
+            -e './packages/banking-pluggy-execution[test]' \
+            -e './packages/banking-sync[test]' \
+            -e './packages/security[test]' \
+            -e './packages/persistence[test]' \
+            -e './apps/api[test]' \
+            -e './apps/worker[test]'
+
+      - name: Lint Python
+        run: >-
+          .quality-venv/bin/python -m ruff check
+          packages/finance packages/banking packages/banking-pluggy
+          packages/banking-pluggy-execution packages/banking-sync
+          packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
+
+      - name: Check Python formatting
+        run: >-
+          .quality-venv/bin/python -m ruff format --check
+          packages/finance packages/banking packages/banking-pluggy
+          packages/banking-pluggy-execution packages/banking-sync
+          packages/security packages/persistence apps/api apps/worker
+          infra/scripts tests/quality tools/pluggy-spike
+
+      - name: Type-check Python
+        run: >-
+          .quality-venv/bin/python -m mypy --strict
+          packages/finance/src packages/banking/src packages/banking-pluggy/src
+          packages/banking-pluggy-execution/src packages/banking-sync/src
+          packages/security/src packages/persistence/src apps/api/app apps/worker/worker
+          tools/pluggy-spike/pluggy_spike.py
+
+      - name: Test Python
+        id: python_tests
         shell: bash
         run: |
-          set -euo pipefail
-          python - <<'PY'
-          from pathlib import Path
-          paths = (
-              Path('apps/app/lib/features/banking/connections/banking_connections_controller.dart'),
-              Path('apps/app/lib/features/banking/pluggy/connect/pluggy_connect_controller.dart'),
-              Path('apps/app/lib/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller.dart'),
-          )
-          for path in paths:
-              text = path.read_text(encoding='utf-8')
-              if 'AutoDisposeNotifier<' in text:
-                  path.write_text(text.replace('AutoDisposeNotifier<', 'Notifier<'), encoding='utf-8')
-              elif 'extends Notifier<' not in text:
-                  raise SystemExit(f'Notifier migration marker not found in {path}')
-          PY
+          set -o pipefail
+          .quality-venv/bin/python -m pytest \
+            packages/finance/tests packages/banking/tests \
+            packages/banking-pluggy/tests packages/banking-pluggy-execution/tests \
+            packages/banking-sync/tests packages/security/tests \
+            packages/persistence/tests apps/api/tests apps/worker/tests tests/quality \
+            2>&1 | tee "$RUNNER_TEMP/python-tests.log"
 
-      - name: Resolve Flutter dependencies
+      - name: Upload Python test diagnostics
+        if: failure() && steps.python_tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-python-tests-${{ github.run_id }}
+          path: ${{ runner.temp }}/python-tests.log
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Check Python licenses
+        run: .quality-venv/bin/python infra/scripts/check-python-licenses.py
+
+      - name: Audit Python dependencies
+        run: .quality-venv/bin/python -m pip_audit --local
+
+      - name: Check Flutter Web JavaScript syntax
+        run: |
+          node --check apps/app/web/app_bootstrap.js
+          node --check apps/app/web/sw.js
+
+      - name: Test Flutter service worker invariants
+        run: node --test tests/quality/flutter-service-worker.test.mjs
+
+      - name: Validate Flutter toolchain
+        run: python infra/scripts/check-flutter-toolchain.py
+
+      - name: Resolve Flutter dependencies from lockfile
         working-directory: apps/app
         run: flutter pub get --enforce-lockfile
 
-      - name: Format migrated controllers
+      - name: Check Flutter direct dependency licenses
+        run: python infra/scripts/check-flutter-licenses.py
+
+      - name: Check Dart formatting
+        working-directory: apps/app
+        run: dart format --output=none --set-exit-if-changed lib test
+
+      - name: Analyze Flutter client
+        working-directory: apps/app
+        run: flutter analyze
+
+      - name: Test Flutter client
+        working-directory: apps/app
+        run: flutter test
+
+      - name: Build Flutter Web client
         working-directory: apps/app
         run: >-
-          dart format
-          lib/features/banking/connections/banking_connections_controller.dart
-          lib/features/banking/pluggy/connect/pluggy_connect_controller.dart
-          lib/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller.dart
+          flutter build web --release --no-web-resources-cdn
+          --pwa-strategy=none
 
-      - name: Analyze migrated controllers
-        working-directory: apps/app
+      - name: Finalize Flutter Web artifact
         run: >-
-          dart analyze
-          lib/features/banking/connections/banking_connections_controller.dart
-          lib/features/banking/pluggy/connect/pluggy_connect_controller.dart
-          lib/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller.dart
+          python infra/scripts/finalize-flutter-web-build.py
+          --build-dir apps/app/build/web
 
-      - name: Test banking controllers
-        working-directory: apps/app
-        run: >-
-          flutter test
-          test/features/banking/connections/banking_connections_controller_test.dart
-          test/features/banking/pluggy/connect/pluggy_connect_controller_test.dart
-          test/features/banking/pluggy/connect/pluggy_connect_controller_edges_test.dart
-          test/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller_test.dart
-          test/features/banking/pluggy/reauthentication/pluggy_reauthentication_edges_test.dart
-
-      - name: Commit successful migration
+      - name: Validate Flutter Web/PWA contract
+        id: flutter_web_contract
         shell: bash
         run: |
           set -euo pipefail
-          git diff --check
-          git add \
-            apps/app/lib/features/banking/connections/banking_connections_controller.dart \
-            apps/app/lib/features/banking/pluggy/connect/pluggy_connect_controller.dart \
-            apps/app/lib/features/banking/pluggy/reauthentication/pluggy_reauthentication_controller.dart
-          if git diff --cached --quiet; then
-            echo 'Riverpod migration is already committed.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit \
-            -m 'fix(flutter): migrate auto-dispose notifiers to Riverpod 3' \
-            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
-          git push origin HEAD:fix/quality-flutter-riverpod-149
+          report_dir="$RUNNER_TEMP/flutter-web-contract"
+          mkdir -p "$report_dir/files"
+          find apps/app/build/web -maxdepth 3 -type f -printf '%P\n' \
+            | sort > "$report_dir/file-list.txt"
+          for relative in index.html app_bootstrap.js flutter_bootstrap.js manifest.json sw.js; do
+            if [[ -f "apps/app/build/web/$relative" ]]; then
+              cp "apps/app/build/web/$relative" "$report_dir/files/$relative"
+            fi
+          done
+          python infra/scripts/check-flutter-web-contract.py \
+            2>&1 | tee "$report_dir/validator.log"
+
+      - name: Upload Flutter Web contract diagnostics
+        if: failure() && steps.flutter_web_contract.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-flutter-web-contract-${{ github.run_id }}
+          path: ${{ runner.temp }}/flutter-web-contract
+          retention-days: 3
+          if-no-files-found: error
