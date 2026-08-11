@@ -311,7 +311,33 @@ Auditoria registra:
 
 ## 18. Autorização
 
-Todo recurso financeiro pertence a uma residência e possui escopo.
+A audiência financeira canônica foi aceita no ADR-0016.
+
+Todo recurso financeiro pertence a uma residência e possui:
+
+```text
+residence_id
+owner_operator_id
+visibility_scope
+```
+
+Escopos:
+
+- `PERSONAL`: somente o proprietário ativo na mesma residência;
+- `SHARED`: proprietário + memberships ativas explicitamente concedidas;
+- `HOUSEHOLD`: todas as memberships ativas da residência.
+
+Regras obrigatórias:
+
+- membership inativa falha fechado;
+- cross-residence falha fechado;
+- `owner`/`administrator` da residência não concede bypass para conteúdo `PERSONAL` alheio;
+- grants não substituem membership ativa e só existem para `SHARED`;
+- capacidade de mutação por papel é separada da audiência do recurso;
+- relatórios, exportações e agregados aplicam a audiência antes de consolidar dados;
+- payload não escolhe livremente residência nem ator efetivo;
+- persistência financeira futura usa RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade;
+- `USING` e `WITH CHECK` devem impedir leitura e mudança de escopo fora da audiência.
 
 Autorização é aplicada:
 
@@ -324,7 +350,7 @@ Autorização é aplicada:
 - em auditoria;
 - em anexos.
 
-Administrador não recebe automaticamente acesso a recurso pessoal se a política adotada não permitir.
+O contrato puro inicial está em `meufinanceiro-finance`. A matriz completa de permissões por papel da membership permanece decisão separada da visibilidade.
 
 ## 19. Testes mínimos por regra
 
@@ -347,17 +373,20 @@ Para cada operação financeira relevante:
 
 Resolvido antes do núcleo financeiro:
 
-- representação monetária e arredondamento: ADR-0015 / #125.
+- representação monetária e arredondamento: ADR-0015 / #125;
+- visibilidade e audiência financeira: ADR-0016 / #129.
 
 Ainda pendentes:
 
 - semântica exata de `Movement`;
 - estratégia de imutabilidade;
 - modelo de saldo de abertura;
-- escopo de RLS versus filtros da aplicação;
+- matriz de capacidade por papel da membership;
 - convenções de IDs financeiros;
 - versionamento de agregados;
 - retenção de observações externas;
 - armazenamento de anexos.
+
+A estratégia de RLS de recursos financeiros está definida pelo ADR-0016; a implementação concreta começa junto ao primeiro schema financeiro.
 
 Essas decisões devem entrar em issues pequenas e ADRs próprios.
