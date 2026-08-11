@@ -43,7 +43,7 @@ def upgrade() -> None:
             account_type varchar(24) NOT NULL,
             custom_type_name varchar(96),
             name varchar(96) NOT NULL,
-            currency char(3) NOT NULL,
+            currency varchar(3) NOT NULL,
             status varchar(16) NOT NULL,
             created_at timestamptz NOT NULL,
             updated_at timestamptz NOT NULL,
