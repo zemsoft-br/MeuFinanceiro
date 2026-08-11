@@ -13,6 +13,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0012 — Persistência, segurança e feature flag da integração bancária](0012-banking-integration-persistence-security-and-feature-flag.md)
 - [ADR-0013 — Autenticação local de operador e sessões opacas](0013-local-operator-authentication.md)
 - [ADR-0014 — Residência primária derivada da associação do operador](0014-primary-residence-context.md)
+- [ADR-0015 — Representação monetária e arredondamento canônicos](0015-canonical-money-representation-and-rounding.md)
 
 ## Decisões propostas
 
