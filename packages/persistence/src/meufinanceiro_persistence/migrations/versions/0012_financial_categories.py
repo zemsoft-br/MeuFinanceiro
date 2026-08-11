@@ -105,12 +105,8 @@ def upgrade() -> None:
         "ON finance.categories (residence_id, owner_operator_id, status)"
     )
 
-    residence = (
-        "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
-    )
-    operator = (
-        "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
-    )
+    residence = "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
+    operator = "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
     active_membership = (
         "EXISTS (SELECT 1 FROM household.memberships m "
         "WHERE m.residence_id = categories.residence_id "
