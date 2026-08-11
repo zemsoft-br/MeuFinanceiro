@@ -150,9 +150,14 @@ def upgrade() -> None:
     operator = (
         "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
     )
-    active_membership = (
+    grant_membership = (
         "EXISTS (SELECT 1 FROM household.memberships m "
-        "WHERE m.residence_id = residence_id "
+        "WHERE m.residence_id = account_grants.residence_id "
+        f"AND m.operator_id = {operator} AND m.status = 'active')"
+    )
+    account_membership = (
+        "EXISTS (SELECT 1 FROM household.memberships m "
+        "WHERE m.residence_id = accounts.residence_id "
         f"AND m.operator_id = {operator} AND m.status = 'active')"
     )
 
@@ -161,8 +166,10 @@ def upgrade() -> None:
     op.execute(
         "CREATE POLICY finance_account_grants_select ON finance.account_grants "
         "FOR SELECT USING ("
-        f"residence_id = {residence} AND {active_membership} AND ("
-        f"operator_id = {operator} OR owner_operator_id = {operator}))"
+        f"account_grants.residence_id = {residence} "
+        f"AND {grant_membership} AND ("
+        f"account_grants.operator_id = {operator} "
+        f"OR account_grants.owner_operator_id = {operator}))"
     )
 
     op.execute("ALTER TABLE finance.accounts ENABLE ROW LEVEL SECURITY")
@@ -170,20 +177,21 @@ def upgrade() -> None:
     op.execute(
         "CREATE POLICY finance_accounts_select ON finance.accounts "
         "FOR SELECT USING ("
-        f"residence_id = {residence} AND {active_membership} AND ("
-        f"owner_operator_id = {operator} "
-        "OR visibility_scope = 'HOUSEHOLD' "
-        "OR (visibility_scope = 'SHARED' AND EXISTS ("
+        f"accounts.residence_id = {residence} AND {account_membership} AND ("
+        f"accounts.owner_operator_id = {operator} "
+        "OR accounts.visibility_scope = 'HOUSEHOLD' "
+        "OR (accounts.visibility_scope = 'SHARED' AND EXISTS ("
         "SELECT 1 FROM finance.account_grants g "
-        "WHERE g.account_id = id AND g.residence_id = residence_id "
+        "WHERE g.account_id = accounts.id "
+        "AND g.residence_id = accounts.residence_id "
         f"AND g.operator_id = {operator}))))"
     )
     op.execute(
         "CREATE POLICY finance_accounts_insert ON finance.accounts "
         "FOR INSERT WITH CHECK ("
-        f"residence_id = {residence} "
-        f"AND owner_operator_id = {operator} "
-        f"AND {active_membership})"
+        f"accounts.residence_id = {residence} "
+        f"AND accounts.owner_operator_id = {operator} "
+        f"AND {account_membership})"
     )
 
     op.execute(f"GRANT USAGE ON SCHEMA finance TO {role}")
