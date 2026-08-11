@@ -32,7 +32,9 @@ def test_category_draft_normalizes_name_and_accepts_personal_household() -> None
 
 
 def test_shared_category_scope_is_explicitly_rejected() -> None:
-    with pytest.raises(ValueError, match="SHARED category visibility is not supported yet"):
+    with pytest.raises(
+        ValueError, match="SHARED category visibility is not supported yet"
+    ):
         FinancialCategoryDraft(
             name="Compartilhada",
             visibility_scope=FinancialVisibilityScope.SHARED,
