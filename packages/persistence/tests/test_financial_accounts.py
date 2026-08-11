@@ -238,6 +238,7 @@ def test_shared_account_requires_explicit_grant_for_other_member(
                 residence_id=residence_id,
                 account_id=created.id,
                 owner_operator_id=owner_id,
+                visibility_scope="SHARED",
                 operator_id=member_id,
                 created_at=NOW,
             )
@@ -364,6 +365,7 @@ def test_runtime_role_cannot_update_delete_accounts_or_insert_grants(
                     residence_id=residence_id,
                     account_id=created.id,
                     owner_operator_id=owner_id,
+                    visibility_scope="SHARED",
                     operator_id=member_id,
                     created_at=NOW,
                 )
