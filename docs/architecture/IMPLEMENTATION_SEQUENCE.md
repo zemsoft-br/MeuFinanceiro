@@ -37,29 +37,37 @@ Concluir:
 
 Trabalho de backend independente pode avançar quando não depender de contratos ainda abertos e não antecipar uma decisão estrutural.
 
+A Fase 1 está organizada pela Epic #124. A decisão de dinheiro foi concluída pela #125 / ADR-0015; IDs financeiros, autorização/escopo e imutabilidade ainda precisam de recortes explícitos antes dos agregados que dependam deles.
+
 ## 3. Decisões estruturais imediatas
 
-### 3.1 Dinheiro e arredondamento
+### 3.1 Dinheiro e arredondamento — resolvido
 
-Definir:
+ADR-0015 define:
 
-- `numeric` versus unidade mínima;
-- escala e moeda;
-- conversão;
-- arredondamento;
-- serialização OpenAPI e Dart.
+- `Decimal` finito como representação Python;
+- contrato futuro `NUMERIC(24,8)` + moeda separada;
+- moeda ASCII uppercase de três letras;
+- amount HTTP como string decimal fixed-point;
+- ausência de `float` como autoridade financeira;
+- arredondamento sempre explícito por escala e modo;
+- operações cross-currency fail-closed.
+
+O value object inicial está em `packages/finance`.
 
 ### 3.2 Identidade, residência e autorização
 
-Definir:
+Definir/completar:
 
 - usuário local e sessão;
 - residência e associação;
 - papéis e escopos;
 - proprietário de recurso;
 - filtros nos casos de uso;
-- eventual RLS;
+- eventual RLS financeira;
 - revogação.
+
+Autenticação local, operador e residência primária já foram parcialmente antecipados pelas issues #84/#85 e #88/#89. A política de escopo dos recursos financeiros ainda precisa de decisão própria.
 
 ### 3.3 Livro financeiro
 
@@ -103,6 +111,8 @@ Ordem recomendada:
 11. auditoria financeira;
 12. dashboard inicial.
 
+A autenticação local e a residência primária já possuem fundação executável. A implementação financeira deve continuar pela política de autorização/escopo e pelos contratos de domínio restantes, sem repetir essas fundações.
+
 Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter quando isso reduzir risco. Interface começa após contrato de API e autorização estar estável ou mockado por contrato versionado.
 
 ## 5. Fase 2 — Planejamento
@@ -130,7 +140,7 @@ Após o livro estável:
 8. rollback;
 9. regras de importação.
 
-Pluggy só entra depois desse pipeline.
+Pluggy só entra depois desse pipeline como fonte de observações, sem substituir o livro canônico.
 
 ## 7. Fase 4 — Cartões e projeções
 
@@ -155,6 +165,8 @@ Seguir `docs/ROADMAP.md`:
 - documentos e automações;
 - distribuição e maturidade;
 - Android, iOS e desktop a partir da mesma base Flutter.
+
+Parte significativa da fundação Pluggy/Open Finance já foi antecipada pela Epic #63, mas a integração não substitui os contratos do núcleo financeiro.
 
 Os protótipos não antecipam dependências técnicas.
 
