@@ -67,28 +67,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          package='packages/persistence/src/meufinanceiro_persistence'
+
+          cat > "$package/banking_sync_schema.py" <<'PYFILE'
+          """Typed access to banking sync tables registered in shared metadata."""
+
+          from __future__ import annotations
+
+          from sqlalchemy import Table
+
+          from meufinanceiro_persistence.schema import metadata
+
+
+          def _registered_table(qualified_name: str) -> Table:
+              table = metadata.tables.get(qualified_name)
+              if table is None:
+                  raise RuntimeError("required banking metadata table is not registered")
+              return table
+
+
+          external_accounts = _registered_table("integrations.external_accounts")
+          sync_cursors = _registered_table("integrations.sync_cursors")
+          sync_runs = _registered_table("integrations.sync_runs")
+
+          __all__ = ["external_accounts", "sync_cursors", "sync_runs"]
+          PYFILE
+
           .quality-venv/bin/python - <<'PY'
           from pathlib import Path
 
           package = Path('packages/persistence/src/meufinanceiro_persistence')
-          facade = package / 'banking_sync_schema.py'
-          facade.write_text(
-              '''"""Typed access to banking sync tables registered in shared metadata."""\n\n'
-              'from __future__ import annotations\n\n'
-              'from sqlalchemy import Table\n\n'
-              'from meufinanceiro_persistence.schema import metadata\n\n\n'
-              'def _registered_table(qualified_name: str) -> Table:\n'
-              '    table = metadata.tables.get(qualified_name)\n'
-              '    if table is None:\n'
-              '        raise RuntimeError("required banking metadata table is not registered")\n'
-              '    return table\n\n\n'
-              'external_accounts = _registered_table("integrations.external_accounts")\n'
-              'sync_cursors = _registered_table("integrations.sync_cursors")\n'
-              'sync_runs = _registered_table("integrations.sync_runs")\n\n'
-              '__all__ = ["external_accounts", "sync_cursors", "sync_runs"]\n''',
-              encoding='utf-8',
-          )
-
           replacements = {
               'banking_sync_store.py': (
                   'from meufinanceiro_persistence.schema import (\n'
@@ -143,20 +151,22 @@ jobs:
           for filename, (old, new) in replacements.items():
               path = package / filename
               text = path.read_text(encoding='utf-8')
-              if old not in text:
+              if old in text:
+                  path.write_text(text.replace(old, new, 1), encoding='utf-8')
+              elif new not in text:
                   raise SystemExit(f'import marker not found in {filename}')
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
 
           identity = package / 'identity_store.py'
           text = identity.read_text(encoding='utf-8')
           old = '        row: Mapping[str, Any] | None = (\n'
           new = '        row = (\n'
-          if old not in text:
+          if old in text:
+              text = text.replace(old, new, 1)
+              text = text.replace('from collections.abc import Mapping\n', '')
+              text = text.replace('from typing import Any, NoReturn\n', 'from typing import NoReturn\n')
+              identity.write_text(text, encoding='utf-8')
+          elif new not in text:
               raise SystemExit('identity row assignment marker not found')
-          text = text.replace(old, new, 1)
-          text = text.replace('from collections.abc import Mapping\n', '')
-          text = text.replace('from typing import Any, NoReturn\n', 'from typing import NoReturn\n')
-          identity.write_text(text, encoding='utf-8')
           PY
 
       - name: Format candidate files
@@ -221,6 +231,10 @@ jobs:
             packages/persistence/src/meufinanceiro_persistence/banking_fairness_store.py \
             packages/persistence/src/meufinanceiro_persistence/banking_reconciliation_store.py \
             packages/persistence/src/meufinanceiro_persistence/identity_store.py
+          if git diff --cached --quiet; then
+            echo 'Candidate fixes are already committed.'
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit \
