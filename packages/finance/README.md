@@ -128,4 +128,40 @@ O estado persistente prevê `ACTIVE` e `ARCHIVED`, porém o primeiro store cria 
 
 A persistência da #133 aplica a audiência do ADR-0016 e os IDs do ADR-0017 diretamente no PostgreSQL. Grants persistentes existem somente para contas `SHARED`.
 
-Conversão cambial, regras de moeda específica, saldo de abertura, movements, categorias, edição de grants, API e Flutter permanecem fora deste recorte.
+## Categorias financeiras
+
+A #135 adiciona a taxonomia financeira mínima como árvore de profundidade livre:
+
+```python
+from meufinanceiro_finance import (
+    FinancialCategoryDraft,
+    FinancialVisibilityScope,
+)
+
+category = FinancialCategoryDraft(
+    name="Alimentação",
+    visibility_scope=FinancialVisibilityScope.HOUSEHOLD,
+)
+```
+
+Cada categoria possui UUID local, owner, audiência e `parent_id` opcional. Parent e child precisam compartilhar instalação, residência, owner e visibilidade.
+
+Escopos suportados neste primeiro recorte:
+
+```text
+PERSONAL
+HOUSEHOLD
+```
+
+`SHARED` é deliberadamente rejeitado até existir uma regra explícita de herança de grants em árvores. Isso evita filho mais visível que o pai ou paths parcialmente inacessíveis.
+
+Estados estruturais:
+
+```text
+ACTIVE
+DISABLED
+```
+
+O primeiro runtime cria somente `ACTIVE` e não possui update/move/disable/delete. Categoria não possui `income/expense kind`, amount, regra de provider ou vínculo com Movement neste estágio.
+
+Conversão cambial, regras de moeda específica, saldo de abertura, movements, edição de grants, carga inicial de categorias, tags, regras de categorização, aprendizado, API e Flutter permanecem fora dos contratos atuais.

@@ -19,6 +19,7 @@ from meufinanceiro_persistence.banking_reconciliation_schema import (
 )
 from meufinanceiro_persistence.bootstrap import normalize_psycopg_url
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.migrations import upgrade
 from meufinanceiro_persistence.schema import (
     connection_capabilities,
@@ -182,6 +183,7 @@ def create_canonical_residences(
 @pytest.fixture(autouse=True)
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
+        connection.execute(delete(financial_categories))
         connection.execute(delete(financial_accounts))
         connection.execute(delete(reconciled_transactions))
         connection.execute(delete(external_observations))
