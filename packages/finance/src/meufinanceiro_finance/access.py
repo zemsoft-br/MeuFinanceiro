@@ -61,9 +61,7 @@ class FinancialResourceAudience:
 
         if self.visibility_scope is not FinancialVisibilityScope.SHARED:
             if self.shared_operator_ids:
-                raise ValueError(
-                    "explicit grants are valid only for SHARED resources"
-                )
+                raise ValueError("explicit grants are valid only for SHARED resources")
         elif self.owner_operator_id in self.shared_operator_ids:
             raise ValueError("resource owner must not have a redundant shared grant")
 

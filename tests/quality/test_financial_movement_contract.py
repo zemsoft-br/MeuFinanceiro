@@ -6,9 +6,9 @@ ROOT = Path(__file__).resolve().parents[2]
 MOVEMENTS = (
     ROOT / "packages/finance/src/meufinanceiro_finance/movements.py"
 ).read_text(encoding="utf-8")
-ADR = (
-    ROOT / "docs/adr/0019-canonical-movement-append-only-ledger.md"
-).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0019-canonical-movement-append-only-ledger.md").read_text(
+    encoding="utf-8"
+)
 
 
 def test_movement_has_one_signed_money_effect_and_no_pending_state() -> None:

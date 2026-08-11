@@ -64,7 +64,9 @@ def _create_household(
                 updated_at=NOW,
             )
         )
-        for index, (operator_id, role) in enumerate(zip(operator_ids, roles, strict=True)):
+        for index, (operator_id, role) in enumerate(
+            zip(operator_ids, roles, strict=True)
+        ):
             connection.execute(
                 insert(identity_operators).values(
                     id=operator_id,
@@ -176,11 +178,14 @@ def test_personal_account_is_hidden_from_other_active_member_even_administrator(
         draft=_draft(FinancialVisibilityScope.PERSONAL),
     )
 
-    assert store.list_accounts(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=administrator_id,
-    ) == ()
+    assert (
+        store.list_accounts(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=administrator_id,
+        )
+        == ()
+    )
     with pytest.raises(FinancialAccountNotFoundError):
         store.get_account(
             installation_id=installation_id,
@@ -224,11 +229,14 @@ def test_shared_account_requires_explicit_grant_for_other_member(
         draft=_draft(FinancialVisibilityScope.SHARED),
     )
 
-    assert store.list_accounts(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-    ) == ()
+    assert (
+        store.list_accounts(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=member_id,
+        )
+        == ()
+    )
 
     with engine.begin() as connection:
         connection.execute(

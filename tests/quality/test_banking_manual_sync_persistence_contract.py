@@ -5,8 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
 MIGRATION = (
-    PERSISTENCE
-    / "migrations/versions/0007_banking_manual_sync_persistence.py"
+    PERSISTENCE / "migrations/versions/0007_banking_manual_sync_persistence.py"
 ).read_text(encoding="utf-8")
 SCHEMA = (PERSISTENCE / "schema.py").read_text(encoding="utf-8")
 MODELS = (PERSISTENCE / "banking_models.py").read_text(encoding="utf-8")
@@ -20,7 +19,9 @@ def test_manual_sync_migration_is_linear_and_scoped_to_integrations() -> None:
     assert 'down_revision: str | None = "0006_banking_residence_fk"' in MIGRATION
     for table in ("sync_runs", "external_accounts", "sync_cursors"):
         assert f"integrations.{table}" in MIGRATION
-        assert f"ALTER TABLE integrations.{table} ENABLE ROW LEVEL SECURITY" in MIGRATION
+        assert (
+            f"ALTER TABLE integrations.{table} ENABLE ROW LEVEL SECURITY" in MIGRATION
+        )
         assert f"ALTER TABLE integrations.{table} FORCE ROW LEVEL SECURITY" in MIGRATION
         assert f"CREATE POLICY {table}_residence_isolation" in MIGRATION
     assert "current_setting('app.current_residence_id', true)" in MIGRATION

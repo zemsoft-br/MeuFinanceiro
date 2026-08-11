@@ -52,9 +52,7 @@ def _assert_no_orphan_connections() -> None:
 
 def upgrade() -> None:
     if context.is_offline_mode():
-        raise RuntimeError(
-            "banking residence FK migration requires online validation"
-        )
+        raise RuntimeError("banking residence FK migration requires online validation")
     _lock_integrity_scope()
     _assert_no_orphan_connections()
     op.create_foreign_key(
