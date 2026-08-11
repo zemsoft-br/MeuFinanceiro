@@ -37,7 +37,9 @@ _DECIMAL_ROUNDING = {
 }
 
 
-def _clean_currency(value: str) -> str:
+def validate_currency_code(value: str) -> str:
+    """Validate the canonical three-letter ASCII currency representation."""
+
     if not isinstance(value, str):
         raise TypeError("currency must be a string")
     if len(value) != 3 or not value.isascii() or not value.isalpha():
@@ -104,7 +106,7 @@ class Money:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "amount", _canonical_decimal(self.amount))
-        object.__setattr__(self, "currency", _clean_currency(self.currency))
+        object.__setattr__(self, "currency", validate_currency_code(self.currency))
 
     @property
     def canonical_amount(self) -> str:
@@ -169,4 +171,5 @@ __all__ = [
     "CurrencyMismatchError",
     "Money",
     "RoundingMode",
+    "validate_currency_code",
 ]
