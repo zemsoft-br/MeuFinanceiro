@@ -16,18 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 
-from meufinanceiro_persistence.financial_account_schema import financial_accounts
 from meufinanceiro_persistence.schema import metadata
-
-# Migration 0013 adds the matching candidate key to PostgreSQL. Register it in
-# metadata so the composite FK contract is explicit for tests and tooling.
-UniqueConstraint(
-    financial_accounts.c.id,
-    financial_accounts.c.installation_id,
-    financial_accounts.c.residence_id,
-    financial_accounts.c.currency,
-    name="uq_finance_accounts_opening_scope",
-)
 
 financial_opening_balances = Table(
     "account_opening_balances",
