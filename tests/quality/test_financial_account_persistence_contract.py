@@ -58,6 +58,16 @@ def test_account_types_visibility_and_archive_shape_are_closed() -> None:
     assert "-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-" in MIGRATION
 
 
+def test_shared_grants_are_structurally_bound_to_shared_accounts() -> None:
+    assert "visibility_scope varchar(16) NOT NULL" in MIGRATION
+    assert "ck_finance_account_grants_shared" in MIGRATION
+    assert "visibility_scope = 'SHARED'" in MIGRATION
+    assert "owner_operator_id, visibility_scope" in MIGRATION
+    assert "owner_operator_id, visibility_scope" in MIGRATION
+    assert "ck_finance_account_grants_shared" in SCHEMA
+    assert '"visibility_scope",' in SCHEMA
+
+
 def test_account_rls_is_operator_aware_and_non_recursive() -> None:
     assert "ENABLE ROW LEVEL SECURITY" in MIGRATION
     assert "FORCE ROW LEVEL SECURITY" in MIGRATION
@@ -69,6 +79,7 @@ def test_account_rls_is_operator_aware_and_non_recursive() -> None:
     assert "accounts.visibility_scope = 'SHARED'" in MIGRATION
     assert "FROM finance.account_grants g" in MIGRATION
     assert "g.account_id = accounts.id" in MIGRATION
+    assert "g.visibility_scope = accounts.visibility_scope" in MIGRATION
 
     grants_policy = MIGRATION.split(
         "CREATE POLICY finance_account_grants_select",
