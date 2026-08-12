@@ -5,9 +5,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FINANCE = ROOT / "packages/finance/src/meufinanceiro_finance"
 IDS = (FINANCE / "ids.py").read_text(encoding="utf-8")
-ADR = (
-    ROOT / "docs/adr/0017-canonical-financial-resource-identifiers.md"
-).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0017-canonical-financial-resource-identifiers.md").read_text(
+    encoding="utf-8"
+)
 INVARIANTS = (ROOT / "docs/architecture/FINANCIAL_INVARIANTS.md").read_text(
     encoding="utf-8"
 )
@@ -74,6 +74,5 @@ def test_adr_separates_resource_id_from_operation_ids_and_authorization() -> Non
 def test_architecture_marks_financial_id_decision_as_resolved() -> None:
     assert "ADR-0017 / #131" in INVARIANTS
     assert "ADR-0017 / #131" in SEQUENCE
-    assert "convenções de IDs financeiros" not in INVARIANTS.split(
-        "Ainda pendentes:", maxsplit=1
-    )[1]
+    assert "identificadores financeiros canônicos" in INVARIANTS
+    assert "convenções de IDs financeiros" not in INVARIANTS

@@ -7,9 +7,7 @@ from sqlalchemy.exc import DBAPIError
 
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 
-_LOCK_FUNCTION = (
-    "finance.lock_standard_movement_for_reversal(uuid, uuid, uuid, uuid)"
-)
+_LOCK_FUNCTION = "finance.lock_standard_movement_for_reversal(uuid, uuid, uuid, uuid)"
 
 
 def test_runtime_keeps_append_only_table_privileges_and_can_execute_lock(

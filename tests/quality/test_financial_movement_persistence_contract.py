@@ -15,9 +15,9 @@ ACCOUNT_SCHEMA = (PERSISTENCE / "financial_account_schema.py").read_text(
 SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(encoding="utf-8")
 STORE = (PERSISTENCE / "financial_movement_store.py").read_text(encoding="utf-8")
 PUBLIC_STORE = (PERSISTENCE / "financial_movement.py").read_text(encoding="utf-8")
-MIGRATION = (
-    PERSISTENCE / "migrations/versions/0014_financial_movements.py"
-).read_text(encoding="utf-8")
+MIGRATION = (PERSISTENCE / "migrations/versions/0014_financial_movements.py").read_text(
+    encoding="utf-8"
+)
 ADR = (
     ROOT
     / "docs/adr/0020-financial-movement-persistence-idempotency-and-reversal-integrity.md"
@@ -118,9 +118,12 @@ def test_opening_anchor_is_enforced_on_effective_date_not_competence_date() -> N
     assert "effective_date < opening_date" in STORE
     assert "movements.effective_date < ob.effective_date" in MIGRATION
     assert "competence_date" in STORE
-    assert "competence_date" not in MIGRATION.split("after_opening_anchor =", 1)[1].split(
-        "op.execute(\"ALTER TABLE finance.movements", 1
-    )[0]
+    assert (
+        "competence_date"
+        not in MIGRATION.split("after_opening_anchor =", 1)[1].split(
+            'op.execute("ALTER TABLE finance.movements', 1
+        )[0]
+    )
 
 
 def test_runtime_and_store_are_append_only() -> None:
@@ -149,7 +152,9 @@ def test_persisted_record_and_public_api_redact_and_export_contracts() -> None:
     assert "FinancialMovementStore" in PUBLIC_STORE
 
 
-def test_movement_persistence_has_no_provider_api_category_or_transfer_coupling() -> None:
+def test_movement_persistence_has_no_provider_api_category_or_transfer_coupling() -> (
+    None
+):
     for source in (RECORD, OPERATION_IDS, SCHEMA, STORE, MIGRATION):
         lowered = source.lower()
         for forbidden in (

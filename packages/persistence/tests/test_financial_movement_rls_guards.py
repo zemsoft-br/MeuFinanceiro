@@ -107,17 +107,21 @@ def _account(
     owner_id: UUID,
     scope: FinancialVisibilityScope,
 ) -> UUID:
-    return FinancialAccountStore(runtime_engine).create_account(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        draft=FinancialAccountDraft(
-            name=f"{scope.value} Movement account",
-            currency="BRL",
-            account_type=FinancialAccountType.CHECKING,
-            visibility_scope=scope,
-        ),
-    ).id
+    return (
+        FinancialAccountStore(runtime_engine)
+        .create_account(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            draft=FinancialAccountDraft(
+                name=f"{scope.value} Movement account",
+                currency="BRL",
+                account_type=FinancialAccountType.CHECKING,
+                visibility_scope=scope,
+            ),
+        )
+        .id
+    )
 
 
 def _draft(account_id: UUID) -> FinancialMovementDraft:
@@ -168,12 +172,15 @@ def test_household_member_reads_ledger_but_cannot_mutate_owner_account(
         draft=_draft(account_id),
     )
 
-    assert store.get_movement(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-        movement_id=created.id,
-    ) == created
+    assert (
+        store.get_movement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=member_id,
+            movement_id=created.id,
+        )
+        == created
+    )
     assert store.list_movements(
         installation_id=installation_id,
         residence_id=residence_id,
@@ -338,12 +345,15 @@ def test_shared_ledger_is_visible_only_after_account_grant(
             )
         )
 
-    assert store.get_movement(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-        movement_id=created.id,
-    ) == created
+    assert (
+        store.get_movement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=member_id,
+            movement_id=created.id,
+        )
+        == created
+    )
 
 
 def test_runtime_rls_rejects_direct_non_owner_insert(

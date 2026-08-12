@@ -19,9 +19,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _ROLE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,62}$")
-_LOCK_FUNCTION = (
-    "finance.lock_standard_movement_for_reversal(uuid, uuid, uuid, uuid)"
-)
+_LOCK_FUNCTION = "finance.lock_standard_movement_for_reversal(uuid, uuid, uuid, uuid)"
 
 
 def _quoted_role() -> str:
@@ -182,12 +180,8 @@ def upgrade() -> None:
         "FOR EACH ROW EXECUTE FUNCTION finance.validate_movement_reversal_amount()"
     )
 
-    residence = (
-        "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
-    )
-    operator = (
-        "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
-    )
+    residence = "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
+    operator = "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
     active_membership = (
         "EXISTS (SELECT 1 FROM household.memberships m "
         "WHERE m.residence_id = movements.residence_id "

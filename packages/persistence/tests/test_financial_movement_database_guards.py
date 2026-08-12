@@ -86,17 +86,21 @@ def _create_owner_and_account(
                 updated_at=NOW,
             )
         )
-    account_id = FinancialAccountStore(runtime_engine).create_account(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        draft=FinancialAccountDraft(
-            name="Movement guard account",
-            currency="BRL",
-            account_type=FinancialAccountType.CHECKING,
-            visibility_scope=FinancialVisibilityScope.PERSONAL,
-        ),
-    ).id
+    account_id = (
+        FinancialAccountStore(runtime_engine)
+        .create_account(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            draft=FinancialAccountDraft(
+                name="Movement guard account",
+                currency="BRL",
+                account_type=FinancialAccountType.CHECKING,
+                visibility_scope=FinancialVisibilityScope.PERSONAL,
+            ),
+        )
+        .id
+    )
     return installation_id, residence_id, owner_id, account_id
 
 
