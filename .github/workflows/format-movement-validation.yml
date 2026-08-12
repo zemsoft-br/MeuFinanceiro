@@ -1,0 +1,76 @@
+name: Format Movement Validation
+
+on:
+  push:
+    branches:
+      - validation/movement-with-quality-baseline
+
+permissions:
+  contents: write
+
+concurrency:
+  group: format-movement-validation
+  cancel-in-progress: true
+
+jobs:
+  format:
+    name: Format exact Movement files
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v6
+        with:
+          ref: validation/movement-with-quality-baseline
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install pinned Ruff
+        run: python -m pip install --disable-pip-version-check ruff==0.15.22
+
+      - name: Format exact Movement allowlist
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0014_financial_movements.py
+            packages/persistence/tests/test_financial_movement_database_guards.py
+            packages/persistence/tests/test_financial_movement_rls_guards.py
+            packages/persistence/tests/test_financial_movement_runtime_privileges.py
+            packages/persistence/tests/test_financial_movements.py
+            packages/persistence/tests/test_financial_movements_migration.py
+            tests/quality/test_financial_movement_persistence_contract.py
+          )
+          python -m ruff format "${files[@]}"
+          printf '%s\n' "${files[@]}" | sort > "$RUNNER_TEMP/expected.txt"
+          git diff --name-only | sort > "$RUNNER_TEMP/actual.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          git diff --check
+          python -m ruff check "${files[@]}"
+          python -m ruff format --check "${files[@]}"
+
+      - name: Materialize validation-only format commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/format-movement-validation.yml
+          git add \
+            packages/persistence/src/meufinanceiro_persistence/migrations/versions/0014_financial_movements.py \
+            packages/persistence/tests/test_financial_movement_database_guards.py \
+            packages/persistence/tests/test_financial_movement_rls_guards.py \
+            packages/persistence/tests/test_financial_movement_runtime_privileges.py \
+            packages/persistence/tests/test_financial_movements.py \
+            packages/persistence/tests/test_financial_movements_migration.py \
+            tests/quality/test_financial_movement_persistence_contract.py
+          git commit \
+            -m 'style(finance): format Movement persistence files' \
+            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+          git push origin HEAD:validation/movement-with-quality-baseline
+          echo "FORMATTED_HEAD=$(git rev-parse HEAD)"
