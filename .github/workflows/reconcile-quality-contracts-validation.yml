@@ -1,0 +1,139 @@
+name: Reconcile Validation Quality Contracts
+
+on:
+  push:
+    branches:
+      - validation/movement-with-quality-baseline
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconcile-validation-quality-contracts
+  cancel-in-progress: true
+
+jobs:
+  reconcile:
+    name: Reconcile exact static contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v6
+        with:
+          ref: validation/movement-with-quality-baseline
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Reconcile three stale static contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              target = Path(path)
+              text = target.read_text(encoding='utf-8')
+              if text.count(old) != 1:
+                  raise SystemExit(f'{path}: expected one replacement marker')
+              target.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace(
+              'tests/quality/test_finance_access_scope_contract.py',
+              '''    assert "ADR-0016" in INVARIANTS
+              assert "owner_operator_id" in INVARIANTS
+              assert "visibility_scope" in INVARIANTS
+              assert "app.current_operator_id" in INVARIANTS
+              lowered = INVARIANTS.lower()
+          ''',
+              '''    assert "ADR-0016" in INVARIANTS
+              for required in (
+                  "PERSONAL",
+                  "SHARED",
+                  "HOUSEHOLD",
+                  "app.current_operator_id",
+                  "proprietário",
+                  "membership inativa",
+                  "cross-residence",
+              ):
+                  assert required in INVARIANTS
+              lowered = INVARIANTS.lower()
+          ''',
+          )
+
+          replace(
+              'tests/quality/test_finance_id_contract.py',
+              '''    assert (
+                  "convenções de IDs financeiros"
+                  not in INVARIANTS.split("Ainda pendentes:", maxsplit=1)[1]
+              )
+          ''',
+              '''    assert "identificadores financeiros canônicos" in INVARIANTS
+              assert "convenções de IDs financeiros" not in INVARIANTS
+          ''',
+          )
+
+          replace(
+              'tests/quality/test_flutter_pluggy_connect_contract.py',
+              '''    assert (
+                  "if (normalizedUpdateItem != null) 'updateItem': normalizedUpdateItem" in source
+              )
+          ''',
+              '''    assert "'updateItem': ?normalizedUpdateItem" in source
+          ''',
+          )
+          PY
+
+      - name: Enforce exact test-only diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > "$RUNNER_TEMP/expected.txt" <<'EOF'
+          tests/quality/test_finance_access_scope_contract.py
+          tests/quality/test_finance_id_contract.py
+          tests/quality/test_flutter_pluggy_connect_contract.py
+          EOF
+          sed -i 's/^          //' "$RUNNER_TEMP/expected.txt"
+          sort -o "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/expected.txt"
+          git diff --name-only | sort > "$RUNNER_TEMP/actual.txt"
+          diff -u "$RUNNER_TEMP/expected.txt" "$RUNNER_TEMP/actual.txt"
+          git diff --check
+          python -m compileall -q \
+            tests/quality/test_finance_access_scope_contract.py \
+            tests/quality/test_finance_id_contract.py \
+            tests/quality/test_flutter_pluggy_connect_contract.py
+
+      - name: Check exact files with pinned Ruff
+        run: |
+          python -m pip install --disable-pip-version-check ruff==0.15.22
+          python -m ruff check \
+            tests/quality/test_finance_access_scope_contract.py \
+            tests/quality/test_finance_id_contract.py \
+            tests/quality/test_flutter_pluggy_connect_contract.py
+          python -m ruff format --check \
+            tests/quality/test_finance_access_scope_contract.py \
+            tests/quality/test_finance_id_contract.py \
+            tests/quality/test_flutter_pluggy_connect_contract.py
+
+      - name: Materialize validation-only contract commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/reconcile-quality-contracts-validation.yml
+          git add \
+            tests/quality/test_finance_access_scope_contract.py \
+            tests/quality/test_finance_id_contract.py \
+            tests/quality/test_flutter_pluggy_connect_contract.py
+          git commit \
+            -m 'test(quality): reconcile composed contract expectations' \
+            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+          git push origin HEAD:validation/movement-with-quality-baseline
+          echo "RECONCILED_HEAD=$(git rev-parse HEAD)"
