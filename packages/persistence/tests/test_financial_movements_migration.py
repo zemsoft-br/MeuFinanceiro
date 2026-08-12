@@ -8,14 +8,14 @@ from meufinanceiro_persistence.migrations import build_alembic_config, current_r
 
 _REVISION = "0014_financial_movements"
 _PREVIOUS = "0013_opening_balances"
-_LOCK_FUNCTION = (
-    "finance.lock_standard_movement_for_reversal(uuid, uuid, uuid, uuid)"
-)
+_LOCK_FUNCTION = "finance.lock_standard_movement_for_reversal(uuid, uuid, uuid, uuid)"
 
 
 def _lock_function_exists(engine: Engine) -> bool:
     with engine.begin() as connection:
-        return connection.scalar(select(func.to_regprocedure(_LOCK_FUNCTION))) is not None
+        return (
+            connection.scalar(select(func.to_regprocedure(_LOCK_FUNCTION))) is not None
+        )
 
 
 def test_financial_movements_migration_downgrades_and_reupgrades(

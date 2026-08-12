@@ -114,17 +114,21 @@ def _create_account(
     owner_id: UUID,
     scope: FinancialVisibilityScope = FinancialVisibilityScope.PERSONAL,
 ) -> UUID:
-    return FinancialAccountStore(runtime_engine).create_account(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        draft=FinancialAccountDraft(
-            name="Synthetic Movement account",
-            currency="BRL",
-            account_type=FinancialAccountType.CHECKING,
-            visibility_scope=scope,
-        ),
-    ).id
+    return (
+        FinancialAccountStore(runtime_engine)
+        .create_account(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            draft=FinancialAccountDraft(
+                name="Synthetic Movement account",
+                currency="BRL",
+                account_type=FinancialAccountType.CHECKING,
+                visibility_scope=scope,
+            ),
+        )
+        .id
+    )
 
 
 def _draft(
@@ -203,12 +207,15 @@ def test_create_replay_conflict_get_and_list(
     assert replay.id == created.id
     assert created.role is FinancialMovementRole.STANDARD
     assert created.amount.amount == Decimal("125.50000000")
-    assert store.get_movement(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        movement_id=created.id,
-    ) == created
+    assert (
+        store.get_movement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            movement_id=created.id,
+        )
+        == created
+    )
     assert store.list_movements(
         installation_id=installation_id,
         residence_id=residence_id,
