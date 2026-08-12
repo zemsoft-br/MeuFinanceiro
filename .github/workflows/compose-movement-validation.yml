@@ -1,0 +1,65 @@
+name: Compose Movement Validation Stack
+
+on:
+  push:
+    branches:
+      - validation/movement-with-quality-baseline
+
+permissions:
+  contents: write
+
+concurrency:
+  group: movement-quality-baseline-compose
+  cancel-in-progress: true
+
+jobs:
+  compose:
+    name: Compose signed validation stack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout validation branch
+        uses: actions/checkout@v6
+        with:
+          ref: validation/movement-with-quality-baseline
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Compose baseline heads over Movement
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch --no-tags origin \
+            fix/persistence-functional-baseline-157 \
+            fix/quality-flutter-test-baseline-161
+
+          git merge --no-ff --no-commit origin/fix/persistence-functional-baseline-157 || {
+            echo 'PYTHON_BASELINE_MERGE=CONFLICT'
+            git status --short
+            git diff --name-only --diff-filter=U
+            exit 1
+          }
+          git commit \
+            -m 'chore(validation): compose Python quality baseline' \
+            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+
+          git merge --no-ff --no-commit origin/fix/quality-flutter-test-baseline-161 || {
+            echo 'FLUTTER_BASELINE_MERGE=CONFLICT'
+            git status --short
+            git diff --name-only --diff-filter=U
+            exit 1
+          }
+          git commit \
+            -m 'chore(validation): compose Flutter quality baseline' \
+            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+
+          git rm .github/workflows/compose-movement-validation.yml
+          git commit \
+            -m 'chore(validation): remove composition probe' \
+            -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
+
+          git diff --check origin/develop...HEAD
+          git push origin HEAD:validation/movement-with-quality-baseline
+          echo "VALIDATION_HEAD=$(git rev-parse HEAD)"
