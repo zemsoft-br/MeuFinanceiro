@@ -35,12 +35,92 @@ jobs:
             fix/persistence-functional-baseline-157 \
             fix/quality-flutter-test-baseline-161
 
-          git merge --no-ff --no-commit origin/fix/persistence-functional-baseline-157 || {
+          if ! git merge --no-ff --no-commit origin/fix/persistence-functional-baseline-157; then
             echo 'PYTHON_BASELINE_MERGE=CONFLICT'
-            git status --short
-            git diff --name-only --diff-filter=U
-            exit 1
-          }
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+            printf '%s\n' "${conflicts[@]}"
+            expected=(
+              'packages/finance/src/meufinanceiro_finance/__init__.py'
+              'packages/persistence/tests/conftest.py'
+            )
+            if [[ "${conflicts[*]}" != "${expected[*]}" ]]; then
+              echo 'Unexpected conflict set; refusing automatic resolution.' >&2
+              exit 1
+            fi
+
+            git checkout --ours -- \
+              packages/finance/src/meufinanceiro_finance/__init__.py \
+              packages/persistence/tests/conftest.py
+
+            python - <<'PY'
+          from pathlib import Path
+
+          init_path = Path('packages/finance/src/meufinanceiro_finance/__init__.py')
+          init_text = init_path.read_text(encoding='utf-8')
+          accounts_block = '''from meufinanceiro_finance.accounts import (
+              FinancialAccountDraft,
+              FinancialAccountRecord,
+              FinancialAccountStatus,
+              FinancialAccountType,
+          )
+          '''
+          categories_block = '''from meufinanceiro_finance.categories import (
+              FinancialCategoryDraft,
+              FinancialCategoryRecord,
+              FinancialCategoryStatus,
+          )
+          '''
+          if categories_block not in init_text:
+              if init_text.count(accounts_block) != 1:
+                  raise SystemExit('finance __init__: accounts import marker mismatch')
+              init_text = init_text.replace(accounts_block, accounts_block + categories_block, 1)
+          actor_marker = '    "FinancialActorContext",\n'
+          category_exports = (
+              '    "FinancialCategoryDraft",\n'
+              '    "FinancialCategoryRecord",\n'
+              '    "FinancialCategoryStatus",\n'
+          )
+          if '    "FinancialCategoryDraft",\n' not in init_text:
+              if init_text.count(actor_marker) != 1:
+                  raise SystemExit('finance __init__: actor export marker mismatch')
+              init_text = init_text.replace(actor_marker, actor_marker + category_exports, 1)
+          init_path.write_text(init_text, encoding='utf-8')
+
+          conftest_path = Path('packages/persistence/tests/conftest.py')
+          conftest = conftest_path.read_text(encoding='utf-8')
+          account_import = (
+              'from meufinanceiro_persistence.financial_account_schema import financial_accounts\n'
+          )
+          category_import = (
+              'from meufinanceiro_persistence.financial_category_schema import financial_categories\n'
+          )
+          if category_import not in conftest:
+              if conftest.count(account_import) != 1:
+                  raise SystemExit('conftest: account import marker mismatch')
+              conftest = conftest.replace(account_import, account_import + category_import, 1)
+          opening_cleanup = '        connection.execute(delete(financial_opening_balances))\n'
+          category_cleanup = '        connection.execute(delete(financial_categories))\n'
+          if category_cleanup not in conftest:
+              if conftest.count(opening_cleanup) != 1:
+                  raise SystemExit('conftest: opening cleanup marker mismatch')
+              conftest = conftest.replace(
+                  opening_cleanup,
+                  opening_cleanup + category_cleanup,
+                  1,
+              )
+          conftest_path.write_text(conftest, encoding='utf-8')
+          PY
+
+            git add \
+              packages/finance/src/meufinanceiro_finance/__init__.py \
+              packages/persistence/tests/conftest.py
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo 'Unresolved conflicts remain.' >&2
+              git diff --name-only --diff-filter=U
+              exit 1
+            fi
+          fi
+
           git commit \
             -m 'chore(validation): compose Python quality baseline' \
             -m 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>'
