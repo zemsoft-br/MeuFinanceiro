@@ -236,7 +236,8 @@ def test_reauthentication_openapi_has_only_local_connection_path_parameter(
     operation = schema["paths"][template]["post"]
 
     assert "requestBody" not in operation
-    assert [parameter["name"] for parameter in operation["parameters"]] == [
-        "connection_id"
-    ]
-    assert operation["parameters"][0]["in"] == "path"
+    parameters = {(item["name"], item["in"]) for item in operation["parameters"]}
+    assert parameters == {
+        ("connection_id", "path"),
+        ("Authorization", "header"),
+    }

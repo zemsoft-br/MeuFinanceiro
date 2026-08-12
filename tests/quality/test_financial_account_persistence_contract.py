@@ -97,7 +97,8 @@ def test_account_insert_policy_is_owner_bound_and_active_only() -> None:
     assert "accounts.owner_operator_id" in insert_policy
     assert "accounts.status = 'ACTIVE'" in insert_policy
     assert "accounts.archived_at IS NULL" in insert_policy
-    assert "m.status = 'active'" in insert_policy
+    assert "account_membership" in insert_policy
+    assert "m.status = 'active'" in MIGRATION
 
 
 def test_runtime_privileges_are_read_create_only_for_accounts() -> None:

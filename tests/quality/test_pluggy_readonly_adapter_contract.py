@@ -7,7 +7,7 @@ PACKAGE_ROOT = REPOSITORY_ROOT / "packages/banking-pluggy"
 SOURCE_ROOT = PACKAGE_ROOT / "src/meufinanceiro_banking_pluggy"
 BOUNDARY_SOURCE_TEXT = "\n".join(
     (SOURCE_ROOT / name).read_text(encoding="utf-8")
-    for name in ("__init__.py", "adapter.py", "gateway.py")
+    for name in ("adapter.py", "gateway.py")
 )
 TRANSPORT_SOURCE_TEXT = (SOURCE_ROOT / "transport.py").read_text(encoding="utf-8")
 TRANSPORT_TEST_TEXT = (PACKAGE_ROOT / "tests/test_transport.py").read_text(

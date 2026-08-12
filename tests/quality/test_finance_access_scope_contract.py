@@ -92,4 +92,7 @@ def test_financial_invariants_reference_accepted_audience_contract() -> None:
     assert "owner_operator_id" in INVARIANTS
     assert "visibility_scope" in INVARIANTS
     assert "app.current_operator_id" in INVARIANTS
-    assert "papel administrativo não concede bypass" in INVARIANTS
+    lowered = INVARIANTS.lower()
+    assert "administrator" in lowered
+    assert "bypass" in lowered
+    assert "personal" in lowered

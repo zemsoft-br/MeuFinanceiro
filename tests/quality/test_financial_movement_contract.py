@@ -38,8 +38,8 @@ def test_income_expense_and_neutral_sign_rules_are_explicit() -> None:
 def test_cash_and_competence_dates_are_separate_and_explicit() -> None:
     assert "effective_date: date" in MOVEMENTS
     assert "competence_date: date" in MOVEMENTS
-    assert "effective_date must be date" in MOVEMENTS
-    assert "competence_date must be date" in MOVEMENTS
+    assert '_require_plain_date(self.effective_date, "effective_date")' in MOVEMENTS
+    assert '_require_plain_date(self.competence_date, "competence_date")' in MOVEMENTS
     assert "não define default silencioso" in ADR
 
 
@@ -54,7 +54,8 @@ def test_movement_has_no_independent_acl_or_category_link() -> None:
         "category_id",
     ):
         assert forbidden not in draft
-    assert "herda a audiência da conta" in ADR
+    assert "Audiência herdada da conta" in ADR
+    assert "Sua audiência é a audiência da conta financeira" in ADR
 
 
 def test_reversal_command_cannot_supply_original_financial_effect() -> None:
