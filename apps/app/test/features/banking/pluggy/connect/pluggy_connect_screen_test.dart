@@ -43,7 +43,10 @@ void main() {
     final launcher = FakePluggyConnectLauncher();
     await _pumpScreen(tester, launcher: launcher);
 
-    await tester.tap(find.byKey(PluggyConnectScreen.connectButtonKey));
+    final action = find.byKey(PluggyConnectScreen.connectButtonKey);
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    await tester.tap(action);
     await tester.pump();
     expect(launcher.calls, hasLength(1));
 
@@ -66,7 +69,10 @@ void main() {
       final launcher = FakePluggyConnectLauncher();
       await _pumpScreen(tester, launcher: launcher);
 
-      await tester.tap(find.byKey(PluggyConnectScreen.connectButtonKey));
+      final action = find.byKey(PluggyConnectScreen.connectButtonKey);
+      await tester.ensureVisible(action);
+      await tester.pumpAndSettle();
+      await tester.tap(action);
       await tester.pump();
       launcher.emit(const PluggyConnectCallback.opened());
       launcher.emit(
