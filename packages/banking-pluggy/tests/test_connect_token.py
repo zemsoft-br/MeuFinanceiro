@@ -124,8 +124,7 @@ def test_connect_token_post_is_not_replayed_after_server_failure() -> None:
 
     assert token_requests == 1
     assert (
-        captured.value.category
-        is PluggyTransportErrorCategory.TEMPORARILY_UNAVAILABLE
+        captured.value.category is PluggyTransportErrorCategory.TEMPORARILY_UNAVAILABLE
     )
     assert captured.value.retryable is True
     assert "sensitive" not in str(captured.value)

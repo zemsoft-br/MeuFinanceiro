@@ -7,15 +7,9 @@ PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
 MIGRATION = (
     PERSISTENCE / "migrations/versions/0010_banking_tx_reconciliation.py"
 ).read_text(encoding="utf-8")
-SCHEMA = (PERSISTENCE / "banking_reconciliation_schema.py").read_text(
-    encoding="utf-8"
-)
-MODELS = (PERSISTENCE / "banking_reconciliation_models.py").read_text(
-    encoding="utf-8"
-)
-STORE = (PERSISTENCE / "banking_reconciliation_store.py").read_text(
-    encoding="utf-8"
-)
+SCHEMA = (PERSISTENCE / "banking_reconciliation_schema.py").read_text(encoding="utf-8")
+MODELS = (PERSISTENCE / "banking_reconciliation_models.py").read_text(encoding="utf-8")
+STORE = (PERSISTENCE / "banking_reconciliation_store.py").read_text(encoding="utf-8")
 BANKING = (PERSISTENCE / "banking.py").read_text(encoding="utf-8")
 
 
@@ -37,7 +31,9 @@ def test_reconciliation_schema_is_residence_scoped_and_local_identity_based() ->
     assert "ix_external_observations_reconciliation_scan" in MIGRATION
 
 
-def test_reconciliation_identity_never_uses_financial_fields_or_fuzzy_matching() -> None:
+def test_reconciliation_identity_never_uses_financial_fields_or_fuzzy_matching() -> (
+    None
+):
     identity = STORE.split("def _identity(", maxsplit=1)[1].split(
         "def _stored_status", maxsplit=1
     )[0]
@@ -82,7 +78,9 @@ def test_reconciliation_is_local_bounded_and_does_not_reuse_provider_cursor() ->
         assert forbidden not in STORE.lower()
 
 
-def test_temporal_reconciliation_is_fail_closed_and_deleted_is_only_explicit_state() -> None:
+def test_temporal_reconciliation_is_fail_closed_and_deleted_is_only_explicit_state() -> (
+    None
+):
     assert "current_observed_at > observed_at" in STORE
     assert "current_observed_at == observed_at" in STORE
     assert "incompatible observations at the same time" in STORE

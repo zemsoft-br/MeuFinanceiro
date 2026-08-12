@@ -14,6 +14,11 @@ from meufinanceiro_finance.accounts import (
     FinancialAccountStatus,
     FinancialAccountType,
 )
+from meufinanceiro_finance.categories import (
+    FinancialCategoryDraft,
+    FinancialCategoryRecord,
+    FinancialCategoryStatus,
+)
 from meufinanceiro_finance.ids import (
     new_financial_resource_id,
     validate_financial_resource_id,
@@ -24,6 +29,10 @@ from meufinanceiro_finance.money import (
     RoundingMode,
     validate_currency_code,
 )
+from meufinanceiro_finance.opening_balances import (
+    FinancialOpeningBalanceDraft,
+    FinancialOpeningBalanceRecord,
+)
 
 __all__ = [
     "CurrencyMismatchError",
@@ -33,6 +42,11 @@ __all__ = [
     "FinancialAccountStatus",
     "FinancialAccountType",
     "FinancialActorContext",
+    "FinancialCategoryDraft",
+    "FinancialCategoryRecord",
+    "FinancialCategoryStatus",
+    "FinancialOpeningBalanceDraft",
+    "FinancialOpeningBalanceRecord",
     "FinancialResourceAudience",
     "FinancialVisibilityScope",
     "Money",

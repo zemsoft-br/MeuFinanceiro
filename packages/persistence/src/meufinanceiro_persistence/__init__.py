@@ -74,6 +74,13 @@ from meufinanceiro_persistence.financial_account_store import (
     FinancialAccountPersistenceError,
     FinancialAccountStore,
 )
+from meufinanceiro_persistence.financial_category_store import (
+    FinancialCategoryAccessError,
+    FinancialCategoryNotFoundError,
+    FinancialCategoryParentNotFoundError,
+    FinancialCategoryPersistenceError,
+    FinancialCategoryStore,
+)
 from meufinanceiro_persistence.health import (
     PersistenceHealth,
     inspect_persistence_health,
@@ -139,6 +146,11 @@ __all__ = [
     "FinancialAccountNotFoundError",
     "FinancialAccountPersistenceError",
     "FinancialAccountStore",
+    "FinancialCategoryAccessError",
+    "FinancialCategoryNotFoundError",
+    "FinancialCategoryParentNotFoundError",
+    "FinancialCategoryPersistenceError",
+    "FinancialCategoryStore",
     "HouseholdBootstrapConflictError",
     "HouseholdPersistenceError",
     "IdentityBootstrapConflictError",

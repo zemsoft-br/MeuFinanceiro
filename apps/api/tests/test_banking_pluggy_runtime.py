@@ -70,9 +70,7 @@ def test_runtime_composition_is_controlled_by_both_flags(
         administration = client.app.state.banking_administration
         executor = client.app.state.banking_pluggy_execution
         connect_token_service = client.app.state.banking_pluggy_connect_token
-        registration_service = (
-            client.app.state.banking_pluggy_connection_registration
-        )
+        registration_service = client.app.state.banking_pluggy_connection_registration
         reauthentication_service = client.app.state.banking_pluggy_reauthentication
 
         assert registry.names() == ()

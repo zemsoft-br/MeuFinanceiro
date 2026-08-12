@@ -4,12 +4,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 QUERY_SOURCE = (
-    ROOT
-    / "packages/persistence/src/meufinanceiro_persistence/banking_queries.py"
+    ROOT / "packages/persistence/src/meufinanceiro_persistence/banking_queries.py"
 ).read_text(encoding="utf-8")
-SERVICE_SOURCE = (
-    ROOT / "apps/api/app/services/banking_connections.py"
-).read_text(encoding="utf-8")
+SERVICE_SOURCE = (ROOT / "apps/api/app/services/banking_connections.py").read_text(
+    encoding="utf-8"
+)
 ROUTE_SOURCE = (
     ROOT / "apps/api/app/api/routes/banking_local_connections.py"
 ).read_text(encoding="utf-8")
