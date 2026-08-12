@@ -4,12 +4,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 TRANSPORT_SOURCE = (
-    ROOT
-    / "packages/banking-pluggy/src/meufinanceiro_banking_pluggy/connect_token.py"
+    ROOT / "packages/banking-pluggy/src/meufinanceiro_banking_pluggy/connect_token.py"
 ).read_text(encoding="utf-8")
 EXECUTION_SOURCE = (
-    ROOT
-    / "packages/banking-pluggy-execution/src/"
+    ROOT / "packages/banking-pluggy-execution/src/"
     "meufinanceiro_banking_pluggy_execution/connect_token.py"
 ).read_text(encoding="utf-8")
 ROUTE_SOURCE = (ROOT / "apps/api/app/api/routes/banking_connect.py").read_text(
@@ -27,8 +25,11 @@ PERSISTENCE_SOURCE = "\n".join(
 
 
 def test_connect_token_payload_is_server_scoped_and_minimal() -> None:
-    assert '"clientUserId": normalized_client_user_id' in TRANSPORT_SOURCE
-    assert '"avoidDuplicates": True' in TRANSPORT_SOURCE
+    create_method = TRANSPORT_SOURCE.split("def create_connect_token", maxsplit=1)[
+        1
+    ].split("def create_update_connect_token", maxsplit=1)[0]
+    assert '"clientUserId": normalized_client_user_id' in create_method
+    assert '"avoidDuplicates": True' in create_method
     for forbidden in (
         '"itemId"',
         '"webhookUrl"',
@@ -36,7 +37,11 @@ def test_connect_token_payload_is_server_scoped_and_minimal() -> None:
         '"connectorId"',
         '"products"',
     ):
-        assert forbidden not in TRANSPORT_SOURCE
+        assert forbidden not in create_method
+    update_method = TRANSPORT_SOURCE.split(
+        "def create_update_connect_token", maxsplit=1
+    )[1].split("def _create_connect_token", maxsplit=1)[0]
+    assert '"itemId": normalized_item_id' in update_method
 
 
 def test_connect_token_transport_does_not_enable_item_creation_or_post_replay() -> None:

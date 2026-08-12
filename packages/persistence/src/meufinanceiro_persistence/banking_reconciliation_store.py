@@ -25,7 +25,8 @@ from meufinanceiro_persistence.banking_reconciliation_schema import (
     reconciled_transaction_sources,
     reconciled_transactions,
 )
-from meufinanceiro_persistence.schema import connections, external_accounts
+from meufinanceiro_persistence.banking_sync_schema import external_accounts
+from meufinanceiro_persistence.schema import connections
 
 _RECONCILIATION_IDENTITY_NAMESPACE = "meufinanceiro:reconciled-transaction:v1"
 _DEFAULT_RECONCILIATION_LIMIT = 500
@@ -319,8 +320,7 @@ def _reconcile_observation(
                     reconciled_transactions.c.id == target_id,
                     reconciled_transactions.c.residence_id == residence_id,
                     reconciled_transactions.c.connection_id == connection_id,
-                    reconciled_transactions.c.source_observed_at
-                    == current_observed_at,
+                    reconciled_transactions.c.source_observed_at == current_observed_at,
                 )
                 .values(
                     status=status.value,
@@ -482,8 +482,7 @@ def _identity(
             not isinstance(stable_fingerprint, str)
             or len(stable_fingerprint) != 64
             or any(
-                character not in "0123456789abcdef"
-                for character in stable_fingerprint
+                character not in "0123456789abcdef" for character in stable_fingerprint
             )
         ):
             raise TransactionReconciliationError(
@@ -550,9 +549,7 @@ def _clean_limit(value: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise TypeError("limit must be an integer")
     if value < 1 or value > _MAX_RECONCILIATION_LIMIT:
-        raise ValueError(
-            f"limit must be between 1 and {_MAX_RECONCILIATION_LIMIT}"
-        )
+        raise ValueError(f"limit must be between 1 and {_MAX_RECONCILIATION_LIMIT}")
     return value
 
 

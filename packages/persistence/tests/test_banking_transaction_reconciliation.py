@@ -411,9 +411,11 @@ def test_fingerprint_and_distinct_provider_ids_remain_separate_identities(
     assert result.identities_created == 4
 
     with engine.begin() as connection:
-        kinds = connection.execute(
-            select(reconciled_transactions.c.identity_kind)
-        ).scalars().all()
+        kinds = (
+            connection.execute(select(reconciled_transactions.c.identity_kind))
+            .scalars()
+            .all()
+        )
     assert sorted(kinds) == [
         "FINGERPRINT",
         "FINGERPRINT",
@@ -481,9 +483,7 @@ def test_reconciliation_is_bounded_and_resumes_from_local_dirty_state(
     assert not final.has_more
     with engine.begin() as connection:
         assert (
-            connection.scalar(
-                select(func.count()).select_from(reconciled_transactions)
-            )
+            connection.scalar(select(func.count()).select_from(reconciled_transactions))
             == 3
         )
         assert (
@@ -705,9 +705,7 @@ def test_reconciliation_tables_are_hidden_without_matching_residence_context(
 
     with runtime_engine.begin() as connection:
         assert (
-            connection.scalar(
-                select(func.count()).select_from(reconciled_transactions)
-            )
+            connection.scalar(select(func.count()).select_from(reconciled_transactions))
             == 0
         )
         assert (
@@ -724,9 +722,7 @@ def test_reconciliation_tables_are_hidden_without_matching_residence_context(
             residence_id=residence_b,
         )
         assert (
-            connection.scalar(
-                select(func.count()).select_from(reconciled_transactions)
-            )
+            connection.scalar(select(func.count()).select_from(reconciled_transactions))
             == 0
         )
         assert (
@@ -743,9 +739,7 @@ def test_reconciliation_tables_are_hidden_without_matching_residence_context(
             residence_id=residence_a,
         )
         assert (
-            connection.scalar(
-                select(func.count()).select_from(reconciled_transactions)
-            )
+            connection.scalar(select(func.count()).select_from(reconciled_transactions))
             == 1
         )
         assert (

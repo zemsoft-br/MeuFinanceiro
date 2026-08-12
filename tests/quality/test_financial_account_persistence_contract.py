@@ -8,12 +8,12 @@ PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
 ACCOUNTS = (FINANCE / "accounts.py").read_text(encoding="utf-8")
 SCHEMA = (PERSISTENCE / "financial_account_schema.py").read_text(encoding="utf-8")
 STORE = (PERSISTENCE / "financial_account_store.py").read_text(encoding="utf-8")
-MIGRATION = (
-    PERSISTENCE / "migrations/versions/0011_financial_accounts.py"
-).read_text(encoding="utf-8")
-PERSISTENCE_PROJECT = (
-    ROOT / "packages/persistence/pyproject.toml"
-).read_text(encoding="utf-8")
+MIGRATION = (PERSISTENCE / "migrations/versions/0011_financial_accounts.py").read_text(
+    encoding="utf-8"
+)
+PERSISTENCE_PROJECT = (ROOT / "packages/persistence/pyproject.toml").read_text(
+    encoding="utf-8"
+)
 API_DOCKERFILE = (ROOT / "apps/api/Dockerfile").read_text(encoding="utf-8")
 WORKER_DOCKERFILE = (ROOT / "apps/worker/Dockerfile").read_text(encoding="utf-8")
 
@@ -97,7 +97,8 @@ def test_account_insert_policy_is_owner_bound_and_active_only() -> None:
     assert "accounts.owner_operator_id" in insert_policy
     assert "accounts.status = 'ACTIVE'" in insert_policy
     assert "accounts.archived_at IS NULL" in insert_policy
-    assert "m.status = 'active'" in insert_policy
+    assert "account_membership" in insert_policy
+    assert "m.status = 'active'" in MIGRATION
 
 
 def test_runtime_privileges_are_read_create_only_for_accounts() -> None:
@@ -114,7 +115,9 @@ def test_runtime_privileges_are_read_create_only_for_accounts() -> None:
         assert forbidden not in MIGRATION
 
 
-def test_store_derives_owner_from_actor_and_exposes_no_mutating_account_method() -> None:
+def test_store_derives_owner_from_actor_and_exposes_no_mutating_account_method() -> (
+    None
+):
     create_method = STORE.split("def create_account(", maxsplit=1)[1].split(
         "def list_accounts(", maxsplit=1
     )[0]
