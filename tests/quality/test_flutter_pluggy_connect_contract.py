@@ -33,9 +33,7 @@ def test_web_adapter_uses_exact_lazy_allowlisted_pluggy_asset() -> None:
     assert "'language': 'pt'" in source
     assert "'countries': ['BR']" in source
     assert "'includeSandbox': false" in source
-    assert (
-        "if (normalizedUpdateItem != null) 'updateItem': normalizedUpdateItem" in source
-    )
+    assert "'updateItem': ?normalizedUpdateItem" in source
     assert "_validateItemId(updateItem)" in source
 
     for forbidden in (

@@ -38,9 +38,7 @@ void main() {
           authApiBaseUriProvider.overrideWithValue(
             Uri.parse('http://localhost/api/v1/'),
           ),
-          demoStatusProvider.overrideWithValue(
-            AsyncValue.data(_demoStatus()),
-          ),
+          demoStatusProvider.overrideWithValue(AsyncValue.data(_demoStatus())),
           apiHealthProvider.overrideWithValue(
             AsyncValue.data(
               ApiHealthSnapshot(
@@ -89,7 +87,8 @@ DemoStatus _demoStatus() {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",

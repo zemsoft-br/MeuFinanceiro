@@ -33,7 +33,10 @@ void main() {
     );
 
     expect(find.byKey(PluggyReauthenticationScreen.titleKey), findsOneWidget);
-    expect(find.byKey(PluggyReauthenticationScreen.actionButtonKey), findsOneWidget);
+    expect(
+      find.byKey(PluggyReauthenticationScreen.actionButtonKey),
+      findsOneWidget,
+    );
     expect(find.textContaining('MFA'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
@@ -54,12 +57,18 @@ void main() {
     launcher.emit(const PluggyConnectCallback.closed());
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('conexão existente foi preservada'), findsOneWidget);
+    expect(
+      find.textContaining('conexão existente foi preservada'),
+      findsOneWidget,
+    );
     final button = tester.widget<FilledButton>(
       find.byKey(PluggyReauthenticationScreen.actionButtonKey),
     );
     expect(button.focusNode?.hasFocus, isTrue);
-    expect(find.byKey(PluggyReauthenticationScreen.localConnectionKey), findsNothing);
+    expect(
+      find.byKey(PluggyReauthenticationScreen.localConnectionKey),
+      findsNothing,
+    );
   });
 
   testWidgets('success shows local result without provider material', (
@@ -78,7 +87,10 @@ void main() {
       find.text('A conexão foi atualizada e validada pelo MeuFinanceiro.'),
       findsOneWidget,
     );
-    expect(find.byKey(PluggyReauthenticationScreen.localConnectionKey), findsOneWidget);
+    expect(
+      find.byKey(PluggyReauthenticationScreen.localConnectionKey),
+      findsOneWidget,
+    );
     expect(find.text(_connectionId), findsOneWidget);
     expect(find.textContaining(_itemId), findsNothing);
     expect(find.textContaining(_connectToken), findsNothing);
@@ -96,7 +108,9 @@ void main() {
     );
     expect(button.onPressed, isNull);
     expect(
-      find.text('Integrações externas ficam indisponíveis no modo demonstração.'),
+      find.text(
+        'Integrações externas ficam indisponíveis no modo demonstração.',
+      ),
       findsOneWidget,
     );
     expect(launcher.calls, isEmpty);
@@ -109,7 +123,13 @@ Future<void> _pumpScreen(
   bool demoEnabled = false,
   MediaQueryData? mediaQuery,
 }) async {
-  final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
+  final transport = FakeAuthTransport((
+    uri,
+    method,
+    timeout,
+    headers,
+    body,
+  ) async {
     if (uri.path.endsWith('/auth/session')) {
       return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
     }
@@ -120,7 +140,10 @@ Future<void> _pumpScreen(
       );
     }
     if (uri.path.endsWith('/banking/pluggy/connections')) {
-      return const AuthHttpResponse(statusCode: 200, body: _registeredConnection);
+      return const AuthHttpResponse(
+        statusCode: 200,
+        body: _registeredConnection,
+      );
     }
     throw StateError('unexpected synthetic route');
   });
@@ -181,7 +204,8 @@ DemoStatus _demoStatus({required bool enabled}) {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",
@@ -197,7 +221,8 @@ const _issuedSession = '''
 }
 ''';
 
-const _registeredConnection = '''
+const _registeredConnection =
+    '''
 {
   "connectionId":"$_connectionId",
   "status":"AVAILABLE",

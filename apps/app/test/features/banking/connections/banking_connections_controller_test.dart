@@ -43,63 +43,83 @@ void main() {
     expect(state.connections.single.connectionId, _connectionId);
   });
 
-  test('failed explicit refresh preserves already loaded local metadata', () async {
-    var calls = 0;
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
-      calls += 1;
-      if (calls == 1) {
-        return const AuthHttpResponse(
-          statusCode: 200,
-          body: _singleConnectionResponse,
-        );
-      }
-      return const AuthHttpResponse(statusCode: 503, body: '{}');
-    });
-    final container = _container(transport);
-    addTearDown(container.dispose);
-    final controller = container.read(
-      bankingConnectionsControllerProvider.notifier,
-    );
-
-    await controller.load();
-    await controller.refresh();
-
-    final state = container.read(bankingConnectionsControllerProvider);
-    expect(state.phase, BankingConnectionsPhase.loaded);
-    expect(state.connections, hasLength(1));
-    expect(
-      state.refreshFailure,
-      BankingConnectionsRefreshFailure.temporarilyUnavailable,
-    );
-    expect(transport.calls, hasLength(2));
-  });
-
-  test('malformed refresh preserves data with invalid response notice', () async {
-    var calls = 0;
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
-      calls += 1;
-      return AuthHttpResponse(
-        statusCode: 200,
-        body: calls == 1 ? _singleConnectionResponse : '{"connections":{},"x":1}',
+  test(
+    'failed explicit refresh preserves already loaded local metadata',
+    () async {
+      var calls = 0;
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        calls += 1;
+        if (calls == 1) {
+          return const AuthHttpResponse(
+            statusCode: 200,
+            body: _singleConnectionResponse,
+          );
+        }
+        return const AuthHttpResponse(statusCode: 503, body: '{}');
+      });
+      final container = _container(transport);
+      addTearDown(container.dispose);
+      final controller = container.read(
+        bankingConnectionsControllerProvider.notifier,
       );
-    });
-    final container = _container(transport);
-    addTearDown(container.dispose);
-    final controller = container.read(
-      bankingConnectionsControllerProvider.notifier,
-    );
 
-    await controller.load();
-    await controller.refresh();
+      await controller.load();
+      await controller.refresh();
 
-    final state = container.read(bankingConnectionsControllerProvider);
-    expect(state.phase, BankingConnectionsPhase.loaded);
-    expect(state.connections, hasLength(1));
-    expect(
-      state.refreshFailure,
-      BankingConnectionsRefreshFailure.invalidResponse,
-    );
-  });
+      final state = container.read(bankingConnectionsControllerProvider);
+      expect(state.phase, BankingConnectionsPhase.loaded);
+      expect(state.connections, hasLength(1));
+      expect(
+        state.refreshFailure,
+        BankingConnectionsRefreshFailure.temporarilyUnavailable,
+      );
+      expect(transport.calls, hasLength(2));
+    },
+  );
+
+  test(
+    'malformed refresh preserves data with invalid response notice',
+    () async {
+      var calls = 0;
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        calls += 1;
+        return AuthHttpResponse(
+          statusCode: 200,
+          body: calls == 1
+              ? _singleConnectionResponse
+              : '{"connections":{},"x":1}',
+        );
+      });
+      final container = _container(transport);
+      addTearDown(container.dispose);
+      final controller = container.read(
+        bankingConnectionsControllerProvider.notifier,
+      );
+
+      await controller.load();
+      await controller.refresh();
+
+      final state = container.read(bankingConnectionsControllerProvider);
+      expect(state.phase, BankingConnectionsPhase.loaded);
+      expect(state.connections, hasLength(1));
+      expect(
+        state.refreshFailure,
+        BankingConnectionsRefreshFailure.invalidResponse,
+      );
+    },
+  );
 
   test('401 clears bearer and invalidates local session state', () async {
     final container = _container(
@@ -177,7 +197,8 @@ ProviderContainer _container(FakeAuthTransport transport) {
   return container;
 }
 
-const _singleConnectionResponse = '''
+const _singleConnectionResponse =
+    '''
 {
   "connections":[
     {

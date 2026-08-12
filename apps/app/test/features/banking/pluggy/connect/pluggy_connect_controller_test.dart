@@ -15,46 +15,54 @@ const _sessionToken = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const _connectToken = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
 
 void main() {
-  test('opens one widget and registers only the transient item pointer', () async {
-    final launcher = FakePluggyConnectLauncher();
-    final transport = _happyTransport();
-    final container = _container(transport, launcher: launcher);
-    addTearDown(container.dispose);
-    await _login(container);
+  test(
+    'opens one widget and registers only the transient item pointer',
+    () async {
+      final launcher = FakePluggyConnectLauncher();
+      final transport = _happyTransport();
+      final container = _container(transport, launcher: launcher);
+      addTearDown(container.dispose);
+      await _login(container);
 
-    final controller = container.read(pluggyConnectControllerProvider.notifier);
-    await controller.start();
-    await controller.start();
+      final controller = container.read(
+        pluggyConnectControllerProvider.notifier,
+      );
+      await controller.start();
+      await controller.start();
 
-    expect(launcher.calls, hasLength(1));
-    expect(launcher.calls.single.connectToken, _connectToken);
-    expect(launcher.calls.single.toString(), isNot(contains(_connectToken)));
-    expect(
-      container.read(pluggyConnectControllerProvider).toString(),
-      isNot(contains(_connectToken)),
-    );
+      expect(launcher.calls, hasLength(1));
+      expect(launcher.calls.single.connectToken, _connectToken);
+      expect(launcher.calls.single.toString(), isNot(contains(_connectToken)));
+      expect(
+        container.read(pluggyConnectControllerProvider).toString(),
+        isNot(contains(_connectToken)),
+      );
 
-    launcher.emit(const PluggyConnectCallback.opened());
-    launcher.emit(
-      const PluggyConnectCallback.itemAvailable('synthetic-provider-item'),
-    );
-    await _flushCallbacks();
+      launcher.emit(const PluggyConnectCallback.opened());
+      launcher.emit(
+        const PluggyConnectCallback.itemAvailable('synthetic-provider-item'),
+      );
+      await _flushCallbacks();
 
-    final state = container.read(pluggyConnectControllerProvider);
-    expect(state.phase, PluggyConnectPhase.connected);
-    expect(state.connectionId, '30000000-0000-4000-8000-000000000003');
-    expect(state.connectionStatus, 'AVAILABLE');
-    expect(state.requiresUserAction, isFalse);
+      final state = container.read(pluggyConnectControllerProvider);
+      expect(state.phase, PluggyConnectPhase.connected);
+      expect(state.connectionId, '30000000-0000-4000-8000-000000000003');
+      expect(state.connectionStatus, 'AVAILABLE');
+      expect(state.requiresUserAction, isFalse);
 
-    final registrationCalls = transport.calls.where(
-      (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
-    );
-    expect(registrationCalls, hasLength(1));
-    expect(registrationCalls.single.body, '{"itemId":"synthetic-provider-item"}');
-    expect(registrationCalls.single.body, isNot(contains('residence')));
-    expect(registrationCalls.single.body, isNot(contains('installation')));
-    expect(registrationCalls.single.body, isNot(contains('clientUserId')));
-  });
+      final registrationCalls = transport.calls.where(
+        (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
+      );
+      expect(registrationCalls, hasLength(1));
+      expect(
+        registrationCalls.single.body,
+        '{"itemId":"synthetic-provider-item"}',
+      );
+      expect(registrationCalls.single.body, isNot(contains('residence')));
+      expect(registrationCalls.single.body, isNot(contains('installation')));
+      expect(registrationCalls.single.body, isNot(contains('clientUserId')));
+    },
+  );
 
   test('demo mode never requests token or opens provider widget', () async {
     final launcher = FakePluggyConnectLauncher();
@@ -169,7 +177,13 @@ void main() {
 
     for (final scenario in scenarios.entries) {
       final launcher = FakePluggyConnectLauncher();
-      final transport = FakeAuthTransport((uri, method, timeout, headers, body) {
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) {
         if (uri.path.endsWith('/auth/session')) {
           return Future.value(
             const AuthHttpResponse(statusCode: 200, body: _issuedSession),
@@ -194,52 +208,63 @@ void main() {
     }
   });
 
-  test('registration HTTP failures map without exposing provider payload', () async {
-    const scenarios = {
-      403: PluggyConnectPhase.connectionConflict,
-      404: PluggyConnectPhase.invalidProviderResponse,
-      409: PluggyConnectPhase.connectionConflict,
-      502: PluggyConnectPhase.invalidProviderResponse,
-      503: PluggyConnectPhase.temporarilyUnavailable,
-    };
+  test(
+    'registration HTTP failures map without exposing provider payload',
+    () async {
+      const scenarios = {
+        403: PluggyConnectPhase.connectionConflict,
+        404: PluggyConnectPhase.invalidProviderResponse,
+        409: PluggyConnectPhase.connectionConflict,
+        502: PluggyConnectPhase.invalidProviderResponse,
+        503: PluggyConnectPhase.temporarilyUnavailable,
+      };
 
-    for (final scenario in scenarios.entries) {
-      final launcher = FakePluggyConnectLauncher();
-      final transport = FakeAuthTransport((uri, method, timeout, headers, body) {
-        if (uri.path.endsWith('/auth/session')) {
+      for (final scenario in scenarios.entries) {
+        final launcher = FakePluggyConnectLauncher();
+        final transport = FakeAuthTransport((
+          uri,
+          method,
+          timeout,
+          headers,
+          body,
+        ) {
+          if (uri.path.endsWith('/auth/session')) {
+            return Future.value(
+              const AuthHttpResponse(statusCode: 200, body: _issuedSession),
+            );
+          }
+          if (uri.path.endsWith('/banking/pluggy/connect-token')) {
+            return Future.value(
+              const AuthHttpResponse(
+                statusCode: 200,
+                body: '{"accessToken":"$_connectToken"}',
+              ),
+            );
+          }
           return Future.value(
-            const AuthHttpResponse(statusCode: 200, body: _issuedSession),
-          );
-        }
-        if (uri.path.endsWith('/banking/pluggy/connect-token')) {
-          return Future.value(
-            const AuthHttpResponse(
-              statusCode: 200,
-              body: '{"accessToken":"$_connectToken"}',
+            AuthHttpResponse(
+              statusCode: scenario.key,
+              body: '{"detail":"synthetic provider detail must be ignored"}',
             ),
           );
-        }
-        return Future.value(
-          AuthHttpResponse(
-            statusCode: scenario.key,
-            body: '{"detail":"synthetic provider detail must be ignored"}',
-          ),
+        });
+        final container = _container(transport, launcher: launcher);
+        await _login(container);
+        await container.read(pluggyConnectControllerProvider.notifier).start();
+        launcher.emit(const PluggyConnectCallback.opened());
+        launcher.emit(
+          const PluggyConnectCallback.itemAvailable('synthetic-item'),
         );
-      });
-      final container = _container(transport, launcher: launcher);
-      await _login(container);
-      await container.read(pluggyConnectControllerProvider.notifier).start();
-      launcher.emit(const PluggyConnectCallback.opened());
-      launcher.emit(const PluggyConnectCallback.itemAvailable('synthetic-item'));
-      await _flushCallbacks();
+        await _flushCallbacks();
 
-      final state = container.read(pluggyConnectControllerProvider);
-      expect(state.phase, scenario.value, reason: 'HTTP ${scenario.key}');
-      expect(state.toString(), isNot(contains('synthetic provider detail')));
-      expect(state.toString(), isNot(contains('synthetic-item')));
-      container.dispose();
-    }
-  });
+        final state = container.read(pluggyConnectControllerProvider);
+        expect(state.phase, scenario.value, reason: 'HTTP ${scenario.key}');
+        expect(state.toString(), isNot(contains('synthetic provider detail')));
+        expect(state.toString(), isNot(contains('synthetic-item')));
+        container.dispose();
+      }
+    },
+  );
 }
 
 ProviderContainer _container(
@@ -297,7 +322,10 @@ FakeAuthTransport _happyTransport() {
       );
     }
     if (uri.path.endsWith('/banking/pluggy/connections')) {
-      return const AuthHttpResponse(statusCode: 200, body: _registeredConnection);
+      return const AuthHttpResponse(
+        statusCode: 200,
+        body: _registeredConnection,
+      );
     }
     throw StateError('unexpected synthetic route');
   });
@@ -318,7 +346,8 @@ DemoStatus _demoStatus({required bool enabled}) {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",

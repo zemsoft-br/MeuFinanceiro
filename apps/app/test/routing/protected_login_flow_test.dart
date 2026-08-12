@@ -46,10 +46,7 @@ void main() {
             Uri.parse('http://localhost/api/v1/'),
           ),
         ],
-        child: MaterialApp.router(
-          theme: buildAppTheme(),
-          routerConfig: router,
-        ),
+        child: MaterialApp.router(theme: buildAppTheme(), routerConfig: router),
       ),
     );
     await tester.pumpAndSettle();
@@ -67,7 +64,8 @@ void main() {
   });
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_token",
   "token_type":"bearer",
