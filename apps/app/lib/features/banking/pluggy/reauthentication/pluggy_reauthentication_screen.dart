@@ -8,10 +8,7 @@ import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
 
 class PluggyReauthenticationScreen extends ConsumerStatefulWidget {
-  const PluggyReauthenticationScreen({
-    required this.connectionId,
-    super.key,
-  });
+  const PluggyReauthenticationScreen({required this.connectionId, super.key});
 
   final String connectionId;
 
@@ -27,7 +24,9 @@ class PluggyReauthenticationScreen extends ConsumerStatefulWidget {
 
 class _PluggyReauthenticationScreenState
     extends ConsumerState<PluggyReauthenticationScreen> {
-  final _actionFocusNode = FocusNode(debugLabel: 'pluggy-reauthentication-action');
+  final _actionFocusNode = FocusNode(
+    debugLabel: 'pluggy-reauthentication-action',
+  );
 
   @override
   void initState() {
@@ -60,8 +59,7 @@ class _PluggyReauthenticationScreenState
     ref.listen<PluggyReauthenticationState>(
       pluggyReauthenticationControllerProvider,
       (previous, next) {
-        if (next.focusReturnRevision !=
-            (previous?.focusReturnRevision ?? 0)) {
+        if (next.focusReturnRevision != (previous?.focusReturnRevision ?? 0)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted && _actionFocusNode.canRequestFocus) {
               _actionFocusNode.requestFocus();
@@ -137,7 +135,7 @@ class _PluggyReauthenticationScreenState
             ),
           ),
           const SizedBox(height: AppTokens.space24),
-          _StatusPanel(state: state, prerequisite: prerequisite),
+          _StatusPanel(state: state),
           const SizedBox(height: AppTokens.space24),
           const _PrivacyPanel(),
         ],
@@ -156,9 +154,9 @@ class _Intro extends StatelessWidget {
       children: [
         Text(
           'Integrações · Conexão existente',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: AppTokens.forest700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
         ),
         const SizedBox(height: AppTokens.space12),
         Semantics(
@@ -172,14 +170,15 @@ class _Intro extends StatelessWidget {
         const SizedBox(height: AppTokens.space16),
         Text(
           'A Pluggy poderá solicitar uma nova autenticação ou MFA se a instituição exigir. O MeuFinanceiro não recebe nem armazena essas credenciais.',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: AppTokens.neutral700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
         ),
         const SizedBox(height: AppTokens.space20),
         const _FeatureLine(
           icon: Icons.lock_reset_rounded,
-          text: 'O acesso temporário é emitido somente para esta conexão local.',
+          text:
+              'O acesso temporário é emitido somente para esta conexão local.',
         ),
         const SizedBox(height: AppTokens.space12),
         const _FeatureLine(
@@ -239,29 +238,39 @@ class _ActionPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Reautenticação', style: Theme.of(context).textTheme.titleMedium),
+            Text(
+              'Reautenticação',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
             const SizedBox(height: AppTokens.space8),
             Text(
               prerequisite ??
                   'A conexão será validada no backend antes que o ambiente de atualização seja aberto.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: prerequisite == null
-                        ? AppTokens.neutral700
-                        : AppTokens.red700,
-                  ),
+                color: prerequisite == null
+                    ? AppTokens.neutral700
+                    : AppTokens.red700,
+              ),
             ),
             const SizedBox(height: AppTokens.space20),
-            FilledButton.icon(
+            FilledButton(
               key: PluggyReauthenticationScreen.actionButtonKey,
               focusNode: focusNode,
               onPressed: canStart ? onStart : null,
-              icon: state.isBusy
-                  ? const SizedBox.square(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (state.isBusy)
+                    const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.sync_lock_rounded),
-              label: Text(label),
+                  else
+                    const Icon(Icons.sync_lock_rounded),
+                  const SizedBox(width: AppTokens.space8),
+                  Flexible(child: Text(label, textAlign: TextAlign.center)),
+                ],
+              ),
             ),
           ],
         ),
@@ -271,14 +280,13 @@ class _ActionPanel extends StatelessWidget {
 }
 
 class _StatusPanel extends StatelessWidget {
-  const _StatusPanel({required this.state, required this.prerequisite});
+  const _StatusPanel({required this.state});
 
   final PluggyReauthenticationState state;
-  final String? prerequisite;
 
   @override
   Widget build(BuildContext context) {
-    final presentation = _statusPresentation(state, prerequisite);
+    final presentation = _statusPresentation(state);
     if (presentation == null) {
       return const SizedBox.shrink();
     }
@@ -365,9 +373,9 @@ class _PrivacyPanel extends StatelessWidget {
             Expanded(
               child: Text(
                 'O identificador do provedor usado para atualizar a conexão é obtido pelo backend e existe no navegador apenas enquanto o widget está sendo aberto. O retorno do widget é validado novamente antes de atualizar o estado local.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTokens.neutral700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
               ),
             ),
           ],
@@ -392,11 +400,17 @@ class _SecurityChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
         border: Border.all(color: AppTokens.forest100),
       ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
+      child: const Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppTokens.space8,
+        runSpacing: AppTokens.space4,
         children: [
-          Icon(Icons.verified_user_outlined, size: 18, color: AppTokens.forest700),
-          SizedBox(width: AppTokens.space8),
+          Icon(
+            Icons.verified_user_outlined,
+            size: 18,
+            color: AppTokens.forest700,
+          ),
           Text('Conexão verificada'),
         ],
       ),
@@ -444,51 +458,42 @@ String? _prerequisiteMessage({
   return null;
 }
 
-_StatusPresentation? _statusPresentation(
-  PluggyReauthenticationState state,
-  String? prerequisite,
-) {
+_StatusPresentation? _statusPresentation(PluggyReauthenticationState state) {
   if (state.phase == PluggyReauthenticationPhase.idle) {
-    if (prerequisite == null) {
-      return null;
-    }
-    return _StatusPresentation(
-      message: prerequisite,
-      icon: Icons.info_outline_rounded,
-      isError: true,
-    );
+    return null;
   }
   return switch (state.phase) {
     PluggyReauthenticationPhase.requestingToken => const _StatusPresentation(
-        message: 'Validando a conexão e preparando um acesso temporário.',
-        icon: Icons.hourglass_top_rounded,
-      ),
+      message: 'Validando a conexão e preparando um acesso temporário.',
+      icon: Icons.hourglass_top_rounded,
+    ),
     PluggyReauthenticationPhase.loadingWidget => const _StatusPresentation(
-        message: 'Carregando o ambiente seguro de atualização da Pluggy.',
-        icon: Icons.cloud_download_outlined,
-      ),
+      message: 'Carregando o ambiente seguro de atualização da Pluggy.',
+      icon: Icons.cloud_download_outlined,
+    ),
     PluggyReauthenticationPhase.widgetOpen => const _StatusPresentation(
-        message: 'Atualização em andamento no ambiente da Pluggy.',
-        icon: Icons.open_in_new_rounded,
-      ),
+      message: 'Atualização em andamento no ambiente da Pluggy.',
+      icon: Icons.open_in_new_rounded,
+    ),
     PluggyReauthenticationPhase.registeringConnection =>
       const _StatusPresentation(
         message: 'Confirmando novamente a conexão no MeuFinanceiro.',
         icon: Icons.verified_outlined,
       ),
     PluggyReauthenticationPhase.updated => _StatusPresentation(
-        message: state.requiresUserAction
-            ? 'A conexão foi atualizada, mas a instituição ainda sinaliza uma ação pendente.'
-            : 'A conexão foi atualizada e validada pelo MeuFinanceiro.',
-        icon: state.requiresUserAction
-            ? Icons.pending_actions_outlined
-            : Icons.check_circle_outline_rounded,
-      ),
+      message: state.requiresUserAction
+          ? 'A conexão foi atualizada, mas a instituição ainda sinaliza uma ação pendente.'
+          : 'A conexão foi atualizada e validada pelo MeuFinanceiro.',
+      icon: state.requiresUserAction
+          ? Icons.pending_actions_outlined
+          : Icons.check_circle_outline_rounded,
+    ),
     PluggyReauthenticationPhase.userCancelled => const _StatusPresentation(
-        message: 'Atualização cancelada. A conexão existente foi preservada.',
-        icon: Icons.cancel_outlined,
-      ),
-    PluggyReauthenticationPhase.invalidConnectionId => const _StatusPresentation(
+      message: 'Atualização cancelada. A conexão existente foi preservada.',
+      icon: Icons.cancel_outlined,
+    ),
+    PluggyReauthenticationPhase.invalidConnectionId =>
+      const _StatusPresentation(
         message: 'O identificador local da conexão é inválido.',
         icon: Icons.link_off_rounded,
         isError: true,
@@ -506,15 +511,15 @@ _StatusPresentation? _statusPresentation(
         isError: true,
       ),
     PluggyReauthenticationPhase.demoUnavailable => const _StatusPresentation(
-        message: 'Integrações externas não são executadas no modo demonstração.',
-        icon: Icons.science_outlined,
-        isError: true,
-      ),
+      message: 'Integrações externas não são executadas no modo demonstração.',
+      icon: Icons.science_outlined,
+      isError: true,
+    ),
     PluggyReauthenticationPhase.connectionNotFound => const _StatusPresentation(
-        message: 'A conexão não foi encontrada para a residência autenticada.',
-        icon: Icons.search_off_rounded,
-        isError: true,
-      ),
+      message: 'A conexão não foi encontrada para a residência autenticada.',
+      icon: Icons.search_off_rounded,
+      isError: true,
+    ),
     PluggyReauthenticationPhase.connectionUnavailable =>
       const _StatusPresentation(
         message: 'Esta conexão não pode ser atualizada neste momento.',
@@ -523,21 +528,24 @@ _StatusPresentation? _statusPresentation(
       ),
     PluggyReauthenticationPhase.temporarilyUnavailable =>
       const _StatusPresentation(
-        message: 'A atualização online está temporariamente indisponível. Tente novamente quando houver internet.',
+        message:
+            'A atualização online está temporariamente indisponível. Tente novamente quando houver internet.',
         icon: Icons.cloud_off_outlined,
         isError: true,
       ),
     PluggyReauthenticationPhase.invalidProviderResponse =>
       const _StatusPresentation(
-        message: 'A resposta da integração não pôde ser validada com segurança.',
+        message:
+            'A resposta da integração não pôde ser validada com segurança.',
         icon: Icons.gpp_bad_outlined,
         isError: true,
       ),
     PluggyReauthenticationPhase.genericFailure => const _StatusPresentation(
-        message: 'Não foi possível concluir a atualização. Nenhum dado sensível foi mantido para retry.',
-        icon: Icons.error_outline_rounded,
-        isError: true,
-      ),
+      message:
+          'Não foi possível concluir a atualização. Nenhum dado sensível foi mantido para retry.',
+      icon: Icons.error_outline_rounded,
+      isError: true,
+    ),
     PluggyReauthenticationPhase.idle => null,
   };
 }

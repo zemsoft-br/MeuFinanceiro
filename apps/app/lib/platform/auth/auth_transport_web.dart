@@ -58,7 +58,9 @@ class BrowserAuthTransport implements AuthTransport {
     final timer = Timer(timeout, () {
       timedOut = true;
       request.abort();
-      completeError(TimeoutException('Authentication request timed out.', timeout));
+      completeError(
+        TimeoutException('Authentication request timed out.', timeout),
+      );
     });
 
     request.send(body);

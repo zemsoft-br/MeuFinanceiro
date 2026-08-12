@@ -31,7 +31,9 @@ class OperatorPrincipal {
     try {
       decoded = jsonDecode(source);
     } on FormatException {
-      throw const FormatException('Operator session response is not valid JSON.');
+      throw const FormatException(
+        'Operator session response is not valid JSON.',
+      );
     }
     return OperatorPrincipal.fromPayload(decoded);
   }
@@ -101,7 +103,12 @@ class IssuedOperatorSession {
 
     final values = _strictObject(
       decoded,
-      allowedKeys: const {'access_token', 'token_type', 'expires_at', 'operator'},
+      allowedKeys: const {
+        'access_token',
+        'token_type',
+        'expires_at',
+        'operator',
+      },
       label: 'authentication response',
     );
     final tokenType = _boundedText(
@@ -150,34 +157,28 @@ enum OperatorSessionPhase {
 }
 
 class OperatorSessionState {
-  const OperatorSessionState._({
-    required this.phase,
-    this.principal,
-  });
+  const OperatorSessionState._({required this.phase, this.principal});
 
   const OperatorSessionState.signedOut()
-      : this._(phase: OperatorSessionPhase.signedOut);
+    : this._(phase: OperatorSessionPhase.signedOut);
 
   const OperatorSessionState.authenticating()
-      : this._(phase: OperatorSessionPhase.authenticating);
+    : this._(phase: OperatorSessionPhase.authenticating);
 
   const OperatorSessionState.authenticated(OperatorPrincipal principal)
-      : this._(
-          phase: OperatorSessionPhase.authenticated,
-          principal: principal,
-        );
+    : this._(phase: OperatorSessionPhase.authenticated, principal: principal);
 
   const OperatorSessionState.invalidCredentials()
-      : this._(phase: OperatorSessionPhase.invalidCredentials);
+    : this._(phase: OperatorSessionPhase.invalidCredentials);
 
   const OperatorSessionState.temporarilyUnavailable()
-      : this._(phase: OperatorSessionPhase.temporarilyUnavailable);
+    : this._(phase: OperatorSessionPhase.temporarilyUnavailable);
 
   const OperatorSessionState.expiredOrRevoked()
-      : this._(phase: OperatorSessionPhase.expiredOrRevoked);
+    : this._(phase: OperatorSessionPhase.expiredOrRevoked);
 
   const OperatorSessionState.signingOut()
-      : this._(phase: OperatorSessionPhase.signingOut);
+    : this._(phase: OperatorSessionPhase.signingOut);
 
   final OperatorSessionPhase phase;
   final OperatorPrincipal? principal;
@@ -211,11 +212,7 @@ Map<String, Object?> _strictObject(
   return values;
 }
 
-String _boundedText(
-  Object? value,
-  String fieldName, {
-  required int maxLength,
-}) {
+String _boundedText(Object? value, String fieldName, {required int maxLength}) {
   if (value is! String || value.isEmpty || value.length > maxLength) {
     throw FormatException('$fieldName is invalid.');
   }

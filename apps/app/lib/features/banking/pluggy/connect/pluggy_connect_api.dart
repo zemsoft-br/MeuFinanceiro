@@ -193,11 +193,7 @@ Map<String, Object?> _strictJsonObject(
   return values;
 }
 
-String _boundedText(
-  Object? value,
-  String fieldName, {
-  required int maxLength,
-}) {
+String _boundedText(Object? value, String fieldName, {required int maxLength}) {
   if (value is! String ||
       value.isEmpty ||
       value.length > maxLength ||

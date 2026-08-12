@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -48,9 +47,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final redirectTo = AuthRouteGuard.sanitizeRedirect(
             state.uri.queryParameters['redirect'],
           );
-          return NoTransitionPage(
-            child: LoginScreen(redirectTo: redirectTo),
-          );
+          return NoTransitionPage(child: LoginScreen(redirectTo: redirectTo));
         },
       ),
       ShellRoute(
