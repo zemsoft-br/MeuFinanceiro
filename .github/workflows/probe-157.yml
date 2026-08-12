@@ -97,6 +97,40 @@ jobs:
           exec(compile(script, '<static-contract-corrections>', 'exec'))
           PY
 
+      - name: Align migration round-trip test with Alembic head
+        shell: bash
+        run: |
+          set -euo pipefail
+          .quality-venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          path = Path('packages/persistence/tests/test_banking_residence_fk_migration.py')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              'from alembic.config import Config\n',
+              'from alembic.config import Config\nfrom alembic.script import ScriptDirectory\n',
+              1,
+          )
+          text = text.replace('_HEAD_REVISION = "0006_banking_residence_fk"\n', '', 1)
+          marker = 'NOW = datetime(2026, 8, 7, 0, 0, tzinfo=UTC)\n\n\n'
+          helper = (
+              'NOW = datetime(2026, 8, 7, 0, 0, tzinfo=UTC)\n\n\n'
+              'def _head_revision(config: Config) -> str:\n'
+              '    head = ScriptDirectory.from_config(config).get_current_head()\n'
+              '    if head is None:\n'
+              '        raise AssertionError("Alembic migration head is missing")\n'
+              '    return head\n\n\n'
+          )
+          if marker not in text:
+              raise SystemExit('head helper marker not found')
+          text = text.replace(marker, helper, 1)
+          expected = 'assert current_revision(engine) == _HEAD_REVISION'
+          if text.count(expected) != 2:
+              raise SystemExit('unexpected migration head assertion count')
+          text = text.replace(expected, 'assert current_revision(engine) == _head_revision(config)')
+          path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Apply functional persistence fixes
         shell: bash
         run: |
@@ -160,6 +194,7 @@ jobs:
           .quality-venv/bin/python -m ruff format
           apps/api/tests/test_banking_local_connections_routes.py
           apps/api/tests/test_banking_reauthentication_routes.py
+          packages/persistence/tests/test_banking_residence_fk_migration.py
           tests/quality/test_banking_manual_sync_persistence_contract.py
           tests/quality/test_finance_access_scope_contract.py
           tests/quality/test_financial_account_persistence_contract.py
@@ -180,6 +215,7 @@ jobs:
           apps/api/tests/test_banking_reauthentication_routes.py
           packages/persistence/src/meufinanceiro_persistence/banking_observation_store.py
           packages/persistence/src/meufinanceiro_persistence/migrations/versions/0011_financial_accounts.py
+          packages/persistence/tests/test_banking_residence_fk_migration.py
           packages/persistence/tests/test_financial_opening_balances.py
           tests/quality/test_banking_manual_sync_persistence_contract.py
           tests/quality/test_finance_access_scope_contract.py
@@ -240,6 +276,7 @@ jobs:
             .github/workflows/quality.yml \
             apps/api/tests/test_banking_local_connections_routes.py \
             apps/api/tests/test_banking_reauthentication_routes.py \
+            packages/persistence/tests/test_banking_residence_fk_migration.py \
             tests/quality/test_banking_manual_sync_persistence_contract.py \
             tests/quality/test_finance_access_scope_contract.py \
             tests/quality/test_financial_account_persistence_contract.py \
