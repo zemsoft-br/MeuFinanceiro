@@ -94,6 +94,13 @@ financial_accounts = Table(
         "visibility_scope",
         name="uq_finance_accounts_scope",
     ),
+    UniqueConstraint(
+        "id",
+        "installation_id",
+        "residence_id",
+        "currency",
+        name="uq_finance_accounts_opening_scope",
+    ),
     schema="finance",
 )
 

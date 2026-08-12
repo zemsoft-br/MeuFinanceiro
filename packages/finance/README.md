@@ -20,7 +20,7 @@ Invariantes:
 - `float` não é aceito;
 - moeda deve ser código ASCII uppercase de três letras;
 - até oito casas decimais são preservadas;
-- magnitude deve caber no contrato futuro `NUMERIC(24,8)`;
+- magnitude deve caber em `NUMERIC(24,8)`;
 - soma, subtração e comparação ordenada exigem a mesma moeda;
 - `repr` e `str` não exibem o valor financeiro;
 - serialização pública usa string decimal canônica, nunca `float`.
@@ -39,7 +39,7 @@ Os modos iniciais são `HALF_EVEN`, `HALF_UP` e `DOWN`.
 
 ## Audiência de recursos financeiros
 
-Todo recurso financeiro futuro deve possuir residência, proprietário e um escopo de visibilidade:
+Recursos financeiros possuem audiência derivável pela residência, proprietário e escopo de visibilidade da entidade que governa o acesso:
 
 ```text
 PERSONAL  -> somente proprietário
@@ -62,9 +62,9 @@ A função de audiência não recebe papel administrativo. `owner` ou `administr
 
 Membership inativa ou residência divergente sempre falham fechado. Grants são válidos somente em `SHARED` e não substituem membership ativa.
 
-A capacidade de executar uma mutação continua separada da audiência. Casos de uso futuros combinam a audiência com a autorização por papel da membership.
+A capacidade de executar uma mutação continua separada da audiência. Casos de uso combinam a audiência com autorização por papel quando essa matriz estiver definida.
 
-O ADR-0016 exige que persistência financeira futura use RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade.
+ADR-0016 exige RLS com `app.current_residence_id` e `app.current_operator_id` como defesa em profundidade. Opening balance e Movement herdam a audiência da conta em vez de duplicar ACL.
 
 ## Identificadores canônicos
 
@@ -84,13 +84,23 @@ O contrato não converte strings implicitamente e rejeita UUID nil, versões dif
 
 O ID local não contém residência, proprietário, tipo, timestamp, valor, moeda ou material de provider. IDs de provider/importador, FITID, hashes e fingerprints continuam sendo identidades de fonte e nunca substituem o UUID canônico do recurso.
 
-Idempotency key, correlation ID, reconciliation ID e transfer ID são conceitos independentes mesmo quando algum deles também vier a usar UUID.
+Idempotency key, correlation ID, reconciliation ID e transfer ID são conceitos independentes.
 
-O ADR-0017 mantém geração canônica server-side. Client-generated IDs para eventual modo offline exigem decisão própria de idempotência e conflitos.
+Operações persistentes de Movement usam uma chave própria:
+
+```python
+from meufinanceiro_finance import new_financial_idempotency_key
+
+idempotency_key = new_financial_idempotency_key()
+```
+
+Ela também é UUID v4, mas é identidade operacional de retry e nunca o `movement_id`.
+
+ADR-0017 mantém geração canônica server-side. Client-generated IDs para eventual modo offline exigem decisão própria de idempotência e conflitos.
 
 ## Contas financeiras
 
-A primeira entidade financeira canônica usa contratos provider-neutral:
+A entidade financeira canônica usa contratos provider-neutral:
 
 ```python
 from meufinanceiro_finance import (
@@ -120,12 +130,75 @@ BENEFIT
 CUSTOM
 ```
 
-`CUSTOM` exige um nome de tipo explícito. Os demais tipos não aceitam esse campo.
+`CUSTOM` exige nome de tipo explícito. Os demais tipos não aceitam esse campo.
 
-A conta possui moeda, mas **não possui amount ou saldo**. Saldo de abertura e saldo calculado serão derivados do futuro livro financeiro, não de uma coluna autoritativa na conta.
+A conta possui moeda, mas **não possui amount ou saldo**. A persistência da #133 aplica audiência e IDs diretamente no PostgreSQL; grants persistentes existem somente para contas `SHARED`.
 
-O estado persistente prevê `ACTIVE` e `ARCHIVED`, porém o primeiro store cria somente `ACTIVE`; arquivamento exige caso de uso, capacidade por papel e auditoria próprios.
+O estado persistente prevê `ACTIVE` e `ARCHIVED`, porém arquivamento continua exigindo caso de uso, capacidade por papel e auditoria próprios.
 
-A persistência da #133 aplica a audiência do ADR-0016 e os IDs do ADR-0017 diretamente no PostgreSQL. Grants persistentes existem somente para contas `SHARED`.
+## Categorias-base
 
-Conversão cambial, regras de moeda específica, saldo de abertura, movements, categorias, edição de grants, API e Flutter permanecem fora deste recorte.
+A #135 adiciona categorias provider-neutral em árvore, separadas da conta e do ledger. O vínculo classificatório de Movement permanece fronteira própria para que audiência e redaction sejam resolvidas sem copiar eventos financeiros.
+
+## Saldo de abertura
+
+ADR-0018 / #137 define zero ou um anchor imutável por conta:
+
+```python
+from datetime import date
+from decimal import Decimal
+
+from meufinanceiro_finance import FinancialOpeningBalanceDraft, Money
+
+opening = FinancialOpeningBalanceDraft(
+    amount=Money(Decimal("1000.00"), "BRL"),
+    effective_date=date(2026, 8, 1),
+)
+```
+
+Ausência de row é diferente de saldo explicitamente zero. O anchor representa o saldo no início de `effective_date` e não é saldo atual nem cache.
+
+## Movement
+
+ADR-0019 define Movement como efeito monetário efetivo em exatamente uma conta:
+
+```text
+amount > 0 -> aumenta saldo
+amount < 0 -> reduz saldo
+amount = 0 -> inválido
+```
+
+Resultado econômico é separado do sinal:
+
+```text
+INCOME
+EXPENSE
+NEUTRAL
+```
+
+O draft original informa conta, `Money`, resultado econômico, `effective_date`, `competence_date` e descrição. Reversão recebe apenas original, datas e reason; amount/conta/moeda/result effect são derivados da linha original.
+
+A #141 / ADR-0020 materializa a persistence append-only:
+
+- `finance.movements`;
+- runtime com `SELECT, INSERT`, sem `UPDATE/DELETE`;
+- replay idempotente por key + digest canônico;
+- reversão integral única como novo evento;
+- row lock serializando reversões concorrentes;
+- RLS herdando a audiência da conta;
+- bloqueio de novo Movement anterior ao opening anchor existente.
+
+O record persistido e erros genéricos redigem material financeiro sensível.
+
+## Ainda fora deste pacote base
+
+- cálculo/materialização de saldo;
+- transferências atômicas;
+- rateios e vínculo classificatório de Movement;
+- matriz completa de capacidade por papel;
+- conversão cambial;
+- API/FastAPI;
+- Flutter;
+- Pluggy/importadores;
+- cartões/faturas;
+- empréstimos.

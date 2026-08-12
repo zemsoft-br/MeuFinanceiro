@@ -89,9 +89,16 @@ def test_adr_requires_operator_aware_rls_and_no_admin_bypass() -> None:
 
 def test_financial_invariants_reference_accepted_audience_contract() -> None:
     assert "ADR-0016" in INVARIANTS
-    assert "owner_operator_id" in INVARIANTS
-    assert "visibility_scope" in INVARIANTS
-    assert "app.current_operator_id" in INVARIANTS
+    for required in (
+        "PERSONAL",
+        "SHARED",
+        "HOUSEHOLD",
+        "app.current_operator_id",
+        "proprietário",
+        "membership inativa",
+        "cross-residence",
+    ):
+        assert required in INVARIANTS
     lowered = INVARIANTS.lower()
     assert "administrator" in lowered
     assert "bypass" in lowered

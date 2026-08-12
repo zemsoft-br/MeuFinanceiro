@@ -1,8 +1,8 @@
 # Movement canônico e ledger append-only
 
-Status: **contrato de domínio da Fase 1 / issue #139**.
+Status: **persistência base da Fase 1 / issue #141**.
 
-Normativo: ADR-0019.
+Normativo: ADR-0019 e ADR-0020.
 
 ## Unidade do ledger
 
@@ -38,7 +38,7 @@ NEUTRAL -> positivo ou negativo, nunca zero
 
 ## Datas
 
-Todo evento original possui:
+Todo evento possui:
 
 ```text
 effective_date
@@ -47,21 +47,78 @@ competence_date
 
 A primeira participa de caixa/saldo; a segunda de competência. Ambas são `date` e não possuem default implícito entre si.
 
+## Persistência canônica
+
+O ledger base é persistido em:
+
+```text
+finance.movements
+```
+
+Cada linha contém, entre outros campos:
+
+```text
+id UUID v4
+installation_id
+residence_id
+account_id
+currency
+amount NUMERIC(24,8)
+result_effect
+role STANDARD | REVERSAL
+effective_date
+competence_date
+created_by_operator_id
+idempotency_key UUID v4
+request_digest SHA-256
+created_at
+```
+
+Movements são append-only. O runtime recebe somente `SELECT, INSERT` na tabela; não recebe `UPDATE` nem `DELETE`.
+
 ## Audiência
 
 Movement herda integralmente a audiência da conta. Não possui owner, visibility scope ou grants independentes.
 
-A futura persistência deverá consultar a conta sob RLS para leitura/escrita, sem copiar ACL.
+A política RLS de leitura exige membership ativa e consulta `finance.accounts` sob a RLS da própria conta. Com isso:
 
-## Categoria
+- `PERSONAL`: somente owner;
+- `HOUSEHOLD`: membros ativos da residência;
+- `SHARED`: owner e membros explicitamente granted.
 
-O contrato base não contém `category_id`. O vínculo classificatório será uma etapa posterior porque contas `SHARED` e categorias atualmente possuem modelos de audiência diferentes.
+Conhecer `movement_id` não concede acesso.
 
-## Imutabilidade
+## Escrita
 
-Movements persistidos serão append-only. Não haverá edição destrutiva de conta, amount, datas, resultado ou descrição.
+Nesta primeira persistence, criação e reversão são owner-only.
 
-Não existe `PENDING` no ledger canônico. Pending permanece em projeções/observações externas.
+O operador precisa:
+
+- estar em membership ativa;
+- ser `owner_operator_id` da conta;
+- operar na residence corrente;
+- usar conta `ACTIVE`.
+
+Audiência de leitura não implica capacidade de escrita.
+
+## Idempotência
+
+Toda criação/reversão exige `idempotency_key` UUID v4 operacional e independente do `movement_id`.
+
+Escopo:
+
+```text
+(installation_id, idempotency_key)
+```
+
+Cada request persiste `request_digest` SHA-256 de material canônico versionado.
+
+```text
+mesma key + mesmo digest       -> replay do mesmo Movement
+mesma key + digest diferente   -> conflito fail-closed
+```
+
+Criações concorrentes do mesmo request convergem para uma única linha persistida.
 
 ## Reversão
 
@@ -74,9 +131,56 @@ competence_date
 reason
 ```
 
-Amount, conta, moeda e resultado serão derivados do original pela futura camada de persistence/service.
+Amount, conta, moeda e resultado são derivados do original.
 
-A reversão integral terá amount oposto, mesma conta, moeda e result effect. Não será permitido reverter uma reversão ou criar mais de uma reversão integral para o mesmo original.
+A reversão integral possui:
+
+- mesmo `account_id`;
+- mesma moeda;
+- mesmo `result_effect`;
+- `amount = -original.amount`;
+- `role = REVERSAL`;
+- referência a um target `STANDARD`.
+
+### Serialização sem abrir UPDATE no ledger
+
+O original precisa de row lock `FOR UPDATE` antes da decisão de reversão concorrente. Como esse lock exige privilégio `UPDATE` no PostgreSQL, o runtime não executa o locking clause diretamente.
+
+Ele chama:
+
+```text
+finance.lock_standard_movement_for_reversal(...)
+```
+
+A função é `SECURITY DEFINER`, possui `search_path` fechado, revalida contexto/membership/ownership e executa `FOR UPDATE OF m` somente para um `STANDARD` da conta `ACTIVE` pertencente ao operador corrente.
+
+Como `finance.movements` usa `FORCE ROW LEVEL SECURITY`, existe também a policy `finance_movements_lock_update FOR UPDATE`. Ela deixa o definer atravessar o RLS somente para `STANDARD` da conta ativa pertencente ao operador e com membership ativa. Policy RLS não substitui `GRANT`: o role runtime continua sem privilégio `UPDATE` e uma tentativa direta de `SELECT ... FOR UPDATE` permanece negada.
+
+`EXECUTE` é revogado de `PUBLIC` e concedido ao role runtime. A tabela `finance.movements` continua com apenas `SELECT, INSERT` para esse role.
+
+Após o lock, o store reconsulta idempotência e reversão prévia. Isso faz retries concorrentes convergirem e garante que duas idempotency keys distintas não produzam duas reversões do mesmo original.
+
+`reversal_of_id` é unique, portanto existe no máximo uma reversão integral por original.
+
+Uma FK composta garante que a reversão aponta para o mesmo account/currency/result effect e para role `STANDARD`. Um trigger PostgreSQL valida novamente que o amount é exatamente o negativo do original.
+
+Não é possível reverter uma reversão.
+
+## Opening balance
+
+Se a conta possui opening balance:
+
+```text
+movement.effective_date >= opening_balance.effective_date
+```
+
+O opening balance representa o saldo no início da sua `effective_date`; Movements na mesma data são válidos e ocorrem depois do anchor.
+
+`competence_date` pode ser anterior ao opening date porque competência não altera caixa anterior ao anchor.
+
+## Categoria
+
+O contrato base não contém `category_id`. O vínculo classificatório permanece etapa posterior porque contas `SHARED` e categorias atualmente possuem modelos de audiência diferentes.
 
 ## Transferência futura
 
@@ -87,30 +191,47 @@ origem  -> NEUTRAL negativo
 destino -> NEUTRAL positivo
 ```
 
-Os dois eventos serão ligados por um `transfer_id` distinto dos `movement_id`.
-
-## Idempotência
-
-A futura criação persistente exigirá idempotency key independente do UUID canônico do Movement. Formato, escopo e retenção serão decididos na issue de persistence do ledger.
+Os dois eventos serão ligados por um `transfer_id` distinto dos `movement_id` e das idempotency keys.
 
 ## Saldo
 
-Após existir persistence de Movements, o saldo poderá ser derivado de:
+O saldo canônico permanece derivável por:
 
 ```text
-opening balance + soma dos Movement.amount efetivos
+opening balance opcional + soma dos Movement.amount efetivos
 ```
 
-Nenhum saldo materializado é introduzido pelo contrato #139.
+Não existe coluna de saldo em `finance.accounts` nem cache de saldo introduzido pela persistence de Movement.
+
+## Fronteiras atuais
+
+Store:
+
+```text
+create_movement
+reverse_movement
+get_movement
+list_movements
+```
+
+Sem:
+
+```text
+update_movement
+delete_movement
+upsert destrutivo
+```
 
 ## Fora do escopo
 
-- schema/store de Movement;
+- saldo materializado/query de saldo;
 - category link;
 - transferências;
 - rateios;
 - partial refund/correction;
-- saldo materializado;
-- API/Flutter;
+- API/FastAPI;
+- Flutter;
 - Pluggy/importadores;
+- cartões/faturas;
+- empréstimos;
 - deploy/HML/produção.
