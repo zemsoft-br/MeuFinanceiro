@@ -10,39 +10,39 @@ const _token = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const _connectionId = '30000000-0000-4000-8000-000000000003';
 
 void main() {
-  test('lists only strict local connection metadata through authenticated GET', () async {
-    final transport = FakeAuthTransport.response(
-      statusCode: 200,
-      body: _singleConnectionResponse,
-    );
-    final api = _api(transport);
+  test(
+    'lists only strict local connection metadata through authenticated GET',
+    () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 200,
+        body: _singleConnectionResponse,
+      );
+      final api = _api(transport);
 
-    final connections = await api.listConnections();
+      final connections = await api.listConnections();
 
-    expect(transport.calls, hasLength(1));
-    expect(transport.calls.single.method, AuthHttpMethod.get);
-    expect(transport.calls.single.uri.path, '/api/v1/banking/connections');
-    expect(transport.calls.single.uri.query, isEmpty);
-    expect(transport.calls.single.body, isNull);
-    expect(connections, hasLength(1));
-    expect(connections.single.connectionId, _connectionId);
-    expect(connections.single.provider, 'pluggy');
-    expect(
-      connections.single.status,
-      BankingConnectionStatus.reauthenticationRequired,
-    );
-    expect(connections.single.requiresUserAction, isTrue);
-    expect(connections.single.reauthenticationAvailable, isTrue);
-    expect(connections.single.updatedAt.isUtc, isTrue);
-    expect(connections.single.toString(), isNot(contains(_connectionId)));
-  });
+      expect(transport.calls, hasLength(1));
+      expect(transport.calls.single.method, AuthHttpMethod.get);
+      expect(transport.calls.single.uri.path, '/api/v1/banking/connections');
+      expect(transport.calls.single.uri.query, isEmpty);
+      expect(transport.calls.single.body, isNull);
+      expect(connections, hasLength(1));
+      expect(connections.single.connectionId, _connectionId);
+      expect(connections.single.provider, 'pluggy');
+      expect(
+        connections.single.status,
+        BankingConnectionStatus.reauthenticationRequired,
+      );
+      expect(connections.single.requiresUserAction, isTrue);
+      expect(connections.single.reauthenticationAvailable, isTrue);
+      expect(connections.single.updatedAt.isUtc, isTrue);
+      expect(connections.single.toString(), isNot(contains(_connectionId)));
+    },
+  );
 
   test('empty list is accepted without creating synthetic entries', () async {
     final connections = await _api(
-      FakeAuthTransport.response(
-        statusCode: 200,
-        body: '{"connections":[]}',
-      ),
+      FakeAuthTransport.response(statusCode: 200, body: '{"connections":[]}'),
     ).listConnections();
 
     expect(connections, isEmpty);
@@ -61,8 +61,9 @@ void main() {
       ),
     ]) {
       await expectLater(
-        _api(FakeAuthTransport.response(statusCode: 200, body: body))
-            .listConnections(),
+        _api(
+          FakeAuthTransport.response(statusCode: 200, body: body),
+        ).listConnections(),
         throwsA(isA<FormatException>()),
       );
     }
@@ -71,7 +72,10 @@ void main() {
   test('invalid UUID provider status and timestamps fail closed', () async {
     final invalidBodies = [
       _singleConnectionResponse.replaceFirst(_connectionId, 'provider-item'),
-      _singleConnectionResponse.replaceFirst('"provider":"pluggy"', '"provider":"Pluggy"'),
+      _singleConnectionResponse.replaceFirst(
+        '"provider":"pluggy"',
+        '"provider":"Pluggy"',
+      ),
       _singleConnectionResponse.replaceFirst(
         '"status":"REAUTHENTICATION_REQUIRED"',
         '"status":"UNKNOWN_PROVIDER_STATE"',
@@ -88,8 +92,9 @@ void main() {
 
     for (final body in invalidBodies) {
       await expectLater(
-        _api(FakeAuthTransport.response(statusCode: 200, body: body))
-            .listConnections(),
+        _api(
+          FakeAuthTransport.response(statusCode: 200, body: body),
+        ).listConnections(),
         throwsA(isA<FormatException>()),
       );
     }
@@ -122,7 +127,8 @@ BankingConnectionsApi _api(FakeAuthTransport transport) {
   );
 }
 
-const _singleConnectionResponse = '''
+const _singleConnectionResponse =
+    '''
 {
   "connections":[
     {

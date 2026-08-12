@@ -6,10 +6,7 @@ import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
-  const LoginScreen({
-    this.redirectTo,
-    super.key,
-  });
+  const LoginScreen({this.redirectTo, super.key});
 
   final String? redirectTo;
 
@@ -139,7 +136,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 decoration: const InputDecoration(
                                   labelText: 'Operador',
                                   hintText: 'Digite seu login',
-                                  prefixIcon: Icon(Icons.person_outline_rounded),
+                                  prefixIcon: Icon(
+                                    Icons.person_outline_rounded,
+                                  ),
                                 ),
                                 validator: (value) {
                                   final normalized = value?.trim() ?? '';
@@ -165,7 +164,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 enableSuggestions: false,
                                 decoration: InputDecoration(
                                   labelText: 'Senha',
-                                  prefixIcon: const Icon(Icons.lock_outline_rounded),
+                                  prefixIcon: const Icon(
+                                    Icons.lock_outline_rounded,
+                                  ),
                                   suffixIcon: IconButton(
                                     key: LoginScreen.passwordVisibilityKey,
                                     tooltip: _obscurePassword
@@ -200,7 +201,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               FilledButton.icon(
                                 key: LoginScreen.submitButtonKey,
                                 onPressed: session.isBusy ? null : _submit,
-                                icon: session.phase ==
+                                icon:
+                                    session.phase ==
                                         OperatorSessionPhase.authenticating
                                     ? const SizedBox.square(
                                         dimension: 18,
@@ -333,20 +335,14 @@ class _AuthenticatedContent extends StatelessWidget {
       children: [
         const _BrandMark(),
         const SizedBox(height: AppTokens.space24),
-        Text(
-          'Sessão ativa',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
+        Text('Sessão ativa', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: AppTokens.space8),
         Text(
           'Conectado como ${principal.login}.',
           style: Theme.of(context).textTheme.bodyLarge,
         ),
         const SizedBox(height: AppTokens.space24),
-        FilledButton(
-          onPressed: onContinue,
-          child: const Text('Continuar'),
-        ),
+        FilledButton(onPressed: onContinue, child: const Text('Continuar')),
         const SizedBox(height: AppTokens.space8),
         OutlinedButton(
           onPressed: session.isBusy ? null : onLogout,

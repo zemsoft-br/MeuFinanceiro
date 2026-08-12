@@ -29,10 +29,10 @@ class BankingConnectionsState {
   });
 
   const BankingConnectionsState.idle()
-      : this._(phase: BankingConnectionsPhase.idle);
+    : this._(phase: BankingConnectionsPhase.idle);
 
   const BankingConnectionsState.phase(BankingConnectionsPhase phase)
-      : this._(phase: phase);
+    : this._(phase: phase);
 
   BankingConnectionsState.loaded(
     List<LocalBankingConnection> connections, {
@@ -40,12 +40,12 @@ class BankingConnectionsState {
         BankingConnectionsRefreshFailure.none,
     bool refreshing = false,
   }) : this._(
-          phase: refreshing
-              ? BankingConnectionsPhase.refreshing
-              : BankingConnectionsPhase.loaded,
-          connections: List<LocalBankingConnection>.unmodifiable(connections),
-          refreshFailure: refreshFailure,
-        );
+         phase: refreshing
+             ? BankingConnectionsPhase.refreshing
+             : BankingConnectionsPhase.loaded,
+         connections: List<LocalBankingConnection>.unmodifiable(connections),
+         refreshFailure: refreshFailure,
+       );
 
   final BankingConnectionsPhase phase;
   final List<LocalBankingConnection> connections;
@@ -66,13 +66,13 @@ final bankingConnectionsApiProvider = Provider<BankingConnectionsApi>(
   (ref) => BankingConnectionsApi(ref.watch(authenticatedApiClientProvider)),
 );
 
-final bankingConnectionsControllerProvider = NotifierProvider.autoDispose<
-    BankingConnectionsController, BankingConnectionsState>(
-  BankingConnectionsController.new,
-);
+final bankingConnectionsControllerProvider =
+    NotifierProvider.autoDispose<
+      BankingConnectionsController,
+      BankingConnectionsState
+    >(BankingConnectionsController.new);
 
-class BankingConnectionsController
-    extends AutoDisposeNotifier<BankingConnectionsState> {
+class BankingConnectionsController extends Notifier<BankingConnectionsState> {
   int _generation = 0;
   bool _inFlight = false;
 
@@ -99,14 +99,13 @@ class BankingConnectionsController
     final generation = ++_generation;
     _inFlight = true;
     state = preserveOnFailure
-        ? BankingConnectionsState.loaded(
-            previousConnections,
-            refreshing: true,
-          )
+        ? BankingConnectionsState.loaded(previousConnections, refreshing: true)
         : const BankingConnectionsState.phase(BankingConnectionsPhase.loading);
 
     try {
-      final connections = await ref.read(bankingConnectionsApiProvider).listConnections();
+      final connections = await ref
+          .read(bankingConnectionsApiProvider)
+          .listConnections();
       if (!_isCurrent(generation)) {
         return;
       }

@@ -1,12 +1,13 @@
 import 'package:meufinanceiro_app/core/auth/auth_http.dart';
 
-typedef AuthTransportHandler = Future<AuthHttpResponse> Function(
-  Uri uri,
-  AuthHttpMethod method,
-  Duration timeout,
-  Map<String, String> headers,
-  String? body,
-);
+typedef AuthTransportHandler =
+    Future<AuthHttpResponse> Function(
+      Uri uri,
+      AuthHttpMethod method,
+      Duration timeout,
+      Map<String, String> headers,
+      String? body,
+    );
 
 class AuthTransportCall {
   const AuthTransportCall({

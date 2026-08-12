@@ -13,35 +13,38 @@ const _activeConnectionId = '30000000-0000-4000-8000-000000000003';
 const _disconnectedConnectionId = '40000000-0000-4000-8000-000000000004';
 
 void main() {
-  testWidgets('renders only local metadata and gates reauthentication by backend flag', (
-    tester,
-  ) async {
-    await _pumpScreen(tester, body: _connectionsResponse);
+  testWidgets(
+    'renders only local metadata and gates reauthentication by backend flag',
+    (tester) async {
+      await _pumpScreen(tester, body: _connectionsResponse);
 
-    expect(find.byKey(BankingConnectionsScreen.titleKey), findsOneWidget);
-    expect(find.text('Pluggy · Open Finance'), findsNWidgets(2));
-    expect(find.text('Disponível'), findsOneWidget);
-    expect(find.text('Desconectada'), findsOneWidget);
-    expect(
-      find.byKey(
-        BankingConnectionsScreen.reauthenticationButtonKey(_activeConnectionId),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        BankingConnectionsScreen.reauthenticationButtonKey(
-          _disconnectedConnectionId,
+      expect(find.byKey(BankingConnectionsScreen.titleKey), findsOneWidget);
+      expect(find.text('Pluggy · Open Finance'), findsNWidgets(2));
+      expect(find.text('Disponível'), findsOneWidget);
+      expect(find.text('Desconectada'), findsOneWidget);
+      expect(
+        find.byKey(
+          BankingConnectionsScreen.reauthenticationButtonKey(
+            _activeConnectionId,
+          ),
         ),
-      ),
-      findsNothing,
-    );
-    expect(find.text(_activeConnectionId), findsNothing);
-    expect(find.text(_disconnectedConnectionId), findsNothing);
-    expect(find.textContaining('itemId'), findsNothing);
-    expect(find.textContaining('clientUserId'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          BankingConnectionsScreen.reauthenticationButtonKey(
+            _disconnectedConnectionId,
+          ),
+        ),
+        findsNothing,
+      );
+      expect(find.text(_activeConnectionId), findsNothing);
+      expect(find.text(_disconnectedConnectionId), findsNothing);
+      expect(find.textContaining('itemId'), findsNothing);
+      expect(find.textContaining('clientUserId'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('empty state remains usable and offers connect action', (
     tester,
@@ -123,7 +126,8 @@ Future<void> _pumpScreen(
   await tester.pumpAndSettle();
 }
 
-const _connectionsResponse = '''
+const _connectionsResponse =
+    '''
 {
   "connections":[
     {

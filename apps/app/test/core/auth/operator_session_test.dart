@@ -41,8 +41,8 @@ void main() {
     expect(
       () => IssuedOperatorSession.fromJson(
         _validSession.replaceFirst(
-          '"expires_at":"2026-08-08T00:00:00Z","operator"',
-          '"expires_at":"2026-08-08T01:00:00Z","operator"',
+          '"expires_at":"2026-08-08T00:00:00Z"',
+          '"expires_at":"2026-08-08T01:00:00Z"',
         ),
       ),
       throwsA(isA<FormatException>()),
@@ -50,7 +50,8 @@ void main() {
   });
 }
 
-const _validSession = '''
+const _validSession =
+    '''
 {
   "access_token":"$_token",
   "token_type":"bearer",
