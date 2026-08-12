@@ -23,10 +23,7 @@ def _read(path: Path) -> str:
 def test_web_adapter_uses_exact_lazy_allowlisted_pluggy_asset() -> None:
     source = _read(ADAPTER)
 
-    assert (
-        "https://cdn.pluggy.ai/pluggy-connect/v2.8.2/pluggy-connect.js"
-        in source
-    )
+    assert "https://cdn.pluggy.ai/pluggy-connect/v2.8.2/pluggy-connect.js" in source
     assert "latest" not in source.lower()
     assert "ScriptElement()" in source
     assert "head.append(script)" in source
@@ -36,7 +33,7 @@ def test_web_adapter_uses_exact_lazy_allowlisted_pluggy_asset() -> None:
     assert "'language': 'pt'" in source
     assert "'countries': ['BR']" in source
     assert "'includeSandbox': false" in source
-    assert "if (normalizedUpdateItem != null) 'updateItem': normalizedUpdateItem" in source
+    assert "'updateItem': ?normalizedUpdateItem" in source
     assert "_validateItemId(updateItem)" in source
 
     for forbidden in (
@@ -107,9 +104,9 @@ def test_callback_is_reduced_to_transient_item_id_before_backend() -> None:
     state_source = controller.split("class PluggyConnectState", 1)[1].split(
         "final pluggyConnectLauncherProvider", 1
     )[0]
-    reauth_state = reauthentication.split(
-        "class PluggyReauthenticationState", 1
-    )[1].split("final pluggyReauthenticationLauncherProvider", 1)[0]
+    reauth_state = reauthentication.split("class PluggyReauthenticationState", 1)[
+        1
+    ].split("final pluggyReauthenticationLauncherProvider", 1)[0]
     assert "connectToken" not in state_source
     assert "itemId" not in state_source
     assert "connectToken" not in reauth_state

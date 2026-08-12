@@ -14,18 +14,21 @@ const _sessionToken = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 const _connectToken = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
 
 void main() {
-  test('provider error without item never calls registration endpoint', () async {
-    final harness = await _Harness.create();
-    addTearDown(harness.dispose);
+  test(
+    'provider error without item never calls registration endpoint',
+    () async {
+      final harness = await _Harness.create();
+      addTearDown(harness.dispose);
 
-    await harness.controller.start();
-    harness.launcher.emit(const PluggyConnectCallback.opened());
-    harness.launcher.emit(const PluggyConnectCallback.errorWithoutItem());
-    await _flush();
+      await harness.controller.start();
+      harness.launcher.emit(const PluggyConnectCallback.opened());
+      harness.launcher.emit(const PluggyConnectCallback.errorWithoutItem());
+      await _flush();
 
-    expect(harness.state.phase, PluggyConnectPhase.genericFailure);
-    expect(harness.registrationCalls, isEmpty);
-  });
+      expect(harness.state.phase, PluggyConnectPhase.genericFailure);
+      expect(harness.registrationCalls, isEmpty);
+    },
+  );
 
   test('invalid callback payload fails closed without registration', () async {
     final harness = await _Harness.create();
@@ -40,46 +43,58 @@ void main() {
     expect(harness.registrationCalls, isEmpty);
   });
 
-  test('launcher failure is recoverable and does not register an item', () async {
-    final harness = await _Harness.create(failOnLaunch: true);
-    addTearDown(harness.dispose);
+  test(
+    'launcher failure is recoverable and does not register an item',
+    () async {
+      final harness = await _Harness.create(failOnLaunch: true);
+      addTearDown(harness.dispose);
 
-    await harness.controller.start();
+      await harness.controller.start();
 
-    expect(harness.state.phase, PluggyConnectPhase.temporarilyUnavailable);
-    expect(harness.launcher.calls, hasLength(1));
-    expect(harness.registrationCalls, isEmpty);
-  });
+      expect(harness.state.phase, PluggyConnectPhase.temporarilyUnavailable);
+      expect(harness.launcher.calls, hasLength(1));
+      expect(harness.registrationCalls, isEmpty);
+    },
+  );
 
-  test('connect-token transport failure is recoverable without opening widget', () async {
-    final harness = await _Harness.create(failTokenTransport: true);
-    addTearDown(harness.dispose);
+  test(
+    'connect-token transport failure is recoverable without opening widget',
+    () async {
+      final harness = await _Harness.create(failTokenTransport: true);
+      addTearDown(harness.dispose);
 
-    await harness.controller.start();
+      await harness.controller.start();
 
-    expect(harness.state.phase, PluggyConnectPhase.temporarilyUnavailable);
-    expect(harness.launcher.calls, isEmpty);
-    expect(harness.registrationCalls, isEmpty);
-  });
+      expect(harness.state.phase, PluggyConnectPhase.temporarilyUnavailable);
+      expect(harness.launcher.calls, isEmpty);
+      expect(harness.registrationCalls, isEmpty);
+    },
+  );
 
-  test('401 during registration clears local auth and requires login again', () async {
-    final harness = await _Harness.create(registrationStatus: 401);
-    addTearDown(harness.dispose);
+  test(
+    '401 during registration clears local auth and requires login again',
+    () async {
+      final harness = await _Harness.create(registrationStatus: 401);
+      addTearDown(harness.dispose);
 
-    await harness.controller.start();
-    harness.launcher.emit(const PluggyConnectCallback.opened());
-    harness.launcher.emit(
-      const PluggyConnectCallback.itemAvailable('synthetic-item'),
-    );
-    await _flush();
+      await harness.controller.start();
+      harness.launcher.emit(const PluggyConnectCallback.opened());
+      harness.launcher.emit(
+        const PluggyConnectCallback.itemAvailable('synthetic-item'),
+      );
+      await _flush();
 
-    expect(harness.state.phase, PluggyConnectPhase.authenticationRequired);
-    expect(
-      harness.container.read(operatorSessionControllerProvider).phase,
-      OperatorSessionPhase.expiredOrRevoked,
-    );
-    expect(harness.container.read(sessionTokenVaultProvider).hasToken, isFalse);
-  });
+      expect(harness.state.phase, PluggyConnectPhase.authenticationRequired);
+      expect(
+        harness.container.read(operatorSessionControllerProvider).phase,
+        OperatorSessionPhase.expiredOrRevoked,
+      );
+      expect(
+        harness.container.read(sessionTokenVaultProvider).hasToken,
+        isFalse,
+      );
+    },
+  );
 }
 
 class _Harness {
@@ -96,11 +111,12 @@ class _Harness {
   PluggyConnectController get controller =>
       container.read(pluggyConnectControllerProvider.notifier);
 
-  PluggyConnectState get state => container.read(pluggyConnectControllerProvider);
+  PluggyConnectState get state =>
+      container.read(pluggyConnectControllerProvider);
 
   Iterable<AuthTransportCall> get registrationCalls => transport.calls.where(
-        (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
-      );
+    (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
+  );
 
   static Future<_Harness> create({
     int registrationStatus = 200,
@@ -108,7 +124,13 @@ class _Harness {
     bool failTokenTransport = false,
   }) async {
     final launcher = FakePluggyConnectLauncher(failOnLaunch: failOnLaunch);
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
+    final transport = FakeAuthTransport((
+      uri,
+      method,
+      timeout,
+      headers,
+      body,
+    ) async {
       if (uri.path.endsWith('/auth/session')) {
         return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
       }
@@ -136,9 +158,7 @@ class _Harness {
           Uri.parse('http://localhost/api/v1/'),
         ),
         pluggyConnectLauncherProvider.overrideWithValue(launcher),
-        demoStatusProvider.overrideWithValue(
-          AsyncValue.data(_demoStatus()),
-        ),
+        demoStatusProvider.overrideWithValue(AsyncValue.data(_demoStatus())),
       ],
     );
     container.listen(
@@ -149,7 +169,11 @@ class _Harness {
     await container
         .read(operatorSessionControllerProvider.notifier)
         .login(login: 'admin', password: 'synthetic-password');
-    return _Harness(container: container, launcher: launcher, transport: transport);
+    return _Harness(
+      container: container,
+      launcher: launcher,
+      transport: transport,
+    );
   }
 
   void dispose() => container.dispose();
@@ -176,7 +200,8 @@ DemoStatus _demoStatus() {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",

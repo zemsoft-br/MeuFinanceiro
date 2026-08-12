@@ -188,9 +188,7 @@ def test_page_and_cursor_commit_atomically_and_repeat_idempotently(
 
     with engine.begin() as connection:
         assert (
-            connection.scalar(
-                select(func.count()).select_from(external_observations)
-            )
+            connection.scalar(select(func.count()).select_from(external_observations))
             == 1
         )
         assert connection.scalar(select(func.count()).select_from(sync_cursors)) == 1
@@ -241,9 +239,11 @@ def test_committed_cursor_replay_cannot_append_different_page(
     assert replay.records_applied == 0
 
     with engine.begin() as connection:
-        rows = connection.execute(
-            select(external_observations.c.external_resource_id)
-        ).scalars().all()
+        rows = (
+            connection.execute(select(external_observations.c.external_resource_id))
+            .scalars()
+            .all()
+        )
     assert rows == ["synthetic-tx-replay-1"]
 
 
@@ -295,13 +295,17 @@ def test_same_provider_identity_updates_status_without_duplication(
     )
 
     with engine.begin() as connection:
-        rows = connection.execute(
-            select(
-                external_observations.c.status,
-                external_observations.c.amount,
-                external_observations.c.description,
+        rows = (
+            connection.execute(
+                select(
+                    external_observations.c.status,
+                    external_observations.c.amount,
+                    external_observations.c.description,
+                )
             )
-        ).mappings().all()
+            .mappings()
+            .all()
+        )
     assert len(rows) == 1
     assert rows[0]["status"] == "CONFIRMED"
     assert rows[0]["amount"] == Decimal("26.00000000")
@@ -359,13 +363,17 @@ def test_stale_observation_does_not_regress_newer_metadata(
     )
 
     with engine.begin() as connection:
-        row = connection.execute(
-            select(
-                external_observations.c.status,
-                external_observations.c.description,
-                external_observations.c.last_seen_at,
+        row = (
+            connection.execute(
+                select(
+                    external_observations.c.status,
+                    external_observations.c.description,
+                    external_observations.c.last_seen_at,
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     assert row["status"] == "CONFIRMED"
     assert row["description"] == "Novo"
     assert row["last_seen_at"] == NOW + timedelta(minutes=2)
@@ -503,9 +511,7 @@ def test_empty_page_can_advance_cursor_explicitly(
 
     with engine.begin() as connection:
         assert (
-            connection.scalar(
-                select(func.count()).select_from(external_observations)
-            )
+            connection.scalar(select(func.count()).select_from(external_observations))
             == 0
         )
         assert connection.scalar(select(func.count()).select_from(sync_cursors)) == 1
@@ -567,9 +573,7 @@ def test_failure_inside_page_rolls_back_prior_observations_and_cursor(
 
     with engine.begin() as connection:
         assert (
-            connection.scalar(
-                select(func.count()).select_from(external_observations)
-            )
+            connection.scalar(select(func.count()).select_from(external_observations))
             == 0
         )
     cursor = store.get_sync_cursor(
@@ -727,11 +731,15 @@ def test_observation_rls_is_fail_closed_and_residence_scoped(
         )
 
     with engine.begin() as admin_connection:
-        row = admin_connection.execute(
-            select(
-                external_observations.c.status,
-                external_observations.c.normalized_payload_version,
+        row = (
+            admin_connection.execute(
+                select(
+                    external_observations.c.status,
+                    external_observations.c.normalized_payload_version,
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     assert row["status"] == "PENDING"
     assert row["normalized_payload_version"] == 1

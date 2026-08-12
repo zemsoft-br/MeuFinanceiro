@@ -1,10 +1,7 @@
 enum AuthHttpMethod { get, post, delete }
 
 class AuthHttpResponse {
-  const AuthHttpResponse({
-    required this.statusCode,
-    required this.body,
-  });
+  const AuthHttpResponse({required this.statusCode, required this.body});
 
   final int statusCode;
   final String body;

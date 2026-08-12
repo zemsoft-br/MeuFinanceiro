@@ -533,7 +533,9 @@ def test_runtime_rls_hides_new_tables_without_or_with_wrong_residence_context(
 
     with runtime_engine.begin() as connection:
         assert connection.scalar(select(func.count()).select_from(sync_runs)) == 0
-        assert connection.scalar(select(func.count()).select_from(external_accounts)) == 0
+        assert (
+            connection.scalar(select(func.count()).select_from(external_accounts)) == 0
+        )
         assert connection.scalar(select(func.count()).select_from(sync_cursors)) == 0
 
     with runtime_engine.begin() as connection:
@@ -543,7 +545,9 @@ def test_runtime_rls_hides_new_tables_without_or_with_wrong_residence_context(
             residence_id=residence_b,
         )
         assert connection.scalar(select(func.count()).select_from(sync_runs)) == 0
-        assert connection.scalar(select(func.count()).select_from(external_accounts)) == 0
+        assert (
+            connection.scalar(select(func.count()).select_from(external_accounts)) == 0
+        )
         assert connection.scalar(select(func.count()).select_from(sync_cursors)) == 0
 
     with runtime_engine.begin() as connection:
@@ -553,5 +557,7 @@ def test_runtime_rls_hides_new_tables_without_or_with_wrong_residence_context(
             residence_id=residence_a,
         )
         assert connection.scalar(select(func.count()).select_from(sync_runs)) == 1
-        assert connection.scalar(select(func.count()).select_from(external_accounts)) == 1
+        assert (
+            connection.scalar(select(func.count()).select_from(external_accounts)) == 1
+        )
         assert connection.scalar(select(func.count()).select_from(sync_cursors)) == 1

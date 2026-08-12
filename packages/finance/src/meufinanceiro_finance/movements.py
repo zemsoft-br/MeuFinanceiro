@@ -88,10 +88,7 @@ class FinancialMovementReversalDraft:
         )
 
     def __repr__(self) -> str:
-        return (
-            "FinancialMovementReversalDraft("
-            "<movement-dates-reason-redacted>)"
-        )
+        return "FinancialMovementReversalDraft(<movement-dates-reason-redacted>)"
 
 
 def _validate_standard_amount(

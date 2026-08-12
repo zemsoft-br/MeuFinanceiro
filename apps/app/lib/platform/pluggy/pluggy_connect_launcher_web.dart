@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'dart:html' as html;
 import 'dart:js' as js;
+import 'dart:js_interop';
 
 import 'package:meufinanceiro_app/core/banking/pluggy/pluggy_connect_launcher_contract.dart';
 
@@ -49,23 +50,23 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
       'language': 'pt',
       'countries': ['BR'],
       'includeSandbox': false,
-      if (normalizedUpdateItem != null) 'updateItem': normalizedUpdateItem,
-      'onOpen': js.allowInterop(() {
+      'updateItem': ?normalizedUpdateItem,
+      'onOpen': (() {
         emit(const PluggyConnectCallback.opened());
-      }),
-      'onClose': js.allowInterop(() {
+      }).toJS,
+      'onClose': (() {
         emit(const PluggyConnectCallback.closed());
-      }),
-      'onSuccess': js.allowInterop((dynamic payload) {
-        final itemId = _extractSuccessItemId(payload);
+      }).toJS,
+      'onSuccess': ((JSAny? payload) {
+        final itemId = _extractSuccessItemId(payload.dartify());
         emit(
           itemId == null
               ? const PluggyConnectCallback.invalidPayload()
               : PluggyConnectCallback.itemAvailable(itemId),
         );
-      }),
-      'onError': js.allowInterop((dynamic payload) {
-        final extraction = _extractErrorItemId(payload);
+      }).toJS,
+      'onError': ((JSAny? payload) {
+        final extraction = _extractErrorItemId(payload.dartify());
         if (extraction is _FoundItem) {
           emit(PluggyConnectCallback.itemAvailable(extraction.itemId));
         } else if (extraction is _MissingItem) {
@@ -73,7 +74,7 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
         } else {
           emit(const PluggyConnectCallback.invalidPayload());
         }
-      }),
+      }).toJS,
     };
 
     try {
@@ -159,22 +160,22 @@ class BrowserPluggyConnectLauncher implements PluggyConnectLauncher {
   }
 }
 
-String? _extractSuccessItemId(dynamic payload) {
-  if (payload is! js.JsObject) {
+String? _extractSuccessItemId(Object? payload) {
+  if (payload is! Map<Object?, Object?>) {
     return null;
   }
   return _extractBoundedItemId(payload['item']);
 }
 
-_ItemExtraction _extractErrorItemId(dynamic payload) {
-  if (payload is! js.JsObject) {
+_ItemExtraction _extractErrorItemId(Object? payload) {
+  if (payload is! Map<Object?, Object?>) {
     return const _ItemExtraction.invalid();
   }
   final data = payload['data'];
   if (data == null) {
     return const _ItemExtraction.missing();
   }
-  if (data is! js.JsObject) {
+  if (data is! Map<Object?, Object?>) {
     return const _ItemExtraction.invalid();
   }
   final item = data['item'];
@@ -187,8 +188,8 @@ _ItemExtraction _extractErrorItemId(dynamic payload) {
       : _ItemExtraction.found(itemId);
 }
 
-String? _extractBoundedItemId(dynamic item) {
-  if (item is! js.JsObject) {
+String? _extractBoundedItemId(Object? item) {
+  if (item is! Map<Object?, Object?>) {
     return null;
   }
   final value = item['id'];

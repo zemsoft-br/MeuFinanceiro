@@ -217,4 +217,7 @@ def test_openapi_exposes_no_client_controlled_scope_or_request_body(
     operation = schema["paths"][PATH]["get"]
 
     assert "requestBody" not in operation
-    assert operation.get("parameters", []) == []
+    parameters = {
+        (item["name"], item["in"]) for item in operation.get("parameters", [])
+    }
+    assert parameters == {("Authorization", "header")}

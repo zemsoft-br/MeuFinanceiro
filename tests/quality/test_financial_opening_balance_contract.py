@@ -6,9 +6,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FINANCE = ROOT / "packages/finance/src/meufinanceiro_finance"
 PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
 DOMAIN = (FINANCE / "opening_balances.py").read_text(encoding="utf-8")
-STORE = (PERSISTENCE / "financial_opening_balance_store.py").read_text(
-    encoding="utf-8"
-)
+STORE = (PERSISTENCE / "financial_opening_balance_store.py").read_text(encoding="utf-8")
 SCHEMA = (PERSISTENCE / "financial_opening_balance_schema.py").read_text(
     encoding="utf-8"
 )
@@ -18,9 +16,9 @@ MIGRATION = (
 ACCOUNT_MIGRATION = (
     PERSISTENCE / "migrations/versions/0011_financial_accounts.py"
 ).read_text(encoding="utf-8")
-ADR = (
-    ROOT / "docs/adr/0018-immutable-account-opening-balance.md"
-).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0018-immutable-account-opening-balance.md").read_text(
+    encoding="utf-8"
+)
 
 
 def test_opening_balance_is_separate_from_account_balance_authority() -> None:
@@ -45,10 +43,12 @@ def test_opening_balance_uses_money_shape_and_account_currency_fk() -> None:
     assert "uq_finance_accounts_opening_scope" in MIGRATION
     assert "fk_finance_opening_balance_account_scope" in MIGRATION
     assert "account_id, installation_id, residence_id, currency" in MIGRATION
-    assert "Money(row[\"amount\"], row[\"currency\"])" in STORE
+    assert 'Money(row["amount"], row["currency"])' in STORE
 
 
-def test_opening_balance_rls_inherits_account_visibility_and_owner_only_insert() -> None:
+def test_opening_balance_rls_inherits_account_visibility_and_owner_only_insert() -> (
+    None
+):
     assert "ENABLE ROW LEVEL SECURITY" in MIGRATION
     assert "FORCE ROW LEVEL SECURITY" in MIGRATION
     assert "app.current_residence_id" in MIGRATION

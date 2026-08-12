@@ -76,9 +76,7 @@ def _canonical_decimal(value: Decimal) -> Decimal:
     if scale > _MAX_SCALE:
         raise ValueError(f"amount exceeds {_MAX_SCALE} fractional digits")
     if integer_digits > _MAX_INTEGER_DIGITS:
-        raise ValueError(
-            f"amount exceeds {_MAX_INTEGER_DIGITS} integer digits"
-        )
+        raise ValueError(f"amount exceeds {_MAX_INTEGER_DIGITS} integer digits")
     return normalized
 
 
@@ -135,9 +133,7 @@ class Money:
 
     def _require_same_currency(self, other: Money) -> None:
         if self.currency != other.currency:
-            raise CurrencyMismatchError(
-                "money operation requires matching currencies"
-            )
+            raise CurrencyMismatchError("money operation requires matching currencies")
 
     def __add__(self, other: object) -> Money:
         if not isinstance(other, Money):

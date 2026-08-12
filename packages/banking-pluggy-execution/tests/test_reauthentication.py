@@ -68,7 +68,9 @@ def _connection(
         next_refresh_allowed_at=None,
         consent_expires_at=None,
         provider_reason_code=None,
-        disconnected_at=(NOW if status is StoredConnectionStatus.DISCONNECTED else None),
+        disconnected_at=(
+            NOW if status is StoredConnectionStatus.DISCONNECTED else None
+        ),
         created_at=NOW,
         updated_at=NOW,
     )
@@ -200,10 +202,7 @@ def test_ownership_mismatch_does_not_issue_connect_token() -> None:
             connection_id=CONNECTION_ID,
         )
 
-    assert (
-        captured.value.code
-        is PluggyReauthenticationErrorCode.CONNECTION_NOT_ALLOWED
-    )
+    assert captured.value.code is PluggyReauthenticationErrorCode.CONNECTION_NOT_ALLOWED
     assert ITEM_ID not in str(captured.value)
     assert marker not in str(captured.value)
     assert transport.token_calls == []
@@ -247,8 +246,7 @@ def test_incompatible_or_disconnected_connection_stops_before_credentials(
         )
 
     assert (
-        captured.value.code
-        is PluggyReauthenticationErrorCode.CONNECTION_NOT_AVAILABLE
+        captured.value.code is PluggyReauthenticationErrorCode.CONNECTION_NOT_AVAILABLE
     )
     assert store.credential_calls == []
 
@@ -275,8 +273,7 @@ def test_ambiguous_connect_token_failure_is_sanitized_and_transport_closes() -> 
         )
 
     assert (
-        captured.value.code
-        is PluggyReauthenticationErrorCode.TEMPORARILY_UNAVAILABLE
+        captured.value.code is PluggyReauthenticationErrorCode.TEMPORARILY_UNAVAILABLE
     )
     assert "SENSITIVE_PROVIDER_REASON" not in str(captured.value)
     assert ITEM_ID not in str(captured.value)

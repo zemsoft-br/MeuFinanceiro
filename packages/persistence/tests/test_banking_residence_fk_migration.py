@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import delete, func, insert, select, text
 from sqlalchemy.engine import Connection, Engine
 
@@ -22,9 +23,15 @@ from meufinanceiro_persistence.schema import (
 
 _CONSTRAINT_NAME = "fk_connections_household_residence_scope"
 _PREVIOUS_REVISION = "0005_household_residences"
-_HEAD_REVISION = "0006_banking_residence_fk"
 _ERROR_MESSAGE = "banking connections contain non-canonical residence references"
 NOW = datetime(2026, 8, 7, 0, 0, tzinfo=UTC)
+
+
+def _head_revision(config: Config) -> str:
+    head = ScriptDirectory.from_config(config).get_current_head()
+    if head is None:
+        raise AssertionError("Alembic migration head is missing")
+    return head
 
 
 def _insert_configuration(connection: Connection, installation_id: UUID) -> UUID:
@@ -186,37 +193,51 @@ def test_banking_residence_fk_migration_fails_closed_and_roundtrips(
             )
 
         command.upgrade(config, "head")
-        assert current_revision(engine) == _HEAD_REVISION
+        assert current_revision(engine) == _head_revision(config)
         assert _constraint_delete_action(engine) == "r"
 
         with engine.connect() as connection:
-            assert connection.scalar(
-                select(func.count()).select_from(connections).where(
-                    connections.c.id == connection_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(connections)
+                    .where(connections.c.id == connection_id)
                 )
-            ) == 1
-            assert connection.scalar(
-                select(func.count()).select_from(household_residences).where(
-                    household_residences.c.id == residence_id,
-                    household_residences.c.installation_id == installation_id,
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(household_residences)
+                    .where(
+                        household_residences.c.id == residence_id,
+                        household_residences.c.installation_id == installation_id,
+                    )
                 )
-            ) == 1
+                == 1
+            )
 
         command.downgrade(config, _PREVIOUS_REVISION)
         assert current_revision(engine) == _PREVIOUS_REVISION
         assert _constraint_delete_action(engine) is None
         with engine.connect() as connection:
-            assert connection.scalar(
-                select(func.count()).select_from(connections).where(
-                    connections.c.id == connection_id
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(connections)
+                    .where(connections.c.id == connection_id)
                 )
-            ) == 1
-            assert connection.scalar(
-                select(func.count()).select_from(household_residences).where(
-                    household_residences.c.id == residence_id
+                == 1
+            )
+            assert (
+                connection.scalar(
+                    select(func.count())
+                    .select_from(household_residences)
+                    .where(household_residences.c.id == residence_id)
                 )
-            ) == 1
+                == 1
+            )
     finally:
         _clean_banking_rows(engine)
         command.upgrade(config, "head")
-        assert current_revision(engine) == _HEAD_REVISION
+        assert current_revision(engine) == _head_revision(config)

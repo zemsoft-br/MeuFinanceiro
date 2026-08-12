@@ -76,7 +76,8 @@ const _principal = '''
 }
 ''';
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_token",
   "token_type":"bearer",

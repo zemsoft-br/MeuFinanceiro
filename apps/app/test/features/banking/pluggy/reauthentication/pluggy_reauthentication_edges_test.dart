@@ -15,43 +15,55 @@ const _connectionId = '30000000-0000-4000-8000-000000000003';
 const _itemId = 'synthetic-existing-item';
 
 void main() {
-  test('reauthentication HTTP failures map to stable sanitized phases', () async {
-    const scenarios = {
-      403: PluggyReauthenticationPhase.connectionUnavailable,
-      404: PluggyReauthenticationPhase.connectionNotFound,
-      409: PluggyReauthenticationPhase.connectionUnavailable,
-      502: PluggyReauthenticationPhase.invalidProviderResponse,
-      503: PluggyReauthenticationPhase.temporarilyUnavailable,
-    };
+  test(
+    'reauthentication HTTP failures map to stable sanitized phases',
+    () async {
+      const scenarios = {
+        403: PluggyReauthenticationPhase.connectionUnavailable,
+        404: PluggyReauthenticationPhase.connectionNotFound,
+        409: PluggyReauthenticationPhase.connectionUnavailable,
+        502: PluggyReauthenticationPhase.invalidProviderResponse,
+        503: PluggyReauthenticationPhase.temporarilyUnavailable,
+      };
 
-    for (final scenario in scenarios.entries) {
-      final launcher = FakePluggyConnectLauncher();
-      final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
-        if (uri.path.endsWith('/auth/session')) {
-          return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
-        }
-        if (uri.path.contains('/reauthentication-token')) {
-          return AuthHttpResponse(
-            statusCode: scenario.key,
-            body: '{"detail":"provider detail must stay hidden"}',
-          );
-        }
-        throw StateError('unexpected synthetic route');
-      });
-      final container = _container(transport, launcher);
-      await _login(container);
+      for (final scenario in scenarios.entries) {
+        final launcher = FakePluggyConnectLauncher();
+        final transport = FakeAuthTransport((
+          uri,
+          method,
+          timeout,
+          headers,
+          body,
+        ) async {
+          if (uri.path.endsWith('/auth/session')) {
+            return const AuthHttpResponse(
+              statusCode: 200,
+              body: _issuedSession,
+            );
+          }
+          if (uri.path.contains('/reauthentication-token')) {
+            return AuthHttpResponse(
+              statusCode: scenario.key,
+              body: '{"detail":"provider detail must stay hidden"}',
+            );
+          }
+          throw StateError('unexpected synthetic route');
+        });
+        final container = _container(transport, launcher);
+        await _login(container);
 
-      await container
-          .read(pluggyReauthenticationControllerProvider.notifier)
-          .start(_connectionId);
+        await container
+            .read(pluggyReauthenticationControllerProvider.notifier)
+            .start(_connectionId);
 
-      final state = container.read(pluggyReauthenticationControllerProvider);
-      expect(state.phase, scenario.value, reason: 'HTTP ${scenario.key}');
-      expect(state.toString(), isNot(contains('provider detail')));
-      expect(launcher.calls, isEmpty);
-      container.dispose();
-    }
-  });
+        final state = container.read(pluggyReauthenticationControllerProvider);
+        expect(state.phase, scenario.value, reason: 'HTTP ${scenario.key}');
+        expect(state.toString(), isNot(contains('provider detail')));
+        expect(launcher.calls, isEmpty);
+        container.dispose();
+      }
+    },
+  );
 
   test('provider error without Item never re-registers a connection', () async {
     final launcher = FakePluggyConnectLauncher();
@@ -152,7 +164,10 @@ FakeAuthTransport _happyTransport() {
       );
     }
     if (uri.path.endsWith('/banking/pluggy/connections')) {
-      return const AuthHttpResponse(statusCode: 200, body: _registeredConnection);
+      return const AuthHttpResponse(
+        statusCode: 200,
+        body: _registeredConnection,
+      );
     }
     throw StateError('unexpected synthetic route');
   });
@@ -173,7 +188,8 @@ DemoStatus _demoStatus() {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",
@@ -189,7 +205,8 @@ const _issuedSession = '''
 }
 ''';
 
-const _registeredConnection = '''
+const _registeredConnection =
+    '''
 {
   "connectionId":"$_connectionId",
   "status":"AVAILABLE",

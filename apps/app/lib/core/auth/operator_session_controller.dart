@@ -49,10 +49,7 @@ class OperatorSessionController extends Notifier<OperatorSessionState> {
     return const OperatorSessionState.signedOut();
   }
 
-  Future<void> login({
-    required String login,
-    required String password,
-  }) async {
+  Future<void> login({required String login, required String password}) async {
     if (state.isBusy) {
       return;
     }

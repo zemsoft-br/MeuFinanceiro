@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, NoReturn
+from typing import NoReturn
 from uuid import UUID, uuid4
 
 from sqlalchemy import Connection, Engine, case, func, select, update
@@ -551,7 +550,7 @@ class OperatorIdentityStore:
         installation_id: UUID,
         operator_id: UUID,
     ) -> PrimaryResidenceRecord | None:
-        row: Mapping[str, Any] | None = (
+        row = (
             connection.execute(
                 select(
                     household_memberships.c.installation_id,

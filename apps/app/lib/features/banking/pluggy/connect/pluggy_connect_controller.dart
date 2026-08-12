@@ -39,15 +39,15 @@ class PluggyConnectState {
   const PluggyConnectState.idle() : this._(phase: PluggyConnectPhase.idle);
 
   const PluggyConnectState.phase(PluggyConnectPhase phase)
-      : this._(phase: phase);
+    : this._(phase: phase);
 
   PluggyConnectState.connected(RegisteredPluggyConnection connection)
-      : this._(
-          phase: PluggyConnectPhase.connected,
-          connectionId: connection.connectionId,
-          connectionStatus: connection.status,
-          requiresUserAction: connection.requiresUserAction,
-        );
+    : this._(
+        phase: PluggyConnectPhase.connected,
+        connectionId: connection.connectionId,
+        connectionStatus: connection.status,
+        requiresUserAction: connection.requiresUserAction,
+      );
 
   final PluggyConnectPhase phase;
   final String? connectionId;
@@ -56,20 +56,20 @@ class PluggyConnectState {
   final int focusReturnRevision;
 
   bool get isBusy => switch (phase) {
-        PluggyConnectPhase.requestingToken ||
-        PluggyConnectPhase.loadingWidget ||
-        PluggyConnectPhase.widgetOpen ||
-        PluggyConnectPhase.registeringConnection => true,
-        _ => false,
-      };
+    PluggyConnectPhase.requestingToken ||
+    PluggyConnectPhase.loadingWidget ||
+    PluggyConnectPhase.widgetOpen ||
+    PluggyConnectPhase.registeringConnection => true,
+    _ => false,
+  };
 
   PluggyConnectState withFocusReturn(int revision) => PluggyConnectState._(
-        phase: phase,
-        connectionId: connectionId,
-        connectionStatus: connectionStatus,
-        requiresUserAction: requiresUserAction,
-        focusReturnRevision: revision,
-      );
+    phase: phase,
+    connectionId: connectionId,
+    connectionStatus: connectionStatus,
+    requiresUserAction: requiresUserAction,
+    focusReturnRevision: revision,
+  );
 
   @override
   String toString() => 'PluggyConnectState(${phase.name}, <local-result>)';
@@ -88,7 +88,7 @@ final pluggyConnectControllerProvider =
       PluggyConnectController.new,
     );
 
-class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
+class PluggyConnectController extends Notifier<PluggyConnectState> {
   int _generation = 0;
   int _focusReturnRevision = 0;
   bool _flowActive = false;
@@ -160,7 +160,9 @@ class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
       state = const PluggyConnectState.phase(PluggyConnectPhase.loadingWidget);
       final secret = token.take();
       try {
-        await ref.read(pluggyConnectLauncherProvider).launch(
+        await ref
+            .read(pluggyConnectLauncherProvider)
+            .launch(
               connectToken: secret,
               onCallback: (callback) {
                 _enqueueCallback(generation, callback);
@@ -200,19 +202,21 @@ class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
     if (!_isCurrent(generation)) {
       return;
     }
-    _callbackTail = _callbackTail.then((_) async {
-      if (_isCurrent(generation)) {
-        await _processCallback(generation, callback);
-      }
-    }).catchError((Object error, StackTrace stackTrace) {
-      if (_isCurrent(generation)) {
-        _flowActive = false;
-        _widgetOpen = false;
-        state = const PluggyConnectState.phase(
-          PluggyConnectPhase.genericFailure,
-        );
-      }
-    });
+    _callbackTail = _callbackTail
+        .then((_) async {
+          if (_isCurrent(generation)) {
+            await _processCallback(generation, callback);
+          }
+        })
+        .catchError((Object error, StackTrace stackTrace) {
+          if (_isCurrent(generation)) {
+            _flowActive = false;
+            _widgetOpen = false;
+            state = const PluggyConnectState.phase(
+              PluggyConnectPhase.genericFailure,
+            );
+          }
+        });
   }
 
   Future<void> _processCallback(
@@ -241,7 +245,9 @@ class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
         state = state.withFocusReturn(++_focusReturnRevision);
         return;
       case PluggyConnectCallbackType.errorWithoutItem:
-        state = const PluggyConnectState.phase(PluggyConnectPhase.genericFailure);
+        state = const PluggyConnectState.phase(
+          PluggyConnectPhase.genericFailure,
+        );
         return;
       case PluggyConnectCallbackType.invalidPayload:
         state = const PluggyConnectState.phase(
@@ -269,9 +275,9 @@ class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
       PluggyConnectPhase.registeringConnection,
     );
     try {
-      final connection = await ref.read(pluggyConnectApiProvider).registerItem(
-            itemId,
-          );
+      final connection = await ref
+          .read(pluggyConnectApiProvider)
+          .registerItem(itemId);
       if (!_isCurrent(generation)) {
         return;
       }
@@ -294,14 +300,10 @@ class PluggyConnectController extends AutoDisposeNotifier<PluggyConnectState> {
     }
   }
 
-  bool _isCurrent(int generation) =>
-      generation == _generation && _flowActive;
+  bool _isCurrent(int generation) => generation == _generation && _flowActive;
 }
 
-PluggyConnectPhase _phaseForFailure(
-  Object error, {
-  required bool registering,
-}) {
+PluggyConnectPhase _phaseForFailure(Object error, {required bool registering}) {
   if (error is FormatException) {
     return PluggyConnectPhase.invalidProviderResponse;
   }

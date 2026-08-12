@@ -77,12 +77,8 @@ def upgrade() -> None:
         "ON finance.account_opening_balances (residence_id, effective_date, account_id)"
     )
 
-    residence = (
-        "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
-    )
-    operator = (
-        "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
-    )
+    residence = "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
+    operator = "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
     active_membership = (
         "EXISTS (SELECT 1 FROM household.memberships m "
         "WHERE m.residence_id = account_opening_balances.residence_id "
@@ -104,12 +100,8 @@ def upgrade() -> None:
         f"AND a.owner_operator_id = {operator} AND a.status = 'ACTIVE')"
     )
 
-    op.execute(
-        "ALTER TABLE finance.account_opening_balances ENABLE ROW LEVEL SECURITY"
-    )
-    op.execute(
-        "ALTER TABLE finance.account_opening_balances FORCE ROW LEVEL SECURITY"
-    )
+    op.execute("ALTER TABLE finance.account_opening_balances ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE finance.account_opening_balances FORCE ROW LEVEL SECURITY")
     op.execute(
         "CREATE POLICY finance_opening_balances_select "
         "ON finance.account_opening_balances FOR SELECT USING ("
@@ -124,18 +116,13 @@ def upgrade() -> None:
         f"AND {active_membership} AND {owned_active_account})"
     )
 
-    op.execute(
-        f"GRANT SELECT, INSERT ON finance.account_opening_balances TO {role}"
-    )
+    op.execute(f"GRANT SELECT, INSERT ON finance.account_opening_balances TO {role}")
 
 
 def downgrade() -> None:
     role = _quoted_role()
-    op.execute(
-        f"REVOKE SELECT, INSERT ON finance.account_opening_balances FROM {role}"
-    )
+    op.execute(f"REVOKE SELECT, INSERT ON finance.account_opening_balances FROM {role}")
     op.execute("DROP TABLE finance.account_opening_balances")
     op.execute(
-        "ALTER TABLE finance.accounts "
-        "DROP CONSTRAINT uq_finance_accounts_opening_scope"
+        "ALTER TABLE finance.accounts DROP CONSTRAINT uq_finance_accounts_opening_scope"
     )

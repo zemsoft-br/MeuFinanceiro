@@ -31,7 +31,9 @@ class BankingConnectionsScreen extends ConsumerStatefulWidget {
 
 class _BankingConnectionsScreenState
     extends ConsumerState<BankingConnectionsScreen> {
-  final _headingFocusNode = FocusNode(debugLabel: 'banking-connections-heading');
+  final _headingFocusNode = FocusNode(
+    debugLabel: 'banking-connections-heading',
+  );
 
   @override
   void initState() {
@@ -41,9 +43,7 @@ class _BankingConnectionsScreenState
         return;
       }
       _headingFocusNode.requestFocus();
-      unawaited(
-        ref.read(bankingConnectionsControllerProvider.notifier).load(),
-      );
+      unawaited(ref.read(bankingConnectionsControllerProvider.notifier).load());
     });
   }
 
@@ -62,7 +62,8 @@ class _BankingConnectionsScreenState
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(bankingConnectionsControllerProvider);
-    final refreshEnabled = !state.isBusy &&
+    final refreshEnabled =
+        !state.isBusy &&
         state.phase != BankingConnectionsPhase.authenticationRequired &&
         state.phase != BankingConnectionsPhase.forbidden &&
         state.phase != BankingConnectionsPhase.primaryResidenceRequired;
@@ -126,9 +127,9 @@ class _Header extends StatelessWidget {
             children: [
               Text(
                 'Open Finance · Residência principal',
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: AppTokens.forest700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
               ),
               const SizedBox(height: AppTokens.space8),
               Focus(
@@ -145,9 +146,9 @@ class _Header extends StatelessWidget {
               const SizedBox(height: AppTokens.space8),
               Text(
                 'Conexões registradas localmente. Esta tela não consulta instituições financeiras diretamente.',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: AppTokens.neutral700,
-                    ),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
               ),
             ],
           ),
@@ -250,10 +251,7 @@ class _Content extends StatelessWidget {
     }
 
     final presentation = _failurePresentation(state.phase);
-    return _FailurePanel(
-      presentation: presentation,
-      onRetry: onRetry,
-    );
+    return _FailurePanel(presentation: presentation, onRetry: onRetry);
   }
 }
 
@@ -317,9 +315,9 @@ class _EmptyPanel extends StatelessWidget {
             const SizedBox(height: AppTokens.space8),
             Text(
               'Você pode continuar usando o MeuFinanceiro normalmente ou iniciar uma conexão opcional pelo ambiente da Pluggy.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTokens.neutral700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
             const SizedBox(height: AppTokens.space20),
             FilledButton.icon(
@@ -402,8 +400,8 @@ class _ConnectionCard extends StatelessWidget {
                     Text(
                       'Conexão registrada no MeuFinanceiro',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AppTokens.neutral600,
-                          ),
+                        color: AppTokens.neutral600,
+                      ),
                     ),
                   ],
                 ),
@@ -499,9 +497,9 @@ class _Metadata extends StatelessWidget {
           const SizedBox(height: AppTokens.space4),
           Text(
             value,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppTokens.neutral700,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
           ),
         ],
       ),
@@ -536,9 +534,9 @@ class _StatusBadge extends StatelessWidget {
             Icon(presentation.icon, size: 18, color: presentation.foreground),
             Text(
               presentation.label,
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: presentation.foreground,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.labelLarge?.copyWith(color: presentation.foreground),
             ),
           ],
         ),
@@ -595,40 +593,40 @@ class _FailurePanel extends StatelessWidget {
 _StatusPresentation _statusPresentation(BankingConnectionStatus status) {
   return switch (status) {
     BankingConnectionStatus.available => const _StatusPresentation(
-        label: 'Disponível',
-        icon: Icons.check_circle_outline_rounded,
-        background: AppTokens.forest50,
-        border: AppTokens.forest100,
-        foreground: AppTokens.forest700,
-      ),
+      label: 'Disponível',
+      icon: Icons.check_circle_outline_rounded,
+      background: AppTokens.forest50,
+      border: AppTokens.forest100,
+      foreground: AppTokens.forest700,
+    ),
     BankingConnectionStatus.pendingUserAction => const _StatusPresentation(
-        label: 'Aguardando ação',
-        icon: Icons.pending_actions_outlined,
-        background: AppTokens.amber50,
-        border: AppTokens.amber100,
-        foreground: AppTokens.amber700,
-      ),
+      label: 'Aguardando ação',
+      icon: Icons.pending_actions_outlined,
+      background: AppTokens.amber50,
+      border: AppTokens.amber100,
+      foreground: AppTokens.amber700,
+    ),
     BankingConnectionStatus.syncRequested => const _StatusPresentation(
-        label: 'Sincronização solicitada',
-        icon: Icons.schedule_rounded,
-        background: AppTokens.blue50,
-        border: AppTokens.blue100,
-        foreground: AppTokens.blue700,
-      ),
+      label: 'Sincronização solicitada',
+      icon: Icons.schedule_rounded,
+      background: AppTokens.blue50,
+      border: AppTokens.blue100,
+      foreground: AppTokens.blue700,
+    ),
     BankingConnectionStatus.syncing => const _StatusPresentation(
-        label: 'Sincronizando',
-        icon: Icons.sync_rounded,
-        background: AppTokens.blue50,
-        border: AppTokens.blue100,
-        foreground: AppTokens.blue700,
-      ),
+      label: 'Sincronizando',
+      icon: Icons.sync_rounded,
+      background: AppTokens.blue50,
+      border: AppTokens.blue100,
+      foreground: AppTokens.blue700,
+    ),
     BankingConnectionStatus.partial => const _StatusPresentation(
-        label: 'Disponibilidade parcial',
-        icon: Icons.info_outline_rounded,
-        background: AppTokens.amber50,
-        border: AppTokens.amber100,
-        foreground: AppTokens.amber700,
-      ),
+      label: 'Disponibilidade parcial',
+      icon: Icons.info_outline_rounded,
+      background: AppTokens.amber50,
+      border: AppTokens.amber100,
+      foreground: AppTokens.amber700,
+    ),
     BankingConnectionStatus.reauthenticationRequired =>
       const _StatusPresentation(
         label: 'Reautenticação necessária',
@@ -637,64 +635,67 @@ _StatusPresentation _statusPresentation(BankingConnectionStatus status) {
         border: AppTokens.amber100,
         foreground: AppTokens.amber700,
       ),
-    BankingConnectionStatus.temporarilyUnavailable =>
-      const _StatusPresentation(
-        label: 'Temporariamente indisponível',
-        icon: Icons.cloud_off_outlined,
-        background: AppTokens.amber50,
-        border: AppTokens.amber100,
-        foreground: AppTokens.amber700,
-      ),
+    BankingConnectionStatus.temporarilyUnavailable => const _StatusPresentation(
+      label: 'Temporariamente indisponível',
+      icon: Icons.cloud_off_outlined,
+      background: AppTokens.amber50,
+      border: AppTokens.amber100,
+      foreground: AppTokens.amber700,
+    ),
     BankingConnectionStatus.rateLimited => const _StatusPresentation(
-        label: 'Aguardando nova tentativa',
-        icon: Icons.hourglass_bottom_rounded,
-        background: AppTokens.amber50,
-        border: AppTokens.amber100,
-        foreground: AppTokens.amber700,
-      ),
+      label: 'Aguardando nova tentativa',
+      icon: Icons.hourglass_bottom_rounded,
+      background: AppTokens.amber50,
+      border: AppTokens.amber100,
+      foreground: AppTokens.amber700,
+    ),
     BankingConnectionStatus.disconnected => const _StatusPresentation(
-        label: 'Desconectada',
-        icon: Icons.link_off_rounded,
-        background: AppTokens.neutral50,
-        border: AppTokens.neutral200,
-        foreground: AppTokens.neutral700,
-      ),
+      label: 'Desconectada',
+      icon: Icons.link_off_rounded,
+      background: AppTokens.neutral50,
+      border: AppTokens.neutral200,
+      foreground: AppTokens.neutral700,
+    ),
     BankingConnectionStatus.failed => const _StatusPresentation(
-        label: 'Falha registrada',
-        icon: Icons.error_outline_rounded,
-        background: AppTokens.red50,
-        border: AppTokens.red100,
-        foreground: AppTokens.red700,
-      ),
+      label: 'Falha registrada',
+      icon: Icons.error_outline_rounded,
+      background: AppTokens.red50,
+      border: AppTokens.red100,
+      foreground: AppTokens.red700,
+    ),
   };
 }
 
 _FailurePresentation _failurePresentation(BankingConnectionsPhase phase) {
   return switch (phase) {
     BankingConnectionsPhase.authenticationRequired => const _FailurePresentation(
-        title: 'Sessão necessária',
-        message: 'Sua sessão expirou ou foi encerrada. Entre novamente para ver as conexões locais.',
-        retryable: false,
-      ),
+      title: 'Sessão necessária',
+      message:
+          'Sua sessão expirou ou foi encerrada. Entre novamente para ver as conexões locais.',
+      retryable: false,
+    ),
     BankingConnectionsPhase.forbidden => const _FailurePresentation(
-        title: 'Acesso não autorizado',
-        message: 'Sua sessão não possui autorização para consultar estas conexões.',
-        retryable: false,
-      ),
+      title: 'Acesso não autorizado',
+      message:
+          'Sua sessão não possui autorização para consultar estas conexões.',
+      retryable: false,
+    ),
     BankingConnectionsPhase.primaryResidenceRequired =>
       const _FailurePresentation(
         title: 'Residência principal necessária',
-        message: 'Defina uma residência principal antes de consultar as conexões bancárias.',
+        message:
+            'Defina uma residência principal antes de consultar as conexões bancárias.',
         retryable: false,
       ),
     BankingConnectionsPhase.invalidResponse => const _FailurePresentation(
-        title: 'Resposta incompatível',
-        message: 'A lista recebida não pôde ser validada com segurança.',
-      ),
+      title: 'Resposta incompatível',
+      message: 'A lista recebida não pôde ser validada com segurança.',
+    ),
     _ => const _FailurePresentation(
-        title: 'Lista temporariamente indisponível',
-        message: 'Não foi possível consultar as conexões locais agora. Nenhuma tentativa automática será feita.',
-      ),
+      title: 'Lista temporariamente indisponível',
+      message:
+          'Não foi possível consultar as conexões locais agora. Nenhuma tentativa automática será feita.',
+    ),
   };
 }
 
