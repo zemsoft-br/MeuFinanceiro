@@ -146,7 +146,7 @@ class BankingTransactionObservationStoreMixin:
                         ),
                         updated_at=func.transaction_timestamp(),
                     )
-                    result = connection.execute(
+                    applied_id = connection.scalar(
                         statement.on_conflict_do_update(
                             index_elements=[
                                 external_observations.c.connection_id,
@@ -178,9 +178,9 @@ class BankingTransactionObservationStoreMixin:
                                 external_observations.c.last_seen_at
                                 < observation.observed_at
                             ),
-                        )
+                        ).returning(external_observations.c.id)
                     )
-                    if result.rowcount and result.rowcount > 0:
+                    if applied_id is not None:
                         records_applied += 1
 
                 _commit_cursor(

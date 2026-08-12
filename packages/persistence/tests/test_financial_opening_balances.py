@@ -345,7 +345,11 @@ def test_archived_account_rejects_new_opening_balance(
         connection.execute(
             update(financial_accounts)
             .where(financial_accounts.c.id == account_id)
-            .values(status="ARCHIVED", archived_at=NOW, updated_at=NOW)
+            .values(
+                status="ARCHIVED",
+                archived_at=func.transaction_timestamp(),
+                updated_at=func.transaction_timestamp(),
+            )
         )
 
     with pytest.raises(FinancialOpeningBalanceAccountNotFoundError):
