@@ -39,7 +39,9 @@ def _sync_result(
     )
 
 
-def _reconciliation_result(*, has_more: bool = False) -> TransactionReconciliationResult:
+def _reconciliation_result(
+    *, has_more: bool = False
+) -> TransactionReconciliationResult:
     return TransactionReconciliationResult(
         observations_seen=3,
         identities_created=1,
@@ -221,7 +223,9 @@ def test_custom_reconciliation_limit_is_forwarded_once() -> None:
 
 
 @pytest.mark.parametrize("value", (0, -1, 1001))
-def test_reconciliation_limit_rejects_values_outside_supported_range(value: int) -> None:
+def test_reconciliation_limit_rejects_values_outside_supported_range(
+    value: int,
+) -> None:
     sync_runner = FakeSyncRunner(())
     store = FakeReconciliationStore(())
 
@@ -246,7 +250,9 @@ def test_reconciliation_limit_rejects_non_integer_values(value: object) -> None:
         )
 
 
-def test_reconciliation_failure_is_sanitized_and_terminal_sync_can_be_replayed() -> None:
+def test_reconciliation_failure_is_sanitized_and_terminal_sync_can_be_replayed() -> (
+    None
+):
     completed = _sync_result(
         status=StoredSyncStatus.SUCCEEDED,
         stop_reason=ManualSyncStopReason.COMPLETED,

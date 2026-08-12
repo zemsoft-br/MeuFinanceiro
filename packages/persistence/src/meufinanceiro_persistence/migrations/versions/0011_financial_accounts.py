@@ -153,12 +153,8 @@ def upgrade() -> None:
         "ON finance.account_grants (residence_id, owner_operator_id, account_id)"
     )
 
-    residence = (
-        "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
-    )
-    operator = (
-        "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
-    )
+    residence = "NULLIF(current_setting('app.current_residence_id', true), '')::uuid"
+    operator = "NULLIF(current_setting('app.current_operator_id', true), '')::uuid"
     grant_membership = (
         "EXISTS (SELECT 1 FROM household.memberships m "
         "WHERE m.residence_id = account_grants.residence_id "
@@ -216,6 +212,9 @@ def downgrade() -> None:
     op.execute(f"REVOKE SELECT ON finance.account_grants FROM {role}")
     op.execute(f"REVOKE SELECT, INSERT ON finance.accounts FROM {role}")
     op.execute(f"REVOKE USAGE ON SCHEMA finance FROM {role}")
+    op.execute("DROP POLICY finance_accounts_select ON finance.accounts")
+    op.execute("DROP POLICY finance_accounts_insert ON finance.accounts")
+    op.execute("DROP POLICY finance_account_grants_select ON finance.account_grants")
     op.execute("DROP TABLE finance.account_grants")
     op.execute("DROP TABLE finance.accounts")
     op.execute("DROP SCHEMA finance")

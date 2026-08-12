@@ -39,12 +39,12 @@ from meufinanceiro_persistence.banking_models import (
     require_aware,
     validate_sync_completion,
 )
-from meufinanceiro_persistence.schema import (
-    connections,
+from meufinanceiro_persistence.banking_sync_schema import (
     external_accounts,
     sync_cursors,
     sync_runs,
 )
+from meufinanceiro_persistence.schema import connections
 
 _SYNC_RUN_COLUMNS = (
     sync_runs.c.id,
@@ -388,12 +388,9 @@ class BankingManualSyncStoreMixin:
                                 "last_seen_at": snapshot.observed_at,
                                 "updated_at": func.transaction_timestamp(),
                             },
-                            where=(
-                                external_accounts.c.residence_id == residence_id
-                            )
+                            where=(external_accounts.c.residence_id == residence_id)
                             & (
-                                external_accounts.c.last_seen_at
-                                <= snapshot.observed_at
+                                external_accounts.c.last_seen_at <= snapshot.observed_at
                             ),
                         )
                     )

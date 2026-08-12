@@ -31,7 +31,11 @@ from meufinanceiro_persistence.banking_observation_models import (
     TransactionObservationSnapshot,
 )
 from meufinanceiro_persistence.banking_observation_schema import external_observations
-from meufinanceiro_persistence.schema import connections, external_accounts, sync_cursors
+from meufinanceiro_persistence.banking_sync_schema import (
+    external_accounts,
+    sync_cursors,
+)
+from meufinanceiro_persistence.schema import connections
 
 
 class BankingTransactionObservationStoreMixin:
@@ -142,7 +146,7 @@ class BankingTransactionObservationStoreMixin:
                         ),
                         updated_at=func.transaction_timestamp(),
                     )
-                    result = connection.execute(
+                    applied_id = connection.scalar(
                         statement.on_conflict_do_update(
                             index_elements=[
                                 external_observations.c.connection_id,
@@ -169,17 +173,14 @@ class BankingTransactionObservationStoreMixin:
                                 ),
                                 "updated_at": func.transaction_timestamp(),
                             },
-                            where=(
-                                external_observations.c.residence_id
-                                == residence_id
-                            )
+                            where=(external_observations.c.residence_id == residence_id)
                             & (
                                 external_observations.c.last_seen_at
                                 < observation.observed_at
                             ),
-                        )
+                        ).returning(external_observations.c.id)
                     )
-                    if result.rowcount and result.rowcount > 0:
+                    if applied_id is not None:
                         records_applied += 1
 
                 _commit_cursor(
@@ -311,8 +312,7 @@ def _require_cycle_progress(
                         == sync_cycles.c.connection_id
                     )
                     & (
-                        sync_cycle_accounts.c.residence_id
-                        == sync_cycles.c.residence_id
+                        sync_cycle_accounts.c.residence_id == sync_cycles.c.residence_id
                     ),
                 ).join(
                     external_accounts,
@@ -476,7 +476,9 @@ def _commit_cursor(
         previous_committed_at = existing["committed_at"]
         if previous_committed_at >= committed_at:
             raise SyncConflictError("banking sync cursor commit is inconsistent")
-        connection.execute(delete(sync_cursors).where(sync_cursors.c.id == existing["id"]))
+        connection.execute(
+            delete(sync_cursors).where(sync_cursors.c.id == existing["id"])
+        )
         return
 
     if existing is None:

@@ -231,13 +231,13 @@ def test_reauthentication_openapi_has_only_local_connection_path_parameter(
     test_client, _, _ = client
     schema = test_client.get("/api/v1/openapi.json").json()
     template = (
-        "/api/v1/banking/pluggy/connections/{connection_id}/"
-        "reauthentication-token"
+        "/api/v1/banking/pluggy/connections/{connection_id}/reauthentication-token"
     )
     operation = schema["paths"][template]["post"]
 
     assert "requestBody" not in operation
-    assert [parameter["name"] for parameter in operation["parameters"]] == [
-        "connection_id"
-    ]
-    assert operation["parameters"][0]["in"] == "path"
+    parameters = {(item["name"], item["in"]) for item in operation["parameters"]}
+    assert parameters == {
+        ("connection_id", "path"),
+        ("Authorization", "header"),
+    }

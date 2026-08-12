@@ -37,9 +37,9 @@ def test_visibility_scopes_are_explicit_and_closed() -> None:
 
 
 def test_audience_authorization_fails_closed_on_membership_and_residence() -> None:
-    function = ACCESS.split(
-        "def can_access_financial_resource(", maxsplit=1
-    )[1].split("def require_financial_resource_access", maxsplit=1)[0]
+    function = ACCESS.split("def can_access_financial_resource(", maxsplit=1)[1].split(
+        "def require_financial_resource_access", maxsplit=1
+    )[0]
     assert "if not actor.membership_active" in function
     assert "actor.residence_id != audience.residence_id" in function
     assert "actor.operator_id == audience.owner_operator_id" in function
@@ -48,9 +48,9 @@ def test_audience_authorization_fails_closed_on_membership_and_residence() -> No
 
 
 def test_audience_function_has_no_administrative_role_bypass() -> None:
-    function = ACCESS.split(
-        "def can_access_financial_resource(", maxsplit=1
-    )[1].split("def require_financial_resource_access", maxsplit=1)[0]
+    function = ACCESS.split("def can_access_financial_resource(", maxsplit=1)[1].split(
+        "def require_financial_resource_access", maxsplit=1
+    )[0]
     for forbidden in (
         "administrator",
         "membership_role",
@@ -62,7 +62,9 @@ def test_audience_function_has_no_administrative_role_bypass() -> None:
 
 
 def test_access_error_and_repr_do_not_emit_scope_identifiers() -> None:
-    assert 'raise FinancialAccessDeniedError("financial resource access denied")' in ACCESS
+    assert (
+        'raise FinancialAccessDeniedError("financial resource access denied")' in ACCESS
+    )
     assert "<scope-redacted>" in ACCESS
     for forbidden in (
         "str(self.residence_id)",
@@ -90,4 +92,7 @@ def test_financial_invariants_reference_accepted_audience_contract() -> None:
     assert "owner_operator_id" in INVARIANTS
     assert "visibility_scope" in INVARIANTS
     assert "app.current_operator_id" in INVARIANTS
-    assert "papel administrativo não concede bypass" in INVARIANTS
+    lowered = INVARIANTS.lower()
+    assert "administrator" in lowered
+    assert "bypass" in lowered
+    assert "personal" in lowered

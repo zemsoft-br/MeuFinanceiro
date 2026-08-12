@@ -45,7 +45,9 @@ class FinancialAccountDraft:
     custom_type_name: str | None = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "name", _clean_text(self.name, "name", _NAME_MAX_LENGTH))
+        object.__setattr__(
+            self, "name", _clean_text(self.name, "name", _NAME_MAX_LENGTH)
+        )
         object.__setattr__(self, "currency", validate_currency_code(self.currency))
         if not isinstance(self.account_type, FinancialAccountType):
             raise TypeError("account_type must be FinancialAccountType")
@@ -100,7 +102,9 @@ class FinancialAccountRecord:
             raise TypeError("account_type must be FinancialAccountType")
         if not isinstance(self.status, FinancialAccountStatus):
             raise TypeError("status must be FinancialAccountStatus")
-        object.__setattr__(self, "name", _clean_text(self.name, "name", _NAME_MAX_LENGTH))
+        object.__setattr__(
+            self, "name", _clean_text(self.name, "name", _NAME_MAX_LENGTH)
+        )
         object.__setattr__(self, "currency", validate_currency_code(self.currency))
         custom_type_name = _clean_optional_text(
             self.custom_type_name,

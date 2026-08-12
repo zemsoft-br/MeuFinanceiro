@@ -14,6 +14,11 @@ from meufinanceiro_finance.accounts import (
     FinancialAccountStatus,
     FinancialAccountType,
 )
+from meufinanceiro_finance.categories import (
+    FinancialCategoryDraft,
+    FinancialCategoryRecord,
+    FinancialCategoryStatus,
+)
 from meufinanceiro_finance.ids import (
     new_financial_resource_id,
     validate_financial_resource_id,
@@ -48,6 +53,9 @@ __all__ = [
     "FinancialAccountStatus",
     "FinancialAccountType",
     "FinancialActorContext",
+    "FinancialCategoryDraft",
+    "FinancialCategoryRecord",
+    "FinancialCategoryStatus",
     "FinancialMovementDraft",
     "FinancialMovementRecord",
     "FinancialMovementReversalDraft",
