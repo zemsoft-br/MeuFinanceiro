@@ -47,7 +47,10 @@ void main() {
     final launcher = FakePluggyConnectLauncher();
     await _pumpScreen(tester, launcher: launcher);
 
-    await tester.tap(find.byKey(PluggyReauthenticationScreen.actionButtonKey));
+    final action = find.byKey(PluggyReauthenticationScreen.actionButtonKey);
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    await tester.tap(action);
     await tester.pump();
     expect(launcher.calls, hasLength(1));
     expect(launcher.calls.single.updateItem, _itemId);
@@ -77,7 +80,10 @@ void main() {
     final launcher = FakePluggyConnectLauncher();
     await _pumpScreen(tester, launcher: launcher);
 
-    await tester.tap(find.byKey(PluggyReauthenticationScreen.actionButtonKey));
+    final action = find.byKey(PluggyReauthenticationScreen.actionButtonKey);
+    await tester.ensureVisible(action);
+    await tester.pumpAndSettle();
+    await tester.tap(action);
     await tester.pump();
     launcher.emit(const PluggyConnectCallback.opened());
     launcher.emit(const PluggyConnectCallback.itemAvailable(_itemId));

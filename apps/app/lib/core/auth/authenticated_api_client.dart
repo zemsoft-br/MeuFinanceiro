@@ -124,7 +124,9 @@ class AuthenticatedApiClient {
   }
 
   Uri _resolveRelativePath(String relativePath) {
+    final rawPathSegments = relativePath.split('/');
     if (relativePath.isEmpty ||
+        rawPathSegments.any((segment) => segment == '.' || segment == '..') ||
         relativePath.contains('\\') ||
         relativePath.codeUnits.any((unit) => unit < 32 || unit == 127)) {
       throw const FormatException('API path must be relative.');
