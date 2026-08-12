@@ -135,7 +135,7 @@ class _PluggyReauthenticationScreenState
             ),
           ),
           const SizedBox(height: AppTokens.space24),
-          _StatusPanel(state: state, prerequisite: prerequisite),
+          _StatusPanel(state: state),
           const SizedBox(height: AppTokens.space24),
           const _PrivacyPanel(),
         ],
@@ -253,17 +253,24 @@ class _ActionPanel extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AppTokens.space20),
-            FilledButton.icon(
+            FilledButton(
               key: PluggyReauthenticationScreen.actionButtonKey,
               focusNode: focusNode,
               onPressed: canStart ? onStart : null,
-              icon: state.isBusy
-                  ? const SizedBox.square(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (state.isBusy)
+                    const SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.sync_lock_rounded),
-              label: Text(label),
+                  else
+                    const Icon(Icons.sync_lock_rounded),
+                  const SizedBox(width: AppTokens.space8),
+                  Flexible(child: Text(label, textAlign: TextAlign.center)),
+                ],
+              ),
             ),
           ],
         ),
@@ -273,14 +280,13 @@ class _ActionPanel extends StatelessWidget {
 }
 
 class _StatusPanel extends StatelessWidget {
-  const _StatusPanel({required this.state, required this.prerequisite});
+  const _StatusPanel({required this.state});
 
   final PluggyReauthenticationState state;
-  final String? prerequisite;
 
   @override
   Widget build(BuildContext context) {
-    final presentation = _statusPresentation(state, prerequisite);
+    final presentation = _statusPresentation(state);
     if (presentation == null) {
       return const SizedBox.shrink();
     }
@@ -394,15 +400,17 @@ class _SecurityChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppTokens.radiusSmall),
         border: Border.all(color: AppTokens.forest100),
       ),
-      child: const Row(
-        mainAxisSize: MainAxisSize.min,
+      child: const Wrap(
+        alignment: WrapAlignment.center,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: AppTokens.space8,
+        runSpacing: AppTokens.space4,
         children: [
           Icon(
             Icons.verified_user_outlined,
             size: 18,
             color: AppTokens.forest700,
           ),
-          SizedBox(width: AppTokens.space8),
           Text('Conexão verificada'),
         ],
       ),
@@ -450,19 +458,9 @@ String? _prerequisiteMessage({
   return null;
 }
 
-_StatusPresentation? _statusPresentation(
-  PluggyReauthenticationState state,
-  String? prerequisite,
-) {
+_StatusPresentation? _statusPresentation(PluggyReauthenticationState state) {
   if (state.phase == PluggyReauthenticationPhase.idle) {
-    if (prerequisite == null) {
-      return null;
-    }
-    return _StatusPresentation(
-      message: prerequisite,
-      icon: Icons.info_outline_rounded,
-      isError: true,
-    );
+    return null;
   }
   return switch (state.phase) {
     PluggyReauthenticationPhase.requestingToken => const _StatusPresentation(
