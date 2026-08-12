@@ -17,7 +17,8 @@ class PluggyConnectScreen extends ConsumerStatefulWidget {
   static const localConnectionKey = Key('pluggy-local-connection');
 
   @override
-  ConsumerState<PluggyConnectScreen> createState() => _PluggyConnectScreenState();
+  ConsumerState<PluggyConnectScreen> createState() =>
+      _PluggyConnectScreenState();
 }
 
 class _PluggyConnectScreenState extends ConsumerState<PluggyConnectScreen> {
@@ -147,9 +148,9 @@ class _Intro extends StatelessWidget {
       children: [
         Text(
           'Integrações · Conexão bancária',
-          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: AppTokens.forest700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
         ),
         const SizedBox(height: AppTokens.space12),
         Semantics(
@@ -163,9 +164,9 @@ class _Intro extends StatelessWidget {
         const SizedBox(height: AppTokens.space16),
         Text(
           'A conexão é opcional. Ao continuar, o ambiente seguro da Pluggy será aberto para você escolher a instituição e concluir a autorização.',
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                color: AppTokens.neutral700,
-              ),
+          style: Theme.of(
+            context,
+          ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
         ),
         const SizedBox(height: AppTokens.space20),
         const _FeatureLine(
@@ -180,7 +181,8 @@ class _Intro extends StatelessWidget {
         const SizedBox(height: AppTokens.space12),
         const _FeatureLine(
           icon: Icons.account_balance_wallet_outlined,
-          text: 'Você pode continuar usando o MeuFinanceiro sem conectar um banco.',
+          text:
+              'Você pode continuar usando o MeuFinanceiro sem conectar um banco.',
         ),
       ],
     );
@@ -240,10 +242,10 @@ class _ActionPanel extends StatelessWidget {
               prerequisite ??
                   'O MeuFinanceiro solicitará um acesso temporário ao backend e abrirá a Pluggy somente após sua ação.',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: prerequisite == null
-                        ? AppTokens.neutral700
-                        : AppTokens.red700,
-                  ),
+                color: prerequisite == null
+                    ? AppTokens.neutral700
+                    : AppTokens.red700,
+              ),
             ),
             const SizedBox(height: AppTokens.space20),
             FilledButton.icon(
@@ -376,9 +378,9 @@ class _PrivacyPanel extends StatelessWidget {
             const SizedBox(height: AppTokens.space12),
             Text(
               'O retorno do widget não autoriza nada sozinho. O backend confere a conexão diretamente na Pluggy e associa somente o identificador local à residência autenticada.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTokens.neutral700,
-                  ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
           ],
         ),
@@ -475,78 +477,82 @@ _StatusPresentation? _statusPresentation(
 
   return switch (state.phase) {
     PluggyConnectPhase.requestingToken => const _StatusPresentation(
-        message: 'Preparando um acesso temporário para abrir a Pluggy.',
-        icon: Icons.hourglass_top_rounded,
-      ),
+      message: 'Preparando um acesso temporário para abrir a Pluggy.',
+      icon: Icons.hourglass_top_rounded,
+    ),
     PluggyConnectPhase.loadingWidget => const _StatusPresentation(
-        message: 'Carregando o ambiente de conexão da Pluggy.',
-        icon: Icons.cloud_download_outlined,
-      ),
+      message: 'Carregando o ambiente de conexão da Pluggy.',
+      icon: Icons.cloud_download_outlined,
+    ),
     PluggyConnectPhase.widgetOpen => const _StatusPresentation(
-        message: 'Conexão em andamento no ambiente da Pluggy.',
-        icon: Icons.open_in_new_rounded,
-      ),
+      message: 'Conexão em andamento no ambiente da Pluggy.',
+      icon: Icons.open_in_new_rounded,
+    ),
     PluggyConnectPhase.registeringConnection => const _StatusPresentation(
-        message: 'Validando a conexão no backend do MeuFinanceiro.',
-        icon: Icons.verified_outlined,
-      ),
+      message: 'Validando a conexão no backend do MeuFinanceiro.',
+      icon: Icons.verified_outlined,
+    ),
     PluggyConnectPhase.connected => _StatusPresentation(
-        message: state.requiresUserAction
-            ? 'Conexão registrada. A instituição ainda sinaliza uma ação ou autorização pendente.'
-            : 'Instituição conectada e validada pelo MeuFinanceiro.',
-        icon: state.requiresUserAction
-            ? Icons.pending_actions_outlined
-            : Icons.check_circle_outline_rounded,
-      ),
+      message: state.requiresUserAction
+          ? 'Conexão registrada. A instituição ainda sinaliza uma ação ou autorização pendente.'
+          : 'Instituição conectada e validada pelo MeuFinanceiro.',
+      icon: state.requiresUserAction
+          ? Icons.pending_actions_outlined
+          : Icons.check_circle_outline_rounded,
+    ),
     PluggyConnectPhase.userCancelled => const _StatusPresentation(
-        message: 'Conexão cancelada. Nenhuma nova conexão foi registrada.',
-        icon: Icons.cancel_outlined,
-      ),
+      message: 'Conexão cancelada. Nenhuma nova conexão foi registrada.',
+      icon: Icons.cancel_outlined,
+    ),
     PluggyConnectPhase.authenticationRequired => const _StatusPresentation(
-        message: 'Sua sessão expirou ou foi encerrada. Entre novamente.',
-        icon: Icons.lock_outline_rounded,
-        isError: true,
-      ),
+      message: 'Sua sessão expirou ou foi encerrada. Entre novamente.',
+      icon: Icons.lock_outline_rounded,
+      isError: true,
+    ),
     PluggyConnectPhase.primaryResidenceRequired => const _StatusPresentation(
-        message: 'Uma residência principal é necessária para conectar um banco.',
-        icon: Icons.home_outlined,
-        isError: true,
-      ),
+      message: 'Uma residência principal é necessária para conectar um banco.',
+      icon: Icons.home_outlined,
+      isError: true,
+    ),
     PluggyConnectPhase.demoUnavailable => const _StatusPresentation(
-        message: 'Integrações externas não são executadas no modo demonstração.',
-        icon: Icons.science_outlined,
-        isError: true,
-      ),
+      message: 'Integrações externas não são executadas no modo demonstração.',
+      icon: Icons.science_outlined,
+      isError: true,
+    ),
     PluggyConnectPhase.providerUnavailable => const _StatusPresentation(
-        message: 'A integração Pluggy não está disponível nesta instalação.',
-        icon: Icons.link_off_rounded,
-        isError: true,
-      ),
+      message: 'A integração Pluggy não está disponível nesta instalação.',
+      icon: Icons.link_off_rounded,
+      isError: true,
+    ),
     PluggyConnectPhase.configurationRequired => const _StatusPresentation(
-        message: 'A integração Pluggy precisa ser configurada e habilitada no backend.',
-        icon: Icons.settings_outlined,
-        isError: true,
-      ),
+      message:
+          'A integração Pluggy precisa ser configurada e habilitada no backend.',
+      icon: Icons.settings_outlined,
+      isError: true,
+    ),
     PluggyConnectPhase.temporarilyUnavailable => const _StatusPresentation(
-        message: 'A conexão online está temporariamente indisponível. Tente novamente quando houver internet.',
-        icon: Icons.cloud_off_outlined,
-        isError: true,
-      ),
+      message:
+          'A conexão online está temporariamente indisponível. Tente novamente quando houver internet.',
+      icon: Icons.cloud_off_outlined,
+      isError: true,
+    ),
     PluggyConnectPhase.connectionConflict => const _StatusPresentation(
-        message: 'Não foi possível associar esta conexão à residência autenticada.',
-        icon: Icons.warning_amber_rounded,
-        isError: true,
-      ),
+      message:
+          'Não foi possível associar esta conexão à residência autenticada.',
+      icon: Icons.warning_amber_rounded,
+      isError: true,
+    ),
     PluggyConnectPhase.invalidProviderResponse => const _StatusPresentation(
-        message: 'A resposta da integração não pôde ser validada com segurança.',
-        icon: Icons.gpp_bad_outlined,
-        isError: true,
-      ),
+      message: 'A resposta da integração não pôde ser validada com segurança.',
+      icon: Icons.gpp_bad_outlined,
+      isError: true,
+    ),
     PluggyConnectPhase.genericFailure => const _StatusPresentation(
-        message: 'Não foi possível concluir a conexão. Nenhum dado sensível foi mantido para retry.',
-        icon: Icons.error_outline_rounded,
-        isError: true,
-      ),
+      message:
+          'Não foi possível concluir a conexão. Nenhum dado sensível foi mantido para retry.',
+      icon: Icons.error_outline_rounded,
+      isError: true,
+    ),
     PluggyConnectPhase.idle => null,
   };
 }

@@ -16,43 +16,46 @@ const _connectionId = '30000000-0000-4000-8000-000000000003';
 const _itemId = 'synthetic-existing-item';
 
 void main() {
-  test('opens update mode once and re-registers only the verified callback item', () async {
-    final launcher = FakePluggyConnectLauncher();
-    final transport = _happyTransport();
-    final container = _container(transport, launcher: launcher);
-    addTearDown(container.dispose);
-    await _login(container);
+  test(
+    'opens update mode once and re-registers only the verified callback item',
+    () async {
+      final launcher = FakePluggyConnectLauncher();
+      final transport = _happyTransport();
+      final container = _container(transport, launcher: launcher);
+      addTearDown(container.dispose);
+      await _login(container);
 
-    final controller = container.read(
-      pluggyReauthenticationControllerProvider.notifier,
-    );
-    await controller.start(_connectionId);
-    await controller.start(_connectionId);
+      final controller = container.read(
+        pluggyReauthenticationControllerProvider.notifier,
+      );
+      await controller.start(_connectionId);
+      await controller.start(_connectionId);
 
-    expect(launcher.calls, hasLength(1));
-    expect(launcher.calls.single.connectToken, _connectToken);
-    expect(launcher.calls.single.updateItem, _itemId);
-    expect(launcher.calls.single.toString(), isNot(contains(_connectToken)));
-    expect(launcher.calls.single.toString(), isNot(contains(_itemId)));
-    expect(
-      container.read(pluggyReauthenticationControllerProvider).toString(),
-      isNot(contains(_itemId)),
-    );
+      expect(launcher.calls, hasLength(1));
+      expect(launcher.calls.single.connectToken, _connectToken);
+      expect(launcher.calls.single.updateItem, _itemId);
+      expect(launcher.calls.single.toString(), isNot(contains(_connectToken)));
+      expect(launcher.calls.single.toString(), isNot(contains(_itemId)));
+      expect(
+        container.read(pluggyReauthenticationControllerProvider).toString(),
+        isNot(contains(_itemId)),
+      );
 
-    launcher.emit(const PluggyConnectCallback.opened());
-    launcher.emit(const PluggyConnectCallback.itemAvailable(_itemId));
-    await _flush();
+      launcher.emit(const PluggyConnectCallback.opened());
+      launcher.emit(const PluggyConnectCallback.itemAvailable(_itemId));
+      await _flush();
 
-    final state = container.read(pluggyReauthenticationControllerProvider);
-    expect(state.phase, PluggyReauthenticationPhase.updated);
-    expect(state.connectionId, _connectionId);
+      final state = container.read(pluggyReauthenticationControllerProvider);
+      expect(state.phase, PluggyReauthenticationPhase.updated);
+      expect(state.connectionId, _connectionId);
 
-    final registrations = transport.calls.where(
-      (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
-    );
-    expect(registrations, hasLength(1));
-    expect(registrations.single.body, '{"itemId":"$_itemId"}');
-  });
+      final registrations = transport.calls.where(
+        (call) => call.uri.path.endsWith('/banking/pluggy/connections'),
+      );
+      expect(registrations, hasLength(1));
+      expect(registrations.single.body, '{"itemId":"$_itemId"}');
+    },
+  );
 
   test('callback Item must match backend-issued update Item', () async {
     final launcher = FakePluggyConnectLauncher();
@@ -82,53 +85,59 @@ void main() {
     );
   });
 
-  test('invalid local connection ID fails before any banking request', () async {
-    final launcher = FakePluggyConnectLauncher();
-    final transport = _happyTransport();
-    final container = _container(transport, launcher: launcher);
-    addTearDown(container.dispose);
-    await _login(container);
-    final callsBefore = transport.calls.length;
+  test(
+    'invalid local connection ID fails before any banking request',
+    () async {
+      final launcher = FakePluggyConnectLauncher();
+      final transport = _happyTransport();
+      final container = _container(transport, launcher: launcher);
+      addTearDown(container.dispose);
+      await _login(container);
+      final callsBefore = transport.calls.length;
 
-    await container
-        .read(pluggyReauthenticationControllerProvider.notifier)
-        .start('provider-item-from-url');
+      await container
+          .read(pluggyReauthenticationControllerProvider.notifier)
+          .start('provider-item-from-url');
 
-    expect(
-      container.read(pluggyReauthenticationControllerProvider).phase,
-      PluggyReauthenticationPhase.invalidConnectionId,
-    );
-    expect(transport.calls, hasLength(callsBefore));
-    expect(launcher.calls, isEmpty);
-  });
+      expect(
+        container.read(pluggyReauthenticationControllerProvider).phase,
+        PluggyReauthenticationPhase.invalidConnectionId,
+      );
+      expect(transport.calls, hasLength(callsBefore));
+      expect(launcher.calls, isEmpty);
+    },
+  );
 
-  test('demo mode never requests reauthentication material or launcher', () async {
-    final launcher = FakePluggyConnectLauncher();
-    final transport = _happyTransport();
-    final container = _container(
-      transport,
-      launcher: launcher,
-      demoEnabled: true,
-    );
-    addTearDown(container.dispose);
-    await _login(container);
+  test(
+    'demo mode never requests reauthentication material or launcher',
+    () async {
+      final launcher = FakePluggyConnectLauncher();
+      final transport = _happyTransport();
+      final container = _container(
+        transport,
+        launcher: launcher,
+        demoEnabled: true,
+      );
+      addTearDown(container.dispose);
+      await _login(container);
 
-    await container
-        .read(pluggyReauthenticationControllerProvider.notifier)
-        .start(_connectionId);
+      await container
+          .read(pluggyReauthenticationControllerProvider.notifier)
+          .start(_connectionId);
 
-    expect(
-      container.read(pluggyReauthenticationControllerProvider).phase,
-      PluggyReauthenticationPhase.demoUnavailable,
-    );
-    expect(
-      transport.calls.where(
-        (call) => call.uri.path.contains('/reauthentication-token'),
-      ),
-      isEmpty,
-    );
-    expect(launcher.calls, isEmpty);
-  });
+      expect(
+        container.read(pluggyReauthenticationControllerProvider).phase,
+        PluggyReauthenticationPhase.demoUnavailable,
+      );
+      expect(
+        transport.calls.where(
+          (call) => call.uri.path.contains('/reauthentication-token'),
+        ),
+        isEmpty,
+      );
+      expect(launcher.calls, isEmpty);
+    },
+  );
 
   test('late callback after cancellation is ignored', () async {
     final launcher = FakePluggyConnectLauncher();
@@ -159,7 +168,13 @@ void main() {
 
   test('401 while requesting material invalidates the local session', () async {
     final launcher = FakePluggyConnectLauncher();
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
+    final transport = FakeAuthTransport((
+      uri,
+      method,
+      timeout,
+      headers,
+      body,
+    ) async {
       if (uri.path.endsWith('/auth/session')) {
         return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
       }
@@ -218,7 +233,10 @@ Future<void> _login(ProviderContainer container) async {
   await container
       .read(operatorSessionControllerProvider.notifier)
       .login(login: 'admin', password: 'synthetic-password');
-  expect(container.read(operatorSessionControllerProvider).isAuthenticated, isTrue);
+  expect(
+    container.read(operatorSessionControllerProvider).isAuthenticated,
+    isTrue,
+  );
 }
 
 Future<void> _flush() async {
@@ -240,7 +258,10 @@ FakeAuthTransport _happyTransport() {
       );
     }
     if (uri.path.endsWith('/banking/pluggy/connections')) {
-      return const AuthHttpResponse(statusCode: 200, body: _registeredConnection);
+      return const AuthHttpResponse(
+        statusCode: 200,
+        body: _registeredConnection,
+      );
     }
     throw StateError('unexpected synthetic route');
   });
@@ -261,7 +282,8 @@ DemoStatus _demoStatus({required bool enabled}) {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",
@@ -277,7 +299,8 @@ const _issuedSession = '''
 }
 ''';
 
-const _registeredConnection = '''
+const _registeredConnection =
+    '''
 {
   "connectionId":"$_connectionId",
   "status":"AVAILABLE",

@@ -24,18 +24,12 @@ void main() {
             Uri.parse('http://localhost/api/v1/'),
           ),
         ],
-        child: MaterialApp(
-          theme: buildAppTheme(),
-          home: const LoginScreen(),
-        ),
+        child: MaterialApp(theme: buildAppTheme(), home: const LoginScreen()),
       ),
     );
     await tester.pumpAndSettle();
 
-    await tester.enterText(
-      find.byKey(LoginScreen.loginFieldKey),
-      'admin',
-    );
+    await tester.enterText(find.byKey(LoginScreen.loginFieldKey), 'admin');
     await tester.enterText(
       find.byKey(LoginScreen.passwordFieldKey),
       'synthetic-password',
@@ -62,10 +56,7 @@ void main() {
             FakeAuthTransport.response(statusCode: 503, body: '{}'),
           ),
         ],
-        child: MaterialApp(
-          theme: buildAppTheme(),
-          home: const LoginScreen(),
-        ),
+        child: MaterialApp(theme: buildAppTheme(), home: const LoginScreen()),
       ),
     );
     await tester.pumpAndSettle();

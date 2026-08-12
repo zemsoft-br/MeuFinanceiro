@@ -61,10 +61,15 @@ void main() {
     );
     final container = _container(transport);
     addTearDown(container.dispose);
-    final controller = container.read(operatorSessionControllerProvider.notifier);
+    final controller = container.read(
+      operatorSessionControllerProvider.notifier,
+    );
 
     final first = controller.login(login: 'admin', password: 'first-password');
-    final second = controller.login(login: 'admin', password: 'second-password');
+    final second = controller.login(
+      login: 'admin',
+      password: 'second-password',
+    );
     await second;
 
     expect(transport.calls, hasLength(1));
@@ -80,17 +85,17 @@ void main() {
 
   test('late login response cannot restore a session after logout', () async {
     final loginResponse = Completer<AuthHttpResponse>();
-    final transport = FakeAuthTransport(
-      (uri, method, timeout, headers, body) {
-        if (method == AuthHttpMethod.post) {
-          return loginResponse.future;
-        }
-        return Future.value(const AuthHttpResponse(statusCode: 204, body: ''));
-      },
-    );
+    final transport = FakeAuthTransport((uri, method, timeout, headers, body) {
+      if (method == AuthHttpMethod.post) {
+        return loginResponse.future;
+      }
+      return Future.value(const AuthHttpResponse(statusCode: 204, body: ''));
+    });
     final container = _container(transport);
     addTearDown(container.dispose);
-    final controller = container.read(operatorSessionControllerProvider.notifier);
+    final controller = container.read(
+      operatorSessionControllerProvider.notifier,
+    );
 
     final login = controller.login(
       login: 'admin',
@@ -113,17 +118,23 @@ void main() {
 
   test('logout clears bearer before the revoke request completes', () async {
     final logoutResponse = Completer<AuthHttpResponse>();
-    final transport = FakeAuthTransport(
-      (uri, method, timeout, headers, body) async {
-        if (method == AuthHttpMethod.post) {
-          return const AuthHttpResponse(statusCode: 200, body: _validSession);
-        }
-        return logoutResponse.future;
-      },
-    );
+    final transport = FakeAuthTransport((
+      uri,
+      method,
+      timeout,
+      headers,
+      body,
+    ) async {
+      if (method == AuthHttpMethod.post) {
+        return const AuthHttpResponse(statusCode: 200, body: _validSession);
+      }
+      return logoutResponse.future;
+    });
     final container = _container(transport);
     addTearDown(container.dispose);
-    final controller = container.read(operatorSessionControllerProvider.notifier);
+    final controller = container.read(
+      operatorSessionControllerProvider.notifier,
+    );
 
     await controller.login(login: 'admin', password: 'synthetic-password');
     expect(container.read(sessionTokenVaultProvider).hasToken, isTrue);
@@ -157,7 +168,8 @@ ProviderContainer _container(FakeAuthTransport transport) {
   );
 }
 
-const _validSession = '''
+const _validSession =
+    '''
 {
   "access_token":"$_token",
   "token_type":"bearer",

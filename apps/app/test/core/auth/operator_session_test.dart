@@ -50,7 +50,8 @@ void main() {
   });
 }
 
-const _validSession = '''
+const _validSession =
+    '''
 {
   "access_token":"$_token",
   "token_type":"bearer",

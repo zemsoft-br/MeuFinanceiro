@@ -60,33 +60,39 @@ void main() {
     expect(find.byKey(PluggyConnectScreen.localConnectionKey), findsNothing);
   });
 
-  testWidgets('success shows only local connection result, never provider item', (
-    tester,
-  ) async {
-    final launcher = FakePluggyConnectLauncher();
-    await _pumpScreen(tester, launcher: launcher);
+  testWidgets(
+    'success shows only local connection result, never provider item',
+    (tester) async {
+      final launcher = FakePluggyConnectLauncher();
+      await _pumpScreen(tester, launcher: launcher);
 
-    await tester.tap(find.byKey(PluggyConnectScreen.connectButtonKey));
-    await tester.pump();
-    launcher.emit(const PluggyConnectCallback.opened());
-    launcher.emit(
-      const PluggyConnectCallback.itemAvailable('provider-item-must-stay-hidden'),
-    );
-    await _pumpCallbacks(tester);
+      await tester.tap(find.byKey(PluggyConnectScreen.connectButtonKey));
+      await tester.pump();
+      launcher.emit(const PluggyConnectCallback.opened());
+      launcher.emit(
+        const PluggyConnectCallback.itemAvailable(
+          'provider-item-must-stay-hidden',
+        ),
+      );
+      await _pumpCallbacks(tester);
 
-    expect(
-      find.text('Instituição conectada e validada pelo MeuFinanceiro.'),
-      findsOneWidget,
-    );
-    expect(find.byKey(PluggyConnectScreen.localConnectionKey), findsOneWidget);
-    expect(
-      find.text('30000000-0000-4000-8000-000000000003'),
-      findsOneWidget,
-    );
-    expect(find.textContaining('provider-item-must-stay-hidden'), findsNothing);
-    expect(find.textContaining(_connectToken), findsNothing);
-    expect(find.textContaining(_sessionToken), findsNothing);
-  });
+      expect(
+        find.text('Instituição conectada e validada pelo MeuFinanceiro.'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(PluggyConnectScreen.localConnectionKey),
+        findsOneWidget,
+      );
+      expect(find.text('30000000-0000-4000-8000-000000000003'), findsOneWidget);
+      expect(
+        find.textContaining('provider-item-must-stay-hidden'),
+        findsNothing,
+      );
+      expect(find.textContaining(_connectToken), findsNothing);
+      expect(find.textContaining(_sessionToken), findsNothing);
+    },
+  );
 
   testWidgets('demo mode explicitly disables external integration', (
     tester,
@@ -99,7 +105,9 @@ void main() {
     );
     expect(button.onPressed, isNull);
     expect(
-      find.text('Integrações externas ficam indisponíveis no modo demonstração.'),
+      find.text(
+        'Integrações externas ficam indisponíveis no modo demonstração.',
+      ),
       findsOneWidget,
     );
     expect(launcher.calls, isEmpty);
@@ -112,7 +120,13 @@ Future<void> _pumpScreen(
   bool demoEnabled = false,
   MediaQueryData? mediaQuery,
 }) async {
-  final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
+  final transport = FakeAuthTransport((
+    uri,
+    method,
+    timeout,
+    headers,
+    body,
+  ) async {
     if (uri.path.endsWith('/auth/session')) {
       return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
     }
@@ -123,7 +137,10 @@ Future<void> _pumpScreen(
       );
     }
     if (uri.path.endsWith('/banking/pluggy/connections')) {
-      return const AuthHttpResponse(statusCode: 200, body: _registeredConnection);
+      return const AuthHttpResponse(
+        statusCode: 200,
+        body: _registeredConnection,
+      );
     }
     throw StateError('unexpected synthetic route');
   });
@@ -182,7 +199,8 @@ DemoStatus _demoStatus({required bool enabled}) {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",

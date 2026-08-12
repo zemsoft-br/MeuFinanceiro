@@ -18,8 +18,12 @@ const _connectionId = '30000000-0000-4000-8000-000000000003';
 
 void main() {
   test('integration destination remains selected for Pluggy child routes', () {
-    final overview = AppRoutes.destinationForLocation(AppRoutes.integrationsPath);
-    final connect = AppRoutes.destinationForLocation(AppRoutes.pluggyConnectPath);
+    final overview = AppRoutes.destinationForLocation(
+      AppRoutes.integrationsPath,
+    );
+    final connect = AppRoutes.destinationForLocation(
+      AppRoutes.pluggyConnectPath,
+    );
     final reauthentication = AppRoutes.destinationForLocation(
       AppRoutes.pluggyReauthenticationLocation(_connectionId),
     );
@@ -27,79 +31,91 @@ void main() {
     expect(overview?.id, AppRouteId.integrations);
     expect(connect?.id, AppRouteId.integrations);
     expect(reauthentication?.id, AppRouteId.integrations);
-    expect(AppRoutes.destinationForLocation('/componentes')?.id, AppRouteId.components);
+    expect(
+      AppRoutes.destinationForLocation('/componentes')?.id,
+      AppRouteId.components,
+    );
     expect(AppRoutes.destinationForLocation('/sistema')?.id, AppRouteId.system);
   });
 
-  testWidgets('protected integrations deep link resumes after login and loads locally', (
-    tester,
-  ) async {
-    tester.view.physicalSize = const Size(1200, 900);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets(
+    'protected integrations deep link resumes after login and loads locally',
+    (tester) async {
+      tester.view.physicalSize = const Size(1200, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
-      if (uri.path.endsWith('/auth/session')) {
-        return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
-      }
-      if (uri.path.endsWith('/banking/connections')) {
-        return const AuthHttpResponse(
-          statusCode: 200,
-          body: '{"connections":[]}',
-        );
-      }
-      throw StateError('unexpected synthetic route');
-    });
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        if (uri.path.endsWith('/auth/session')) {
+          return const AuthHttpResponse(statusCode: 200, body: _issuedSession);
+        }
+        if (uri.path.endsWith('/banking/connections')) {
+          return const AuthHttpResponse(
+            statusCode: 200,
+            body: '{"connections":[]}',
+          );
+        }
+        throw StateError('unexpected synthetic route');
+      });
 
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          initialLocationProvider.overrideWithValue(AppRoutes.integrationsPath),
-          authTransportProvider.overrideWithValue(transport),
-          authApiBaseUriProvider.overrideWithValue(
-            Uri.parse('http://localhost/api/v1/'),
-          ),
-          demoStatusProvider.overrideWithValue(
-            AsyncValue.data(_demoStatus()),
-          ),
-          apiHealthProvider.overrideWithValue(
-            AsyncValue.data(
-              ApiHealthSnapshot(
-                availability: ApiAvailability.operational,
-                readiness: const ApiReadiness.unknown(),
-                checkedAt: DateTime.utc(2026, 8, 8),
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            initialLocationProvider.overrideWithValue(
+              AppRoutes.integrationsPath,
+            ),
+            authTransportProvider.overrideWithValue(transport),
+            authApiBaseUriProvider.overrideWithValue(
+              Uri.parse('http://localhost/api/v1/'),
+            ),
+            demoStatusProvider.overrideWithValue(
+              AsyncValue.data(_demoStatus()),
+            ),
+            apiHealthProvider.overrideWithValue(
+              AsyncValue.data(
+                ApiHealthSnapshot(
+                  availability: ApiAvailability.operational,
+                  readiness: const ApiReadiness.unknown(),
+                  checkedAt: DateTime.utc(2026, 8, 8),
+                ),
               ),
             ),
-          ),
-        ],
-        child: const MeuFinanceiroApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
+          ],
+          child: const MeuFinanceiroApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(LoginScreen.submitButtonKey), findsOneWidget);
-    expect(find.byKey(BankingConnectionsScreen.titleKey), findsNothing);
+      expect(find.byKey(LoginScreen.submitButtonKey), findsOneWidget);
+      expect(find.byKey(BankingConnectionsScreen.titleKey), findsNothing);
 
-    await tester.enterText(find.byKey(LoginScreen.loginFieldKey), 'admin');
-    await tester.enterText(
-      find.byKey(LoginScreen.passwordFieldKey),
-      'synthetic-password',
-    );
-    await tester.tap(find.byKey(LoginScreen.submitButtonKey));
-    await tester.pumpAndSettle();
+      await tester.enterText(find.byKey(LoginScreen.loginFieldKey), 'admin');
+      await tester.enterText(
+        find.byKey(LoginScreen.passwordFieldKey),
+        'synthetic-password',
+      );
+      await tester.tap(find.byKey(LoginScreen.submitButtonKey));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(BankingConnectionsScreen.titleKey), findsOneWidget);
-    expect(find.byKey(BankingConnectionsScreen.emptyKey), findsOneWidget);
-    expect(find.byKey(LoginScreen.submitButtonKey), findsNothing);
-    expect(
-      transport.calls.where(
-        (call) => call.uri.path.endsWith('/banking/connections'),
-      ),
-      hasLength(1),
-    );
-    expect(tester.takeException(), isNull);
-  });
+      expect(find.byKey(BankingConnectionsScreen.titleKey), findsOneWidget);
+      expect(find.byKey(BankingConnectionsScreen.emptyKey), findsOneWidget);
+      expect(find.byKey(LoginScreen.submitButtonKey), findsNothing);
+      expect(
+        transport.calls.where(
+          (call) => call.uri.path.endsWith('/banking/connections'),
+        ),
+        hasLength(1),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 }
 
 DemoStatus _demoStatus() {
@@ -117,7 +133,8 @@ DemoStatus _demoStatus() {
   );
 }
 
-const _issuedSession = '''
+const _issuedSession =
+    '''
 {
   "access_token":"$_sessionToken",
   "token_type":"bearer",

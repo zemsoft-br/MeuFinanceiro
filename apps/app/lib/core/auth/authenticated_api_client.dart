@@ -14,10 +14,7 @@ enum AuthenticatedApiFailure {
 }
 
 class AuthenticatedApiException implements Exception {
-  const AuthenticatedApiException(
-    this.failure, {
-    this.statusCode,
-  });
+  const AuthenticatedApiException(this.failure, {this.statusCode});
 
   final AuthenticatedApiFailure failure;
   final int? statusCode;
@@ -49,11 +46,7 @@ class AuthenticatedApiClient {
     String relativePath, {
     Map<String, Object?>? jsonBody,
   }) {
-    return _send(
-      relativePath,
-      method: AuthHttpMethod.post,
-      jsonBody: jsonBody,
-    );
+    return _send(relativePath, method: AuthHttpMethod.post, jsonBody: jsonBody);
   }
 
   Future<AuthHttpResponse> delete(String relativePath) {
@@ -142,7 +135,9 @@ class AuthenticatedApiClient {
         parsed.hasAuthority ||
         parsed.hasFragment ||
         relativePath.startsWith('/') ||
-        parsed.pathSegments.any((segment) => segment == '.' || segment == '..')) {
+        parsed.pathSegments.any(
+          (segment) => segment == '.' || segment == '..',
+        )) {
       throw const FormatException('API path must be relative.');
     }
 
