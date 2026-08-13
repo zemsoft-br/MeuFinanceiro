@@ -33,6 +33,13 @@ from meufinanceiro_finance.audit_events import (
     financial_audit_related_subject_type_for_event,
     financial_audit_subject_type_for_event,
 )
+from meufinanceiro_finance.balance_statement import (
+    FinancialAccountBalanceSnapshot,
+    FinancialAccountStatement,
+    FinancialLedgerStateError,
+    FinancialStatementEntry,
+    derive_financial_account_balance_and_statement,
+)
 from meufinanceiro_finance.categories import (
     FinancialCategoryDraft,
     FinancialCategoryRecord,
@@ -80,8 +87,10 @@ __all__ = [
     "FINANCIAL_AUDIT_EVENT_SCHEMA_VERSION",
     "CurrencyMismatchError",
     "FinancialAccessDeniedError",
+    "FinancialAccountBalanceSnapshot",
     "FinancialAccountDraft",
     "FinancialAccountRecord",
+    "FinancialAccountStatement",
     "FinancialAccountStatus",
     "FinancialAccountType",
     "FinancialActorContext",
@@ -92,6 +101,7 @@ __all__ = [
     "FinancialCategoryDraft",
     "FinancialCategoryRecord",
     "FinancialCategoryStatus",
+    "FinancialLedgerStateError",
     "FinancialManualEntryDraft",
     "FinancialManualEntryMovementStore",
     "FinancialManualEntryService",
@@ -109,6 +119,7 @@ __all__ = [
     "FinancialOpeningBalanceRecord",
     "FinancialResourceAudience",
     "FinancialResultEffect",
+    "FinancialStatementEntry",
     "FinancialTransferDraft",
     "FinancialTransferRecord",
     "FinancialTransferReversalDraft",
@@ -117,6 +128,7 @@ __all__ = [
     "Money",
     "RoundingMode",
     "can_access_financial_resource",
+    "derive_financial_account_balance_and_statement",
     "financial_audit_related_subject_type_for_event",
     "financial_audit_subject_type_for_event",
     "is_category_audience_compatible_for_movement",
