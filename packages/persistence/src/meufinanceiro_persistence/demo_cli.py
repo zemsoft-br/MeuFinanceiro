@@ -18,6 +18,8 @@ from meufinanceiro_persistence.demo import (
 
 class DemoCliSettings(BaseSettings):
     database_url: SecretStr
+    admin_database_url: SecretStr | None = None
+    demo_operator_password: SecretStr | None = None
     app_demo_mode: bool = False
 
     model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
@@ -34,7 +36,22 @@ def main() -> None:
 
     settings = DemoCliSettings()  # type: ignore[call-arg]
     database = Database(settings.database_url.get_secret_value())
-    store = DemoFixtureStore(database.engine, enabled=settings.app_demo_mode)
+    reset_database = (
+        Database(settings.admin_database_url.get_secret_value())
+        if settings.admin_database_url is not None
+        else None
+    )
+    operator_password = (
+        settings.demo_operator_password.get_secret_value()
+        if settings.demo_operator_password is not None
+        else None
+    )
+    store = DemoFixtureStore(
+        database.engine,
+        enabled=settings.app_demo_mode,
+        operator_password=operator_password,
+        reset_engine=(reset_database.engine if reset_database is not None else None),
+    )
     try:
         if args.command == "load":
             print(_serialize(asdict(store.load())))
@@ -50,6 +67,8 @@ def main() -> None:
         parser.error(str(exc))
     finally:
         database.dispose()
+        if reset_database is not None:
+            reset_database.dispose()
 
 
 if __name__ == "__main__":
