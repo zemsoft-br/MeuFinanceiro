@@ -34,11 +34,11 @@ payload = json.load(sys.stdin)
 assert payload["enabled"] is True
 assert payload["loaded"] is True
 assert payload["fixture_id"] == "residencia-ipe-v1"
-assert payload["fixture_version"] == 1
+assert payload["fixture_version"] == 2
 assert payload["reference_date"] == "2026-11-01"
 assert payload["timezone"] == "America/Sao_Paulo"
 assert payload["currency"] == "BRL"
-assert payload["scope"] == "foundation_only"
+assert payload["scope"] == "finance_phase1"
 assert len(payload["contract_checksum"]) == 64
 '
 
@@ -80,6 +80,8 @@ second = json.loads(sys.argv[2])
 assert first == second
 assert first["loaded"] is True
 assert first["fixture_id"] == "residencia-ipe-v1"
+assert first["fixture_version"] == 2
+assert first["scope"] == "finance_phase1"
 PY
 
 status_json | python3 -c '
@@ -87,6 +89,8 @@ import json, sys
 payload = json.load(sys.stdin)
 assert payload["enabled"] is True
 assert payload["loaded"] is True
+assert payload["fixture_version"] == 2
+assert payload["scope"] == "finance_phase1"
 '
 
 echo "Demo Compose smoke passed."
