@@ -32,7 +32,9 @@ def test_load_is_runtime_scoped_and_reset_is_separately_scoped() -> None:
     assert "func.set_config(" in fixture
     assert "on_conflict_do_nothing()" in fixture
     assert "on_conflict_do_update" not in fixture + store
-    assert "reset_engine" in store
+    assert "self._reset_engine = reset_engine" in store
+    assert "reset_engine or engine" not in store
+    assert "_require_reset_engine" in store
     assert "admin_database_url" in cli
     assert "ADMIN_DATABASE_URL:" in compose
     assert "DATABASE_URL:" in compose
