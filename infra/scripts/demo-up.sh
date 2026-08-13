@@ -31,8 +31,13 @@ docker compose version >/dev/null 2>&1 || {
 }
 
 if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
-  echo "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo." >&2
-  exit 1
+  if [ "${CI:-false}" = "true" ]; then
+    DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
+    export DEMO_OPERATOR_PASSWORD
+  else
+    echo "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo." >&2
+    exit 1
+  fi
 fi
 
 generate_password() {
