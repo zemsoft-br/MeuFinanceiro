@@ -13,8 +13,6 @@ from meufinanceiro_persistence.demo_contract import (
     DEMO_CHECKING_ACCOUNT_ID,
     DEMO_CREATED_AT,
     DEMO_CURRENCY,
-    DEMO_FOOD_CATEGORY_ID,
-    DEMO_HOUSING_CATEGORY_ID,
     DEMO_INSTALLATION_ID,
     DEMO_LOGIN_NAME,
     DEMO_MEMBERSHIP_ID,
@@ -61,11 +59,10 @@ def load_demo_financial_fixture(
     *,
     operator_password: str,
 ) -> None:
-    """Insert the expected functional rows without mutating existing rows."""
+    """Insert expected functional rows without rewriting existing canonical rows."""
     if not isinstance(operator_password, str) or not operator_password:
         raise ValueError("demo operator password is required")
 
-    password_hash = PasswordService().hash(operator_password)
     _insert_or_verify(
         connection,
         identity_installation,
@@ -78,7 +75,7 @@ def load_demo_financial_fixture(
         },
         label="installation",
     )
-    _insert_or_verify_operator(connection, password_hash, operator_password)
+    _insert_operator(connection, operator_password)
     _insert_or_verify(
         connection,
         household_residences,
@@ -132,7 +129,6 @@ def load_demo_financial_fixture(
             },
             label=f"category:{category.id}",
         )
-
     for account in DEMO_ACCOUNTS:
         _insert_or_verify(
             connection,
@@ -173,36 +169,17 @@ def load_demo_financial_fixture(
         },
         label="opening-balance",
     )
-
     for movement in DEMO_MOVEMENTS:
         _insert_or_verify(
             connection,
             financial_movements,
             {"id": movement.id},
-            {
-                "id": movement.id,
-                "installation_id": DEMO_INSTALLATION_ID,
-                "residence_id": DEMO_RESIDENCE_ID,
-                "account_id": DEMO_CHECKING_ACCOUNT_ID,
-                "currency": DEMO_CURRENCY,
-                "amount": movement.amount,
-                "result_effect": movement.result_effect,
-                "role": movement.role,
-                "effective_date": movement.effective_date,
-                "competence_date": movement.competence_date,
-                "description": movement.description,
-                "reversal_of_id": movement.reversal_of_id,
-                "reversal_target_role": (
-                    "STANDARD" if movement.role == "REVERSAL" else None
-                ),
-                "reversal_reason": movement.reversal_reason,
-                "created_by_operator_id": DEMO_OPERATOR_ID,
-                "idempotency_key": movement.idempotency_key,
-                "request_digest": movement.request_digest,
-                "created_at": movement.created_at,
-            },
+            _movement_values(movement),
             label=f"movement:{movement.id}",
         )
+
+    _verify_operator(connection, operator_password=operator_password)
+    verify_demo_financial_fixture(connection)
 
 
 def verify_demo_financial_fixture(connection: Connection) -> None:
@@ -306,35 +283,16 @@ def verify_demo_financial_fixture(connection: Connection) -> None:
             connection,
             financial_movements,
             {"id": movement.id},
-            {
-                "installation_id": DEMO_INSTALLATION_ID,
-                "residence_id": DEMO_RESIDENCE_ID,
-                "account_id": DEMO_CHECKING_ACCOUNT_ID,
-                "currency": DEMO_CURRENCY,
-                "amount": movement.amount,
-                "result_effect": movement.result_effect,
-                "role": movement.role,
-                "effective_date": movement.effective_date,
-                "competence_date": movement.competence_date,
-                "description": movement.description,
-                "reversal_of_id": movement.reversal_of_id,
-                "reversal_target_role": (
-                    "STANDARD" if movement.role == "REVERSAL" else None
-                ),
-                "reversal_reason": movement.reversal_reason,
-                "created_by_operator_id": DEMO_OPERATOR_ID,
-                "idempotency_key": movement.idempotency_key,
-                "request_digest": movement.request_digest,
-                "created_at": movement.created_at,
-            },
+            _movement_values(movement),
             label=f"movement:{movement.id}",
         )
 
-    if connection.scalar(
+    cash_opening_count = connection.scalar(
         select(func.count()).select_from(financial_opening_balances).where(
             financial_opening_balances.c.account_id == DEMO_CASH_ACCOUNT_ID
         )
-    ) != 0:
+    )
+    if cash_opening_count != 0:
         raise DemoFinancialFixtureConflictError(
             "demo cash account must not have an opening balance"
         )
@@ -358,7 +316,7 @@ def demo_functional_rows_exist(connection: Connection) -> bool:
 
 
 def reset_demo_financial_fixture(connection: Connection) -> bool:
-    """Delete the isolated demo installation scope using an administrative connection."""
+    """Delete only the isolated demo installation scope with an admin connection."""
     changed = False
     changed |= _delete_scope(
         connection,
@@ -376,47 +334,111 @@ def reset_demo_financial_fixture(connection: Connection) -> bool:
         financial_movements,
         financial_movements.c.installation_id == DEMO_INSTALLATION_ID,
     )
-    changed |= _delete_scope(
-        connection,
+    for table in (
         financial_opening_balances,
-        financial_opening_balances.c.installation_id == DEMO_INSTALLATION_ID,
-    )
-    changed |= _delete_scope(
-        connection,
         financial_account_grants,
-        financial_account_grants.c.installation_id == DEMO_INSTALLATION_ID,
-    )
-    changed |= _delete_scope(
-        connection,
         financial_categories,
-        financial_categories.c.installation_id == DEMO_INSTALLATION_ID,
-    )
-    changed |= _delete_scope(
-        connection,
         financial_accounts,
-        financial_accounts.c.installation_id == DEMO_INSTALLATION_ID,
-    )
-    changed |= _delete_scope(
-        connection,
         household_memberships,
-        household_memberships.c.installation_id == DEMO_INSTALLATION_ID,
-    )
-    changed |= _delete_scope(
-        connection,
         household_residences,
-        household_residences.c.installation_id == DEMO_INSTALLATION_ID,
-    )
-    changed |= _delete_scope(
-        connection,
         identity_operators,
-        identity_operators.c.installation_id == DEMO_INSTALLATION_ID,
-    )
+    ):
+        changed |= _delete_scope(
+            connection,
+            table,
+            table.c.installation_id == DEMO_INSTALLATION_ID,
+        )
     changed |= _delete_scope(
         connection,
         identity_installation,
         identity_installation.c.id == DEMO_INSTALLATION_ID,
     )
     return changed
+
+
+def _insert_operator(connection: Connection, operator_password: str) -> None:
+    password_hash = PasswordService().hash(operator_password)
+    connection.execute(
+        pg_insert(identity_operators)
+        .values(
+            id=DEMO_OPERATOR_ID,
+            installation_id=DEMO_INSTALLATION_ID,
+            login_name=DEMO_LOGIN_NAME,
+            password_hash=password_hash,
+            role="installation_admin",
+            status="active",
+            failed_attempts=0,
+            locked_until=None,
+            last_authenticated_at=None,
+            password_changed_at=DEMO_CREATED_AT,
+            created_at=DEMO_CREATED_AT,
+            updated_at=DEMO_CREATED_AT,
+        )
+        .on_conflict_do_nothing()
+    )
+
+
+def _verify_operator(
+    connection: Connection,
+    *,
+    operator_password: str | None = None,
+) -> None:
+    row = (
+        connection.execute(
+            select(identity_operators).where(identity_operators.c.id == DEMO_OPERATOR_ID)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if row is None:
+        raise DemoFinancialFixtureConflictError("demo operator is missing")
+
+    stable = {
+        "installation_id": DEMO_INSTALLATION_ID,
+        "login_name": DEMO_LOGIN_NAME,
+        "role": "installation_admin",
+        "status": "active",
+        "password_changed_at": DEMO_CREATED_AT,
+        "created_at": DEMO_CREATED_AT,
+    }
+    for key, expected_value in stable.items():
+        if row[key] != expected_value:
+            raise DemoFinancialFixtureConflictError("demo operator differs from contract")
+
+    password_service = PasswordService()
+    try:
+        encoded_hash = row["password_hash"]
+        if not isinstance(encoded_hash, str) or password_service.needs_rehash(encoded_hash):
+            raise DemoFinancialFixtureConflictError("demo operator hash profile differs")
+        if operator_password is not None and not password_service.verify(
+            encoded_hash, operator_password
+        ):
+            raise DemoFinancialFixtureConflictError("demo operator credential differs")
+    except PasswordHashError:
+        raise DemoFinancialFixtureConflictError("demo operator hash is invalid") from None
+
+
+def _movement_values(movement: Any) -> dict[str, object]:
+    return {
+        "id": movement.id,
+        "installation_id": DEMO_INSTALLATION_ID,
+        "residence_id": DEMO_RESIDENCE_ID,
+        "account_id": DEMO_CHECKING_ACCOUNT_ID,
+        "currency": DEMO_CURRENCY,
+        "amount": movement.amount,
+        "result_effect": movement.result_effect,
+        "role": movement.role,
+        "effective_date": movement.effective_date,
+        "competence_date": movement.competence_date,
+        "description": movement.description,
+        "reversal_of_id": movement.reversal_of_id,
+        "reversal_target_role": "STANDARD" if movement.role == "REVERSAL" else None,
+        "reversal_reason": movement.reversal_reason,
+        "created_by_operator_id": DEMO_OPERATOR_ID,
+        "idempotency_key": movement.idempotency_key,
+        "request_digest": movement.request_digest,
+        "created_at": movement.created_at,
+    }
 
 
 def _insert_or_verify(
@@ -446,72 +468,6 @@ def _verify_row(
     for key, expected_value in expected.items():
         if row[key] != expected_value:
             raise DemoFinancialFixtureConflictError(f"demo {label} differs from contract")
-
-
-def _insert_or_verify_operator(
-    connection: Connection,
-    password_hash: str,
-    operator_password: str,
-) -> None:
-    values = {
-        "id": DEMO_OPERATOR_ID,
-        "installation_id": DEMO_INSTALLATION_ID,
-        "login_name": DEMO_LOGIN_NAME,
-        "password_hash": password_hash,
-        "role": "installation_admin",
-        "status": "active",
-        "failed_attempts": 0,
-        "locked_until": None,
-        "last_authenticated_at": None,
-        "password_changed_at": DEMO_CREATED_AT,
-        "created_at": DEMO_CREATED_AT,
-        "updated_at": DEMO_CREATED_AT,
-    }
-    connection.execute(
-        pg_insert(identity_operators).values(**values).on_conflict_do_nothing()
-    )
-    _verify_operator(connection, operator_password=operator_password)
-
-
-def _verify_operator(
-    connection: Connection,
-    *,
-    operator_password: str | None = None,
-) -> None:
-    row = (
-        connection.execute(
-            select(identity_operators).where(identity_operators.c.id == DEMO_OPERATOR_ID)
-        )
-        .mappings()
-        .one_or_none()
-    )
-    if row is None:
-        raise DemoFinancialFixtureConflictError("demo operator is missing")
-    expected = {
-        "installation_id": DEMO_INSTALLATION_ID,
-        "login_name": DEMO_LOGIN_NAME,
-        "role": "installation_admin",
-        "status": "active",
-        "failed_attempts": 0,
-        "locked_until": None,
-        "last_authenticated_at": None,
-        "password_changed_at": DEMO_CREATED_AT,
-        "created_at": DEMO_CREATED_AT,
-        "updated_at": DEMO_CREATED_AT,
-    }
-    for key, expected_value in expected.items():
-        if row[key] != expected_value:
-            raise DemoFinancialFixtureConflictError("demo operator differs from contract")
-    password_service = PasswordService()
-    try:
-        if password_service.needs_rehash(row["password_hash"]):
-            raise DemoFinancialFixtureConflictError("demo operator hash profile differs")
-        if operator_password is not None and not password_service.verify(
-            row["password_hash"], operator_password
-        ):
-            raise DemoFinancialFixtureConflictError("demo operator credential differs")
-    except PasswordHashError:
-        raise DemoFinancialFixtureConflictError("demo operator hash is invalid") from None
 
 
 def _set_financial_context(connection: Connection) -> None:
