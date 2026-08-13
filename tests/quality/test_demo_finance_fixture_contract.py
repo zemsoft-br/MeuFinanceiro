@@ -5,6 +5,7 @@ CONTRACT = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_contr
 DATA = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_finance_data.py"
 FIXTURE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_financial_fixture.py"
 STORE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo.py"
+BASE_STORE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_store_base.py"
 CLI = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_cli.py"
 COMPOSE = ROOT / "compose.yaml"
 API = ROOT / "apps/api/app/api/routes/demo.py"
@@ -26,15 +27,19 @@ def test_demo_finance_contract_is_versioned_and_deterministic() -> None:
 def test_load_is_runtime_scoped_and_reset_is_separately_scoped() -> None:
     fixture = FIXTURE.read_text(encoding="utf-8")
     store = STORE.read_text(encoding="utf-8")
+    base_store = BASE_STORE.read_text(encoding="utf-8")
     cli = CLI.read_text(encoding="utf-8")
     compose = COMPOSE.read_text(encoding="utf-8")
+    store_contract = base_store + store
 
     assert "func.set_config(" in fixture
     assert "on_conflict_do_nothing()" in fixture
-    assert "on_conflict_do_update" not in fixture + store
-    assert "self._reset_engine = reset_engine" in store
-    assert "reset_engine or engine" not in store
-    assert "_require_reset_engine" in store
+    assert "on_conflict_do_update" not in fixture + store_contract
+    assert "self._reset_engine = reset_engine" in base_store
+    assert "reset_engine or engine" not in store_contract
+    assert "_require_reset_engine" in store_contract
+    assert "reset_demo_transfers(connection)" in store
+    assert "reset_demo_financial_fixture(connection)" in store
     assert "admin_database_url" in cli
     assert "ADMIN_DATABASE_URL:" in compose
     assert "DATABASE_URL:" in compose
@@ -43,7 +48,7 @@ def test_load_is_runtime_scoped_and_reset_is_separately_scoped() -> None:
 def test_fixture_is_provider_neutral_and_has_no_balance_column() -> None:
     combined = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (CONTRACT, DATA, FIXTURE, STORE, CLI)
+        for path in (CONTRACT, DATA, FIXTURE, BASE_STORE, STORE, CLI)
     ).lower()
 
     assert "pluggy" not in combined
