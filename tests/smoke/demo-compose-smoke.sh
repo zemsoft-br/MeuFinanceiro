@@ -6,6 +6,16 @@ ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 ENV_FILE=${DEMO_ENV_FILE:-$ROOT_DIR/.demo/.env}
 PROJECT_NAME=${DEMO_PROJECT_NAME:-meufinanceiro-demo}
 
+if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
+  if [ "${CI:-false}" = "true" ]; then
+    DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
+    export DEMO_OPERATOR_PASSWORD
+  else
+    echo "Defina DEMO_OPERATOR_PASSWORD para executar o smoke da fixture demo." >&2
+    exit 1
+  fi
+fi
+
 PORT=$(awk -F= '$1 == "APP_HTTP_PORT" {print $2}' "$ENV_FILE" | tail -n 1)
 PORT=${PORT:-8081}
 BASE_URL="http://127.0.0.1:$PORT"
