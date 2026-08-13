@@ -6,32 +6,30 @@
 
 ## Contexto
 
-ADR-0019 define que uma transferência não é um único `Movement`. Cada conta precisa receber um efeito local simples, portanto uma transferência interna coordena dois Movements `NEUTRAL`: débito na origem e crédito no destino.
+ADR-0019 define que uma transferência não é um único `Movement`. Cada conta recebe um efeito local simples; portanto uma transferência interna coordena dois Movements `NEUTRAL`, débito na origem e crédito no destino.
 
-A persistence append-only da #141 / ADR-0020 já garante idempotência, RLS, opening anchor e reversão integral para um Movement isolado, mas `FinancialMovementStore.create_movement()` controla a própria transação. Executar duas chamadas separadas não oferece atomicidade para uma operação que exige duas pernas inseparáveis.
+A persistence da #141 / ADR-0020 garante idempotência, RLS, opening anchor e reversão integral para um Movement isolado, mas `FinancialMovementStore.create_movement()` controla a própria transação. Duas chamadas públicas separadas não formam uma transferência atômica.
 
-Também existe um segundo risco: depois que duas pernas passam a representar uma única transferência, reverter apenas uma delas preservaria `result_effect=NEUTRAL`, porém quebraria a coerência patrimonial entre as duas contas.
+Depois que duas pernas representam uma única operação, reverter apenas uma delas também é inválido: a neutralidade econômica seria preservada, mas os saldos patrimoniais das contas ficariam incoerentes.
 
 ## Decisão
 
-### Transferência é uma operação sobre o mesmo ledger
+### Transferência usa o mesmo ledger
 
-A transferência não cria outro ledger e não mantém saldo próprio.
-
-Ela persiste exatamente dois efeitos no ledger canônico:
+A transferência persiste exatamente dois efeitos no ledger canônico:
 
 ```text
 origem  -> Movement STANDARD / NEUTRAL / amount negativo
 destino -> Movement STANDARD / NEUTRAL / amount positivo
 ```
 
-Os amounts possuem mesma moeda e magnitude oposta. A soma das duas pernas é zero na moeda da transferência.
+Os amounts possuem a mesma moeda e magnitude oposta. Sua soma é zero.
 
-`finance.transfers` registra somente identidade, endpoints, vínculo entre as pernas, idempotência e auditoria técnica. A tabela não persiste `amount` autoritativo.
+Não existe segundo ledger, saldo próprio ou amount autoritativo fora de `finance.movements`.
 
-### Primeiro escopo: mesma moeda e mesmo owner
+### Primeiro escopo
 
-A primeira implementação aceita somente duas contas distintas:
+A primeira implementação aceita duas contas distintas:
 
 - da mesma instalação;
 - da mesma residência;
@@ -39,9 +37,7 @@ A primeira implementação aceita somente duas contas distintas:
 - `ACTIVE`;
 - pertencentes ao operador corrente.
 
-Cross-currency é rejeitado. Câmbio exige contrato próprio porque duas moedas não admitem a invariância simples de amounts opostos.
-
-Audiência e capacidade de mutação permanecem conceitos distintos. Ler uma das contas não autoriza mover recursos entre ambas.
+Cross-currency é fail-closed e exige contrato próprio de câmbio.
 
 ### Contrato do domínio
 
@@ -56,13 +52,11 @@ competence_date
 description
 ```
 
-O domínio traduz a magnitude positiva para dois `FinancialMovementDraft` `NEUTRAL` com sinais opostos.
-
-O cliente não escolhe `transfer_id`, `movement_id`, IDs internos das pernas, residência efetiva, installation ou operador efetivo.
+O domínio produz dois `FinancialMovementDraft` `NEUTRAL` com sinais opostos. O cliente não escolhe `transfer_id`, `movement_id`, IDs internos das pernas, residência, installation ou operador efetivos.
 
 ### Identidades separadas
 
-Conforme ADR-0017, os seguintes IDs permanecem semanticamente diferentes:
+Conforme ADR-0017:
 
 ```text
 transfer_id
@@ -73,87 +67,91 @@ movement-leg idempotency keys
 reversal transfer id
 ```
 
-O `transfer_id` usa UUID v4 local, opaco e server-side.
+são conceitos distintos. O `transfer_id` é UUID v4 local, opaco e server-side.
+
+### Persistência relacional normalizada
+
+A operação append-only é persistida em:
+
+```text
+finance.transfers
+```
+
+com identidade, installation/residence, contas de origem/destino, moeda, role, reversão, creator, idempotência, digest e timestamp técnico.
+
+A tabela **não possui amount**.
+
+O vínculo das duas pernas é normalizado em:
+
+```text
+finance.transfer_legs
+```
+
+com:
+
+```text
+transfer_id
+direction SOURCE | DESTINATION
+movement_id
+```
+
+A chave primária `(transfer_id, direction)` garante exatamente uma posição por direção, e `UNIQUE(movement_id)` garante que um Movement pertença a no máximo uma transferência em qualquer direção. Isso fecha a reutilização cruzada que duas uniques independentes em colunas SOURCE/DESTINATION não conseguiriam impedir.
+
+A FK `movement_id -> finance.movements(id)` é `DEFERRABLE INITIALLY DEFERRED`, permitindo registrar o vínculo com IDs server-side antes de inserir as pernas na mesma transação.
 
 ### Claim idempotente antes das pernas
 
-Cada operação de transferência recebe uma `idempotency_key` UUID v4 e persiste `request_digest` SHA-256 de material canônico versionado.
-
-Semântica:
+Cada operação recebe `idempotency_key` UUID v4 e `request_digest` SHA-256 de material canônico versionado.
 
 ```text
-mesma key + mesmo digest     -> replay da mesma transferência
-mesma key + digest diferente -> conflito fail-closed
+mesma key + mesmo digest      -> replay da mesma transferência
+mesma key + digest diferente  -> conflito fail-closed
 ```
 
-A row de `finance.transfers` funciona como claim idempotente dentro da própria transação PostgreSQL.
+Fluxo:
 
-Fluxo de criação:
+1. validar contexto e endpoints;
+2. gerar `transfer_id`, dois `movement_id` e duas idempotency keys internas;
+3. inserir `finance.transfers` com `ON CONFLICT DO NOTHING` em `(installation_id, idempotency_key)`;
+4. somente quem vence o claim insere os dois registros de `transfer_legs`;
+5. inserir os dois Movements;
+6. constraints deferred validam a relação no commit;
+7. qualquer falha faz rollback do claim, links e Movements.
 
-1. derivar contexto e validar a intenção;
-2. gerar `transfer_id`, IDs das duas pernas e idempotency keys internas das pernas;
-3. inserir a row de transferência com `ON CONFLICT DO NOTHING` sobre `(installation_id, idempotency_key)`;
-4. somente quem vence o claim insere as duas pernas;
-5. commit valida as referências e a integridade das pernas;
-6. qualquer falha faz rollback da transferência e de ambas as pernas.
+Não existe estado `PENDING`, update posterior ou advisory lock de idempotência.
 
-As FKs da transferência para os Movements podem ser `DEFERRABLE INITIALLY DEFERRED`, permitindo que a row de claim referencie IDs gerados para linhas inseridas logo depois na mesma transação.
+### Integridade deferred
 
-Isso evita estado `PENDING`, row mutável de preparação e advisory lock. Retries concorrentes convergem pela própria unique de idempotência.
+Um constraint trigger deferred valida que uma transferência `STANDARD` possui:
 
-### Transfer row append-only
-
-A primeira estrutura persistida contém conceitualmente:
-
-```text
-id
-installation_id
-residence_id
-source_account_id
-destination_account_id
-currency
-source_movement_id
-destination_movement_id
-role STANDARD | REVERSAL
-reversal_of_id nullable
-created_by_operator_id
-idempotency_key
-request_digest
-created_at
-```
-
-Não há `amount`, saldo ou status mutável.
-
-Runtime recebe somente `SELECT, INSERT`. Não recebe `UPDATE` ou `DELETE`.
-
-### Integridade entre transfer e Movement
-
-A persistência deve provar em banco que uma transferência `STANDARD` referencia exatamente:
-
-- source Movement `STANDARD/NEUTRAL` negativo;
-- destination Movement `STANDARD/NEUTRAL` positivo;
-- mesma magnitude absoluta;
+- exatamente uma perna SOURCE e uma DESTINATION;
+- SOURCE em `source_account_id` com amount negativo;
+- DESTINATION em `destination_account_id` com amount positivo;
+- ambas `STANDARD/NEUTRAL`;
+- amounts exatamente opostos;
 - mesma moeda;
-- mesma instalação e residência;
-- source/destination accounts correspondentes aos endpoints da transferência;
+- mesma installation/residence;
+- mesmo creator;
 - mesmas `effective_date` e `competence_date`;
-- mesmo creator da transferência.
+- mesma descrição canônica.
 
-Uma perna não pode ser reutilizada por outra transferência.
+Os opening anchors continuam sendo verificados por conta. Se qualquer perna falhar, nada é commitado.
 
-As duas contas precisam respeitar individualmente seus opening anchors. Falha em qualquer perna aborta toda a transação.
+### Audiência é a interseção
 
-### Audiência da transferência é a interseção
+`finance.transfers` revela duas contas. Sua leitura exige que o ator pertença à audiência de **ambas**.
 
-A row de transferência pode revelar a identidade de duas contas. Portanto, sua leitura exige que o ator esteja na audiência de **ambas** as contas.
+Um membro pode enxergar o Movement `NEUTRAL` de uma conta `HOUSEHOLD` e ainda assim não receber o vínculo da transferência se a outra conta for `PERSONAL` de outro operador.
 
-Se um membro consegue ler apenas uma conta, ele pode continuar vendo o Movement `NEUTRAL` daquela conta conforme a RLS do ledger, mas não recebe o vínculo de transferência nem a identidade da outra conta por `finance.transfers`.
+`finance.transfer_legs` herda acesso da row pai e não abre uma rota lateral para descobrir movimentos ou contas invisíveis.
 
-### Reversão pertence à transferência inteira
+Runtime recebe apenas `SELECT, INSERT` em `transfers` e `transfer_legs`. Não recebe `UPDATE/DELETE`.
 
-Uma perna vinculada a transferência não pode ser revertida pelo fluxo genérico `reverse_movement()`.
+### Reversão é da transferência inteira
 
-A correção usa `reverse_transfer(...)` com:
+Uma perna de transferência não pode ser revertida pelo fluxo genérico isolado.
+
+O comando próprio recebe:
 
 ```text
 transfer_id original
@@ -162,85 +160,98 @@ competence_date
 reason
 ```
 
-A reversão cria atomicamente duas pernas `REVERSAL`:
+Para uma transferência original `A -> B`:
 
 ```text
-conta destino original -> amount negativo
-conta origem original  -> amount positivo
+original SOURCE      A -100
+original DESTINATION B +100
+
+reversal SOURCE      B -100  -> reverte original DESTINATION
+reversal DESTINATION A +100  -> reverte original SOURCE
 ```
 
-Cada nova perna referencia a perna original correspondente e deriva amount, conta, moeda e `result_effect` conforme ADR-0020.
+A transferência reversa possui `role=REVERSAL` e `reversal_of_id` para a original. Cada nova perna é um Movement `REVERSAL` conforme ADR-0020. Existe no máximo uma reversão integral por transferência original.
 
-A transferência reversa possui `role=REVERSAL` e `reversal_of_id` apontando para a transferência original. Existe no máximo uma reversão integral por transferência original.
+O trigger de reversão de Movement também consulta `transfer_legs`: se o target pertence a uma transferência, a inserção só é aceita quando a mesma transação já contém uma transferência reversa coerente e o novo Movement ocupa a direção oposta esperada.
 
-A proteção precisa existir também no banco: uma reversão de Movement cujo target pertença a transferência só é válida quando a mesma transação contém uma transferência reversa coerente referenciando a nova perna.
+### Reutilização das invariantes de Movement
 
-### Refatoração connection-scoped
+A API pública de `FinancialMovementStore` permanece compatível.
 
-Para preservar uma única implementação das invariantes de Movement, a persistence pode extrair primitives internas que operem sobre uma `Connection` já aberta.
+`FinancialTransferStore` executa uma única transação e reutiliza helpers internos já existentes para:
 
-A API pública atual de `FinancialMovementStore` permanece compatível e continua abrindo sua própria transação para operações isoladas.
+- contexto RLS;
+- membership ativa;
+- ownership/status/moeda da conta;
+- opening anchor;
+- row lock de reversão;
+- digest de request das pernas.
 
-`FinancialTransferStore` reutiliza as primitives internas dentro de uma única transação externa, sem duplicar regras de moeda, owner, opening anchor, idempotência de perna ou construção de record.
+As pequenas primitives de insert de perna permanecem internas ao store de transferência por enquanto. Uma refatoração connection-scoped mais ampla só deve ser feita se a validação mostrar ganho claro sem reabrir os contratos da #141.
 
 ## Alternativas consideradas
 
-### Duas chamadas públicas a `create_movement()`
+### Duas chamadas a `create_movement()`
 
-Rejeitada. Cada chamada possui transação independente e pode persistir somente metade da transferência.
+Rejeitada porque cada chamada controla sua própria transação.
 
 ### Transferência como um único Movement com duas contas
 
-Rejeitada pelo ADR-0019. Um Movement é efeito em exatamente uma conta.
+Rejeitada pelo ADR-0019. Movement é efeito em exatamente uma conta.
 
-### Persistir amount também em `finance.transfers`
+### Persistir amount em `finance.transfers`
 
-Rejeitada por criar segunda autoridade monetária que poderia divergir das pernas do ledger.
+Rejeitada por duplicar autoridade monetária.
 
-### Advisory lock para serializar idempotência
+### Duas colunas `source_movement_id` / `destination_movement_id` com uniques independentes
 
-Desnecessário no desenho preferido. A row append-only de transferência pode ser o próprio claim idempotente e a unique natural fornece serialização de concorrência.
+Rejeitada após revisão. Elas não impedem reutilizar o mesmo Movement como SOURCE de uma transferência e DESTINATION de outra. `finance.transfer_legs` com `UNIQUE(movement_id)` fecha essa brecha de forma declarativa e concorrente.
 
-### Permitir reversão isolada de uma perna
+### Advisory lock para idempotência ou unicidade das pernas
 
-Rejeitada. Mantém neutralidade econômica, mas quebra a operação patrimonial composta e permite saldos incoerentes entre origem e destino.
+Rejeitado. A unique do claim serializa retries e a relation normalizada possui unique global do `movement_id`.
 
-### Cross-currency no primeiro recorte
+### Reversão isolada de uma perna
 
-Adiado. Exige taxa, arredondamento, moeda de referência e tratamento explícito da diferença entre os dois amounts.
+Rejeitada porque quebra a operação patrimonial composta.
+
+### Cross-currency agora
+
+Adiado. Requer taxa, arredondamento e semântica explícita de diferença cambial.
 
 ## Consequências positivas
 
-- zero risco de transferência parcialmente commitada;
-- sem segundo ledger ou saldo paralelo;
-- retries concorrentes convergem por contrato persistente;
-- receita/despesa não é contaminada por movimentação interna;
-- correções permanecem append-only e auditáveis;
-- vínculo de transferência não vaza conta invisível;
-- invariantes existentes de Movement continuam sendo reutilizadas.
+- transferência nunca é parcialmente commitada;
+- nenhuma segunda autoridade de saldo/amount;
+- retries concorrentes convergem pelo claim persistente;
+- cada Movement pertence a no máximo uma transferência;
+- transferências não contaminam receita/despesa;
+- correções são append-only e atômicas;
+- vínculo de transferência não vaza conta invisível.
 
 ## Consequências negativas e riscos
 
-- migration precisa de constraints/triggers deferred mais sofisticados;
-- reversão genérica de Movement passa a precisar reconhecer pernas vinculadas;
-- store de Movement precisa de pequena refatoração interna connection-scoped;
-- RLS da transferência consulta duas contas;
-- testes de concorrência e rollback tornam-se obrigatórios antes de integração.
+- adiciona uma relation table para as pernas;
+- migration usa FKs e constraint trigger deferred;
+- reversão genérica precisa reconhecer legs vinculadas;
+- RLS precisa cobrir operação e relation;
+- concorrência, rollback e downgrade exigem prova PostgreSQL antes do merge.
 
 ## Validação
 
-A implementação deve cobrir, no mínimo:
+Antes da integração devem ser provados:
 
-- duas pernas `NEUTRAL` opostas e de mesma moeda;
-- atomicidade sob falha depois da primeira perna;
-- replay e conflito de idempotência;
-- concorrência do mesmo request;
-- owner/membership/status/RLS em ambas as contas;
-- opening anchor em cada endpoint;
-- interseção de audiência na leitura;
+- duas pernas `NEUTRAL` opostas;
+- `UNIQUE(movement_id)` em `transfer_legs`;
+- rollback total se a segunda perna falhar;
+- replay/conflito e corrida da mesma idempotency key;
+- owner/membership/status/moeda nas duas contas;
+- opening anchor nos dois endpoints;
+- audiência como interseção;
 - bloqueio de reversão isolada;
-- reversão atômica das duas pernas;
-- ausência de `amount` e de `UPDATE/DELETE` em `finance.transfers`;
+- reversão atômica com orientação invertida;
+- runtime sem `UPDATE/DELETE`;
+- ausência de amount em `finance.transfers`;
 - downgrade/reupgrade simétricos.
 
 ## Referências

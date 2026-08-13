@@ -44,6 +44,7 @@ from meufinanceiro_finance.operation_ids import (
     new_financial_idempotency_key,
     validate_financial_idempotency_key,
 )
+from meufinanceiro_finance.transfer_records import FinancialTransferRecord
 from meufinanceiro_finance.transfers import (
     FinancialTransferDraft,
     FinancialTransferReversalDraft,
@@ -70,6 +71,7 @@ __all__ = [
     "FinancialResourceAudience",
     "FinancialResultEffect",
     "FinancialTransferDraft",
+    "FinancialTransferRecord",
     "FinancialTransferReversalDraft",
     "FinancialTransferRole",
     "FinancialVisibilityScope",
