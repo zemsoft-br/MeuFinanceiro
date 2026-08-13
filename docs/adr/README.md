@@ -20,6 +20,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0019 — Movement canônico e ledger append-only](0019-canonical-movement-append-only-ledger.md)
 - [ADR-0020 — Persistência de Movement, idempotência e integridade de reversão](0020-financial-movement-persistence-idempotency-and-reversal-integrity.md)
 - [ADR-0021 — Transferências internas atômicas no ledger canônico](0021-atomic-internal-transfers.md)
+- [ADR-0022 — Classificação e rateio append-only de Movements](0022-movement-classification-and-allocation.md)
 
 ## Decisões propostas
 
