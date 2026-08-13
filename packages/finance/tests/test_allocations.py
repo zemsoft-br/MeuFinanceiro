@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from meufinanceiro_finance.access import FinancialVisibilityScope
 from meufinanceiro_finance.allocation_records import (
     FinancialMovementAllocationRecord,
     FinancialMovementAllocationSetRecord,
@@ -14,6 +15,7 @@ from meufinanceiro_finance.allocations import (
     FinancialMovementAllocationDraft,
     FinancialMovementAllocationRevisionDraft,
     FinancialMovementAllocationSetDraft,
+    is_category_audience_compatible_for_movement,
 )
 from meufinanceiro_finance.money import Money
 
@@ -84,18 +86,29 @@ def test_allocation_set_exposes_exact_total_without_float() -> None:
     assert draft.currency == "BRL"
 
 
-def test_canonical_order_is_independent_from_input_order() -> None:
+def test_canonical_material_is_independent_from_input_order() -> None:
     first = uuid4()
     second = uuid4()
     low, high = sorted((first, second), key=lambda value: value.hex)
-    draft = FinancialMovementAllocationSetDraft(
+    forward = FinancialMovementAllocationSetDraft(
         movement_id=uuid4(),
+        allocations=(
+            _allocation("-7", category_id=low),
+            _allocation("-3", category_id=high),
+        ),
+    )
+    reverse = FinancialMovementAllocationSetDraft(
+        movement_id=forward.movement_id,
         allocations=(
             _allocation("-3", category_id=high),
             _allocation("-7", category_id=low),
         ),
     )
-    assert tuple(item.category_id for item in draft.canonical_allocations()) == (low, high)
+    assert forward.canonical_material() == reverse.canonical_material()
+    assert forward.canonical_material() == (
+        (str(low), "BRL", "-7"),
+        (str(high), "BRL", "-3"),
+    )
 
 
 def test_revision_requires_valid_predecessor_and_reuses_same_invariants() -> None:
@@ -105,6 +118,43 @@ def test_revision_requires_valid_predecessor_and_reuses_same_invariants() -> Non
         allocations=(_allocation("25"), _allocation("75")),
     )
     assert revision.total == Money(Decimal("100"), "BRL")
+
+
+@pytest.mark.parametrize(
+    (
+        "movement_scope",
+        "category_scope",
+        "same_owner",
+        "expected",
+    ),
+    (
+        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.PERSONAL, True, True),
+        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.PERSONAL, False, False),
+        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.HOUSEHOLD, True, True),
+        (FinancialVisibilityScope.SHARED, FinancialVisibilityScope.PERSONAL, True, False),
+        (FinancialVisibilityScope.SHARED, FinancialVisibilityScope.HOUSEHOLD, False, True),
+        (FinancialVisibilityScope.HOUSEHOLD, FinancialVisibilityScope.PERSONAL, True, False),
+        (FinancialVisibilityScope.HOUSEHOLD, FinancialVisibilityScope.HOUSEHOLD, False, True),
+        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.SHARED, True, False),
+    ),
+)
+def test_category_audience_must_contain_movement_audience(
+    movement_scope: FinancialVisibilityScope,
+    category_scope: FinancialVisibilityScope,
+    same_owner: bool,
+    expected: bool,
+) -> None:
+    movement_owner = uuid4()
+    category_owner = movement_owner if same_owner else uuid4()
+    assert (
+        is_category_audience_compatible_for_movement(
+            movement_visibility_scope=movement_scope,
+            movement_owner_operator_id=movement_owner,
+            category_visibility_scope=category_scope,
+            category_owner_operator_id=category_owner,
+        )
+        is expected
+    )
 
 
 def test_records_require_consistent_revision_shape_and_set_identity() -> None:

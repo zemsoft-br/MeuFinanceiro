@@ -22,6 +22,7 @@ from meufinanceiro_finance.allocations import (
     FinancialMovementAllocationDraft,
     FinancialMovementAllocationRevisionDraft,
     FinancialMovementAllocationSetDraft,
+    is_category_audience_compatible_for_movement,
 )
 from meufinanceiro_finance.categories import (
     FinancialCategoryDraft,
@@ -82,6 +83,7 @@ __all__ = [
     "Money",
     "RoundingMode",
     "can_access_financial_resource",
+    "is_category_audience_compatible_for_movement",
     "new_financial_idempotency_key",
     "new_financial_resource_id",
     "require_financial_resource_access",

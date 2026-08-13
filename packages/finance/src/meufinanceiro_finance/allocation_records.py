@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from meufinanceiro_finance.allocations import FinancialMovementAllocationDraft
+from meufinanceiro_finance.allocations import (
+    FinancialMovementAllocationDraft,
+    FinancialMovementAllocationSetDraft,
+)
 from meufinanceiro_finance.ids import validate_financial_resource_id
 from meufinanceiro_finance.money import Money
 
@@ -69,7 +72,7 @@ class FinancialMovementAllocationSetRecord:
             raise ValueError("first revision must not supersede another set")
         if self.revision > 1 and self.supersedes_id is None:
             raise ValueError("later revision must supersede another set")
-        validate_financial_resource_id(self.created_by_operator_id)
+        _require_uuid(self.created_by_operator_id, "created_by_operator_id")
         _require_aware(self.created_at, "created_at")
         if not isinstance(self.allocations, tuple):
             raise TypeError("allocations must be a tuple")
@@ -83,13 +86,9 @@ class FinancialMovementAllocationSetRecord:
         if any(item.allocation_set_id != self.id for item in self.allocations):
             raise ValueError("allocation belongs to another set")
 
-        drafts = tuple(item.to_draft() for item in self.allocations)
-        # Reuse the domain's duplicate/currency/sign validation without exposing amounts.
-        from meufinanceiro_finance.allocations import FinancialMovementAllocationSetDraft
-
         FinancialMovementAllocationSetDraft(
             movement_id=self.movement_id,
-            allocations=drafts,
+            allocations=tuple(item.to_draft() for item in self.allocations),
         )
 
     def __repr__(self) -> str:
@@ -105,6 +104,11 @@ def _require_aware(value: datetime, field_name: str) -> None:
         raise TypeError(f"{field_name} must be datetime")
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError(f"{field_name} must be timezone-aware")
+
+
+def _require_uuid(value: UUID, field_name: str) -> None:
+    if not isinstance(value, UUID):
+        raise TypeError(f"{field_name} must be UUID")
 
 
 __all__ = [
