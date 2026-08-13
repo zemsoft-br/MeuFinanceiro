@@ -31,7 +31,7 @@ docker compose version >/dev/null 2>&1 || {
 }
 
 if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
-  if [ "${CI:-false}" = "true" ]; then
+  if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
     DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
     export DEMO_OPERATOR_PASSWORD
   else
