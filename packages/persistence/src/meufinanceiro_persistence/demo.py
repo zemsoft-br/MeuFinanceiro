@@ -79,7 +79,7 @@ class DemoFixtureStore:
         self._engine = engine
         self._enabled = enabled
         self._operator_password = operator_password
-        self._reset_engine = reset_engine or engine
+        self._reset_engine = reset_engine
 
     def _require_enabled(self) -> None:
         if not self._enabled:
@@ -90,6 +90,11 @@ class DemoFixtureStore:
         if not isinstance(value, str) or not value:
             raise DemoFixtureConflictError("demo operator credential is not configured")
         return value
+
+    def _require_reset_engine(self) -> Engine:
+        if self._reset_engine is None:
+            raise DemoFixtureConflictError("demo administrative reset is not configured")
+        return self._reset_engine
 
     def status(self) -> DemoFixtureStatus:
         if not self._enabled:
@@ -167,8 +172,9 @@ class DemoFixtureStore:
 
     def reset(self) -> bool:
         self._require_enabled()
+        reset_engine = self._require_reset_engine()
         try:
-            with self._reset_engine.begin() as connection:
+            with reset_engine.begin() as connection:
                 changed = reset_demo_financial_fixture(connection)
                 result = connection.execute(
                     delete(demo_fixture).where(
