@@ -22,7 +22,7 @@ class DemoStatusResponse(BaseModel):
     reference_date: date
     timezone: str
     currency: str
-    scope: Literal["foundation_only"]
+    scope: Literal["finance_phase1"]
     contract_checksum: str
     loaded_at: datetime | None
 
