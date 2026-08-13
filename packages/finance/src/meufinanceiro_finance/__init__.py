@@ -14,6 +14,15 @@ from meufinanceiro_finance.accounts import (
     FinancialAccountStatus,
     FinancialAccountType,
 )
+from meufinanceiro_finance.audit_event_records import FinancialAuditEventRecord
+from meufinanceiro_finance.audit_events import (
+    FINANCIAL_AUDIT_EVENT_SCHEMA_VERSION,
+    FinancialAuditEventDraft,
+    FinancialAuditEventType,
+    FinancialAuditSubjectType,
+    financial_audit_related_subject_type_for_event,
+    financial_audit_subject_type_for_event,
+)
 from meufinanceiro_finance.categories import (
     FinancialCategoryDraft,
     FinancialCategoryRecord,
@@ -46,6 +55,7 @@ from meufinanceiro_finance.operation_ids import (
 )
 
 __all__ = [
+    "FINANCIAL_AUDIT_EVENT_SCHEMA_VERSION",
     "CurrencyMismatchError",
     "FinancialAccessDeniedError",
     "FinancialAccountDraft",
@@ -53,6 +63,10 @@ __all__ = [
     "FinancialAccountStatus",
     "FinancialAccountType",
     "FinancialActorContext",
+    "FinancialAuditEventDraft",
+    "FinancialAuditEventRecord",
+    "FinancialAuditEventType",
+    "FinancialAuditSubjectType",
     "FinancialCategoryDraft",
     "FinancialCategoryRecord",
     "FinancialCategoryStatus",
@@ -68,6 +82,8 @@ __all__ = [
     "Money",
     "RoundingMode",
     "can_access_financial_resource",
+    "financial_audit_related_subject_type_for_event",
+    "financial_audit_subject_type_for_event",
     "new_financial_idempotency_key",
     "new_financial_resource_id",
     "require_financial_resource_access",
