@@ -14,6 +14,15 @@ from meufinanceiro_finance.accounts import (
     FinancialAccountStatus,
     FinancialAccountType,
 )
+from meufinanceiro_finance.allocation_records import (
+    FinancialMovementAllocationRecord,
+    FinancialMovementAllocationSetRecord,
+)
+from meufinanceiro_finance.allocations import (
+    FinancialMovementAllocationDraft,
+    FinancialMovementAllocationRevisionDraft,
+    FinancialMovementAllocationSetDraft,
+)
 from meufinanceiro_finance.categories import (
     FinancialCategoryDraft,
     FinancialCategoryRecord,
@@ -56,6 +65,11 @@ __all__ = [
     "FinancialCategoryDraft",
     "FinancialCategoryRecord",
     "FinancialCategoryStatus",
+    "FinancialMovementAllocationDraft",
+    "FinancialMovementAllocationRecord",
+    "FinancialMovementAllocationRevisionDraft",
+    "FinancialMovementAllocationSetDraft",
+    "FinancialMovementAllocationSetRecord",
     "FinancialMovementDraft",
     "FinancialMovementRecord",
     "FinancialMovementReversalDraft",

@@ -19,6 +19,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0018 — Saldo de abertura imutável por conta](0018-immutable-account-opening-balance.md)
 - [ADR-0019 — Movement canônico e ledger append-only](0019-canonical-movement-append-only-ledger.md)
 - [ADR-0020 — Persistência de Movement, idempotência e integridade de reversão](0020-financial-movement-persistence-idempotency-and-reversal-integrity.md)
+- [ADR-0022 — Classificação e rateio append-only de Movements](0022-movement-classification-and-allocation.md)
 
 ## Decisões propostas
 
