@@ -2,23 +2,58 @@
 
 ## Objetivo
 
-O modo demonstração permite validar o MeuFinanceiro sem inserir dados reais, sem configurar integrações externas e sem reutilizar o banco, o volume, o `.env` ou o keyring do ambiente local comum.
+O modo demonstração permite validar o MeuFinanceiro com dados totalmente sintéticos, sem configurar integrações externas e sem reutilizar banco, volume, `.env` ou keyring do ambiente local comum.
 
-Esta primeira versão implementa somente a fundação executável da fixture `residencia-ipe-v1`. Ela não cria residência, membros, contas, categorias ou movimentações. Cada módulo futuro expandirá a mesma fixture depois que seu domínio estiver aprovado.
+A fixture `residencia-ipe-v1` está na versão 2 e cobre a fundação financeira da Fase 1: identidade/residência, contas, categorias, saldo de abertura e Movements append-only.
 
 ## Contrato determinístico
 
 | Campo | Valor |
 |---|---|
 | `fixture_id` | `residencia-ipe-v1` |
-| `fixture_version` | `1` |
+| `fixture_version` | `2` |
 | `reference_date` | `2026-11-01` |
 | `timezone` | `America/Sao_Paulo` |
 | `currency` | `BRL` |
-| `scope` | `foundation_only` |
-| `contract_checksum` | `34a7628233ff6c4f5eac6469b8e80fdedd5d65d80f825b4ecf72a069235a21a1` |
+| `scope` | `finance_phase1` |
+| `contract_checksum` | `a819b4913e35cabff3f20617b3e7837a6042b0c9243031a65b3f53fa7086d091` |
 
-O checksum representa os campos canônicos acima. Se os metadados persistidos divergirem, a carga e a leitura falham explicitamente em vez de corrigirem o registro silenciosamente.
+A versão 1 (`foundation_only`) não é atualizada silenciosamente. Se um volume antigo contiver metadados incompatíveis, faça `purge` no ambiente demo isolado e recrie a fixture.
+
+## Conteúdo sintético v2
+
+A carga usa IDs UUIDv4 estáveis e datas derivadas da referência de 1º de novembro de 2026.
+
+Identidade:
+
+- operador com login `demo`;
+- residência `Residência Ipê`;
+- membership ativa e primária do operador.
+
+Contas:
+
+- `Conta Corrente Ipê`: CHECKING, PERSONAL, BRL;
+- `Carteira da Casa`: CASH, HOUSEHOLD, BRL.
+
+Categorias:
+
+- `Moradia`;
+- `Alimentação`.
+
+Saldo de abertura:
+
+- `Conta Corrente Ipê`: R$ 2.500,00 em 31/10/2026;
+- `Carteira da Casa`: **sem registro de saldo de abertura**, para preservar a diferença entre “não informado” e zero explícito.
+
+Movements da conta corrente:
+
+- +R$ 4.500,00 — receita demonstrativa;
+- -R$ 1.600,00 — despesa demonstrativa;
+- -R$ 420,75 — despesa demonstrativa;
+- -R$ 90,00 — despesa demonstrativa a estornar;
+- +R$ 90,00 — REVERSAL integral do Movement anterior.
+
+O efeito líquido dos Movements é R$ 2.479,25. Com o saldo de abertura, o saldo derivável da conta é R$ 4.979,25. **Nenhum campo de saldo corrente é persistido.**
 
 ## Isolamento
 
@@ -34,7 +69,33 @@ O ambiente demo usa:
 - `.demo/secrets/keyring.json` exclusivo;
 - `APP_DEMO_MODE=true`.
 
-O ambiente comum permanece com `APP_DEMO_MODE=false` e porta padrão `8080`.
+A carga e o status usam a role de runtime e respeitam RLS/guards normais. O reset funcional usa a conexão administrativa **somente no serviço isolado `demo-fixture`**, porque o ledger não concede DELETE à runtime.
+
+Nenhum grant de UPDATE/DELETE é adicionado a `finance.movements` para atender o modo demo.
+
+## Credencial do operador demo
+
+O login é fixo:
+
+```text
+demo
+```
+
+A senha não é fixa nem versionada no repositório. Defina `DEMO_OPERATOR_PASSWORD` no ambiente do terminal antes de executar qualquer comando demo. O valor não é gravado pelo script em `.demo/.env`.
+
+Linux/macOS/WSL:
+
+```bash
+export DEMO_OPERATOR_PASSWORD='<senha-local-demo>'
+```
+
+Windows PowerShell:
+
+```powershell
+$env:DEMO_OPERATOR_PASSWORD = '<senha-local-demo>'
+```
+
+Na primeira carga, o valor é armazenado no banco apenas como hash Argon2id. Cargas seguintes verificam a mesma credencial sem reescrever o operador.
 
 ## Operação no Linux/macOS/WSL
 
@@ -58,30 +119,39 @@ bash infra/scripts/demo-up.sh purge
 & .\infra\scripts\demo-up.ps1 -Action purge
 ```
 
-`up` gera credenciais e keyring automaticamente, aplica as migrações, carrega a fixture e exige que a API confirme `enabled=true` e `loaded=true`.
+`up` gera apenas as credenciais do banco demo e o keyring local, aplica as migrações, carrega a fixture e exige que a API confirme `enabled=true` e `loaded=true`.
 
-`down` encerra os containers sem apagar o volume. `purge` remove containers, volume, `.demo/.env` e keyring. A remoção dos dados é, portanto, explícita.
+`down` encerra os containers sem apagar o volume. `purge` remove containers, volume, `.demo/.env` e keyring. A remoção dos dados é explícita.
 
-## Comandos de fixture
+## Lifecycle da fixture
 
-A CLI operacional também pode ser executada diretamente no serviço isolado:
+### `load`
 
-```bash
-docker compose \
-  --project-name meufinanceiro-demo \
-  --env-file .demo/.env \
-  --profile demo \
-  run --rm demo-fixture \
-  python -m meufinanceiro_persistence.demo_cli status
-```
+Em uma transação:
 
-Comandos disponíveis:
+1. valida metadata v2;
+2. materializa/verifica instalação, operador, residência e membership;
+3. define contexto financeiro de instalação/residência/operador;
+4. materializa/verifica categorias e contas;
+5. materializa/verifica o opening balance;
+6. materializa/verifica Movements STANDARD;
+7. materializa/verifica a REVERSAL.
 
-- `load`: cria o registro canônico quando ausente e retorna o mesmo registro nas execuções seguintes;
-- `status`: informa o contrato e o estado carregado;
-- `reset`: remove somente o registro da fixture demo e pode ser repetido com segurança.
+As inserções funcionais usam `ON CONFLICT DO NOTHING` seguido de verificação exata. Divergência falha explicitamente; nenhum registro append-only é atualizado.
 
-Todos os comandos recusam execução quando `APP_DEMO_MODE` não está habilitado.
+Uma segunda carga preserva `loaded_at` e não duplica dados.
+
+### `status`
+
+`loaded=true` só é retornado quando metadata **e todo o conjunto funcional esperado** estão consistentes. Metadata isolada não é suficiente.
+
+Telemetria normal de autenticação do operador, como último login e tentativas, não faz parte da igualdade estável da fixture.
+
+### `reset`
+
+O reset remove o escopo da instalação demo em ordem de dependência, incluindo sessões e Movements criados durante a própria demonstração. Dados de outra instalação e `infra.task_queue` são preservados.
+
+O reset pode ser repetido com segurança.
 
 ## Endpoint somente leitura
 
@@ -89,7 +159,7 @@ Todos os comandos recusam execução quando `APP_DEMO_MODE` não está habilitad
 GET /api/v1/demo/status
 ```
 
-O endpoint nunca aceita escrita e não retorna senha, URL de banco, keyring ou material criptográfico.
+O endpoint não aceita mutações e retorna apenas metadata operacional da fixture.
 
 No ambiente comum:
 
@@ -98,57 +168,57 @@ No ambiente comum:
   "enabled": false,
   "loaded": false,
   "fixture_id": "residencia-ipe-v1",
-  "fixture_version": 1,
+  "fixture_version": 2,
   "reference_date": "2026-11-01",
   "timezone": "America/Sao_Paulo",
   "currency": "BRL",
-  "scope": "foundation_only",
-  "contract_checksum": "34a7628233ff6c4f5eac6469b8e80fdedd5d65d80f825b4ecf72a069235a21a1",
+  "scope": "finance_phase1",
+  "contract_checksum": "a819b4913e35cabff3f20617b3e7837a6042b0c9243031a65b3f53fa7086d091",
   "loaded_at": null
 }
 ```
 
-No ambiente demo carregado, `enabled` e `loaded` são `true`, e `loaded_at` contém o instante da primeira carga. Uma segunda carga preserva esse instante, comprovando idempotência.
+## Integrações externas
 
-## Persistência
+A fixture v2 não chama nem popula Pluggy ou qualquer provider externo. Não há importação, sincronização, webhook ou iniciação de pagamento.
 
-A migração `0002_demo_fixture` cria somente `infra.demo_fixture`.
+## Testes esperados
 
-A tabela contém metadados da fixture e não antecipa entidades funcionais. O reset usa a chave estável `residencia-ipe-v1` e não apaga `infra.task_queue`, efeitos da fila ou dados futuros que não estejam explicitamente associados à fixture demo.
+A suíte da #175 deve validar:
 
-## Testes
-
-A suíte cobre:
-
-- status antes da carga;
+- metadata v2/checksum;
 - carga em banco vazio;
-- segunda carga sem duplicidade;
-- reset e segundo reset;
-- recusa fora do modo demo;
-- conflito entre metadados persistidos e contrato canônico;
+- segunda carga idempotente e `loaded_at` preservado;
+- IDs estáveis;
+- identidade/residência completas;
+- hash de autenticação válido;
+- duas contas, categorias, opening balance e cinco Movements exatos;
+- STANDARD + REVERSAL como eventos separados;
+- saldo derivável de R$ 4.979,25 sem coluna de saldo;
+- conta cash sem opening balance;
+- tolerância à telemetria mutável de autenticação;
+- conflito em drift funcional;
+- reset administrativo limitado à instalação demo;
+- segundo reset idempotente;
 - preservação da fila normal;
-- downgrade simétrico;
-- contrato OpenAPI somente leitura;
-- ambiente comum com demo desabilitado;
-- ambiente demo simultâneo ao ambiente comum;
-- ciclo de reset e carga via Docker Compose.
+- contrato HTTP v2 somente leitura;
+- scripts Linux/PowerShell exigindo credencial externa;
+- ausência de provider externo.
 
-## Regras para expansão
+## Regras para próximas expansões
 
-Ao implementar um novo módulo:
-
-1. reutilizar `residencia-ipe-v1` e os identificadores estáveis do contrato;
-2. derivar datas de `2026-11-01`, nunca de `now()` direto;
-3. adicionar dados somente depois do schema e das regras do módulo serem aprovados;
-4. manter carga e reset idempotentes e limitados aos dados marcados como demo;
-5. não usar dumps reais, dados anonimizados ou marcas sem licença;
-6. atualizar o checksum apenas por mudança versionada do contrato;
-7. adicionar testes de isolamento, autorização e invariantes do módulo.
+1. reutilizar `residencia-ipe-v1` e identificadores estáveis;
+2. derivar datas de `2026-11-01`;
+3. adicionar dados somente depois do schema/invariantes do módulo serem aprovados;
+4. manter carga/status/reset idempotentes e isolados;
+5. não usar dumps reais ou dados anonimizados;
+6. versionar metadata/checksum em mudança incompatível;
+7. não enfraquecer RLS, grants ou append-only por conveniência da demo.
 
 ## Segurança
 
 - nunca copiar `.env`, keyring ou volume do ambiente comum;
-- nunca inserir credenciais Pluggy ou de outra integração;
+- nunca inserir credenciais de integração externa;
 - nunca utilizar dados do mantenedor, familiares, clientes ou instituições reais;
 - nunca habilitar o modo demo em HML ou produção por inferência deste runbook;
 - nenhum deploy é autorizado por esta funcionalidade.
