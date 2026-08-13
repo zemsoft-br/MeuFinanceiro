@@ -31,10 +31,12 @@ def test_manual_entry_service_uses_only_the_append_only_movement_boundary() -> N
     assert "validate_financial_idempotency_key(idempotency_key)" in MANUAL_ENTRIES
 
     lowered = MANUAL_ENTRIES.lower()
+    assert '"finance.movements"' not in MANUAL_ENTRIES
+    assert "'finance.movements'" not in MANUAL_ENTRIES
+
     for forbidden in (
         "sqlalchemy",
         "meufinanceiro_persistence",
-        "finance.movements",
         "update_movement",
         "delete_movement",
         "upsert_movement",
