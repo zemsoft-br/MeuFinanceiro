@@ -23,6 +23,12 @@ from meufinanceiro_finance.ids import (
     new_financial_resource_id,
     validate_financial_resource_id,
 )
+from meufinanceiro_finance.manual_entries import (
+    FinancialManualEntryDraft,
+    FinancialManualEntryMovementStore,
+    FinancialManualEntryService,
+    FinancialManualEntryType,
+)
 from meufinanceiro_finance.money import (
     CurrencyMismatchError,
     Money,
@@ -56,6 +62,10 @@ __all__ = [
     "FinancialCategoryDraft",
     "FinancialCategoryRecord",
     "FinancialCategoryStatus",
+    "FinancialManualEntryDraft",
+    "FinancialManualEntryMovementStore",
+    "FinancialManualEntryService",
+    "FinancialManualEntryType",
     "FinancialMovementDraft",
     "FinancialMovementRecord",
     "FinancialMovementReversalDraft",
