@@ -7,7 +7,7 @@ ENV_FILE=${DEMO_ENV_FILE:-$ROOT_DIR/.demo/.env}
 PROJECT_NAME=${DEMO_PROJECT_NAME:-meufinanceiro-demo}
 
 if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
-  if [ "${CI:-false}" = "true" ]; then
+  if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
     DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
     export DEMO_OPERATOR_PASSWORD
   else
