@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-enum AppRouteId { home, integrations, components, system }
+enum AppRouteId { home, finance, integrations, components, system }
 
 class AppDestination {
   const AppDestination({
@@ -27,6 +27,12 @@ class AppDestination {
 abstract final class AppRoutes {
   static const login = 'login';
   static const loginPath = '/login';
+  static const finance = 'finance';
+  static const financePath = '/app/financas';
+  static const financeAccountCreate = 'finance-account-create';
+  static const financeAccountCreatePath = '/app/financas/contas/nova';
+  static const financeAccountDetail = 'finance-account-detail';
+  static const financeAccountDetailPath = '/app/financas/contas/:accountId';
   static const integrations = 'integrations';
   static const integrationsPath = '/app/integracoes';
   static const pluggyConnect = 'pluggy-connect';
@@ -37,6 +43,9 @@ abstract final class AppRoutes {
   static const home = 'home';
   static const components = 'components';
   static const system = 'system';
+
+  static String financeAccountDetailLocation(String accountId) =>
+      '/app/financas/contas/$accountId';
 
   static String pluggyReauthenticationLocation(String connectionId) =>
       '/app/integracoes/pluggy/conexoes/$connectionId/reautenticar';
@@ -51,6 +60,16 @@ abstract final class AppRoutes {
       description: 'Visão geral da fundação do MeuFinanceiro',
       icon: Icons.home_outlined,
       selectedIcon: Icons.home_rounded,
+    ),
+    AppDestination(
+      id: AppRouteId.finance,
+      routeName: finance,
+      path: financePath,
+      label: 'Finanças',
+      shortLabel: 'Finanças',
+      description: 'Contas, saldo inicial e movimentações financeiras',
+      icon: Icons.account_balance_wallet_outlined,
+      selectedIcon: Icons.account_balance_wallet_rounded,
     ),
     AppDestination(
       id: AppRouteId.integrations,
@@ -90,7 +109,8 @@ abstract final class AppRoutes {
       if (destination.path == path) {
         return destination;
       }
-      if (destination.id == AppRouteId.integrations &&
+      if ((destination.id == AppRouteId.finance ||
+              destination.id == AppRouteId.integrations) &&
           path.startsWith('${destination.path}/')) {
         return destination;
       }
