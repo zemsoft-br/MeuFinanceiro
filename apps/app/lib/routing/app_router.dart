@@ -9,6 +9,9 @@ import 'package:meufinanceiro_app/features/banking/connections/banking_connectio
 import 'package:meufinanceiro_app/features/banking/pluggy/connect/pluggy_connect_screen.dart';
 import 'package:meufinanceiro_app/features/banking/pluggy/reauthentication/pluggy_reauthentication_screen.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_account_create_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_account_detail_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_accounts_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
 import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
@@ -60,6 +63,31 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: AppRoutes.home,
             pageBuilder: (context, state) {
               return const NoTransitionPage(child: _HomeRoute());
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financePath,
+            name: AppRoutes.finance,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(child: FinancialAccountsScreen());
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financeAccountCreatePath,
+            name: AppRoutes.financeAccountCreate,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(child: FinancialAccountCreateScreen());
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financeAccountDetailPath,
+            name: AppRoutes.financeAccountDetail,
+            pageBuilder: (context, state) {
+              return NoTransitionPage(
+                child: FinancialAccountDetailScreen(
+                  accountId: state.pathParameters['accountId'] ?? '',
+                ),
+              );
             },
           ),
           GoRoute(
