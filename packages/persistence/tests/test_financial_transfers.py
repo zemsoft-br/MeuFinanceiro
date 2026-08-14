@@ -162,9 +162,15 @@ def _draft(
 
 def _counts(engine: Engine) -> tuple[int, int, int]:
     with engine.begin() as connection:
-        transfers = connection.scalar(select(func.count()).select_from(financial_transfers))
-        legs = connection.scalar(select(func.count()).select_from(financial_transfer_legs))
-        movements = connection.scalar(select(func.count()).select_from(financial_movements))
+        transfers = connection.scalar(
+            select(func.count()).select_from(financial_transfers)
+        )
+        legs = connection.scalar(
+            select(func.count()).select_from(financial_transfer_legs)
+        )
+        movements = connection.scalar(
+            select(func.count()).select_from(financial_movements)
+        )
     assert isinstance(transfers, int)
     assert isinstance(legs, int)
     assert isinstance(movements, int)
@@ -546,12 +552,15 @@ def test_transfer_relation_visibility_is_intersection_of_both_accounts(
     assert tuple(row.id for row in member_movements) == (transfer.source_movement_id,)
 
     member_transfer_store = FinancialTransferStore(runtime_engine)
-    assert member_transfer_store.list_transfers(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=member_id,
-        account_id=source_id,
-    ) == ()
+    assert (
+        member_transfer_store.list_transfers(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=member_id,
+            account_id=source_id,
+        )
+        == ()
+    )
     with pytest.raises(FinancialTransferNotFoundError):
         member_transfer_store.get_transfer(
             installation_id=installation_id,

@@ -11,9 +11,9 @@ FINANCE_PUBLIC = (FINANCE / "__init__.py").read_text(encoding="utf-8")
 MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
     encoding="utf-8"
 )
-ADR = (
-    ROOT / "docs/adr/0022-movement-classification-and-allocation.md"
-).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0022-movement-classification-and-allocation.md").read_text(
+    encoding="utf-8"
+)
 
 
 def test_allocation_domain_remains_provider_and_persistence_neutral() -> None:

@@ -421,8 +421,7 @@ def downgrade() -> None:
     op.execute(f"REVOKE SELECT, INSERT ON finance.transfers FROM {role}")
     op.execute(_movement_reversal_function(transfer_guard=False))
     op.execute(
-        "DROP TRIGGER trg_finance_validate_transfer_integrity "
-        "ON finance.transfers"
+        "DROP TRIGGER trg_finance_validate_transfer_integrity ON finance.transfers"
     )
     op.execute("DROP FUNCTION finance.validate_transfer_integrity()")
     op.execute("DROP TABLE finance.transfer_legs")

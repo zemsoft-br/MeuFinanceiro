@@ -93,7 +93,9 @@ class DemoFixtureStore:
 
     def _require_reset_engine(self) -> Engine:
         if self._reset_engine is None:
-            raise DemoFixtureConflictError("demo administrative reset is not configured")
+            raise DemoFixtureConflictError(
+                "demo administrative reset is not configured"
+            )
         return self._reset_engine
 
     def status(self) -> DemoFixtureStatus:
@@ -125,7 +127,9 @@ class DemoFixtureStore:
         except DemoFinancialFixtureConflictError as exc:
             raise DemoFixtureConflictError(str(exc)) from None
         except DBAPIError:
-            raise DemoFixtureConflictError("demo fixture could not be inspected") from None
+            raise DemoFixtureConflictError(
+                "demo fixture could not be inspected"
+            ) from None
 
     def load(self) -> DemoFixtureStatus:
         self._require_enabled()
@@ -168,7 +172,9 @@ class DemoFixtureStore:
         except DemoFinancialFixtureConflictError as exc:
             raise DemoFixtureConflictError(str(exc)) from None
         except (IntegrityError, DBAPIError):
-            raise DemoFixtureConflictError("demo fixture could not be materialized") from None
+            raise DemoFixtureConflictError(
+                "demo fixture could not be materialized"
+            ) from None
 
     def reset(self) -> bool:
         self._require_enabled()

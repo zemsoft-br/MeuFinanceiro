@@ -10,12 +10,10 @@ RECORD = (FINANCE / "transfer_records.py").read_text(encoding="utf-8")
 SCHEMA = (PERSISTENCE / "financial_transfer_schema.py").read_text(encoding="utf-8")
 STORE = (PERSISTENCE / "financial_transfer_store.py").read_text(encoding="utf-8")
 PUBLIC = (PERSISTENCE / "financial_transfer.py").read_text(encoding="utf-8")
-MIGRATION = (
-    PERSISTENCE / "migrations/versions/0015_financial_transfers.py"
-).read_text(encoding="utf-8")
-ADR = (ROOT / "docs/adr/0021-atomic-internal-transfers.md").read_text(
+MIGRATION = (PERSISTENCE / "migrations/versions/0015_financial_transfers.py").read_text(
     encoding="utf-8"
 )
+ADR = (ROOT / "docs/adr/0021-atomic-internal-transfers.md").read_text(encoding="utf-8")
 
 
 def test_transfer_domain_is_two_opposite_neutral_movements() -> None:
@@ -66,14 +64,25 @@ def test_transfer_claim_precedes_links_and_both_movement_legs() -> None:
 
 def test_transfer_integrity_is_deferred_and_guards_both_legs() -> None:
     assert "validate_transfer_integrity" in MIGRATION
-    assert "CREATE CONSTRAINT TRIGGER trg_finance_validate_transfer_integrity" in MIGRATION
+    assert (
+        "CREATE CONSTRAINT TRIGGER trg_finance_validate_transfer_integrity" in MIGRATION
+    )
     assert "DEFERRABLE INITIALLY DEFERRED" in MIGRATION
     assert "source_row.result_effect IS DISTINCT FROM 'NEUTRAL'" in MIGRATION
     assert "destination_row.result_effect IS DISTINCT FROM 'NEUTRAL'" in MIGRATION
     assert "source_row.amount IS DISTINCT FROM -destination_row.amount" in MIGRATION
-    assert "source_row.effective_date IS DISTINCT FROM destination_row.effective_date" in MIGRATION
-    assert "source_row.competence_date IS DISTINCT FROM destination_row.competence_date" in MIGRATION
-    assert "source_row.description IS DISTINCT FROM destination_row.description" in MIGRATION
+    assert (
+        "source_row.effective_date IS DISTINCT FROM destination_row.effective_date"
+        in MIGRATION
+    )
+    assert (
+        "source_row.competence_date IS DISTINCT FROM destination_row.competence_date"
+        in MIGRATION
+    )
+    assert (
+        "source_row.description IS DISTINCT FROM destination_row.description"
+        in MIGRATION
+    )
     assert "ck_finance_transfer_integrity" in MIGRATION
 
 
@@ -113,7 +122,9 @@ def test_transfer_rls_uses_intersection_and_runtime_is_append_only() -> None:
         assert forbidden not in MIGRATION + STORE + PUBLIC
 
 
-def test_transfer_contract_has_no_provider_api_category_or_cross_currency_coupling() -> None:
+def test_transfer_contract_has_no_provider_api_category_or_cross_currency_coupling() -> (
+    None
+):
     combined = (DOMAIN + RECORD + SCHEMA + STORE).lower()
     for forbidden in (
         "pluggy",

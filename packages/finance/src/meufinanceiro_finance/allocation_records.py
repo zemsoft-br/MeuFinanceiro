@@ -82,7 +82,9 @@ class FinancialMovementAllocationSetRecord:
             isinstance(item, FinancialMovementAllocationRecord)
             for item in self.allocations
         ):
-            raise TypeError("allocations must contain FinancialMovementAllocationRecord")
+            raise TypeError(
+                "allocations must contain FinancialMovementAllocationRecord"
+            )
         if any(item.allocation_set_id != self.id for item in self.allocations):
             raise ValueError("allocation belongs to another set")
 

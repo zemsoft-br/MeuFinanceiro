@@ -288,9 +288,9 @@ def verify_demo_financial_fixture(connection: Connection) -> None:
         )
 
     cash_opening_count = connection.scalar(
-        select(func.count()).select_from(financial_opening_balances).where(
-            financial_opening_balances.c.account_id == DEMO_CASH_ACCOUNT_ID
-        )
+        select(func.count())
+        .select_from(financial_opening_balances)
+        .where(financial_opening_balances.c.account_id == DEMO_CASH_ACCOUNT_ID)
     )
     if cash_opening_count != 0:
         raise DemoFinancialFixtureConflictError(
@@ -304,7 +304,9 @@ def demo_functional_rows_exist(connection: Connection) -> bool:
         select(identity_installation.c.id).where(
             identity_installation.c.id == DEMO_INSTALLATION_ID
         ),
-        select(identity_operators.c.id).where(identity_operators.c.id == DEMO_OPERATOR_ID),
+        select(identity_operators.c.id).where(
+            identity_operators.c.id == DEMO_OPERATOR_ID
+        ),
         select(household_residences.c.id).where(
             household_residences.c.id == DEMO_RESIDENCE_ID
         ),
@@ -385,7 +387,9 @@ def _verify_operator(
 ) -> None:
     row = (
         connection.execute(
-            select(identity_operators).where(identity_operators.c.id == DEMO_OPERATOR_ID)
+            select(identity_operators).where(
+                identity_operators.c.id == DEMO_OPERATOR_ID
+            )
         )
         .mappings()
         .one_or_none()
@@ -403,19 +407,27 @@ def _verify_operator(
     }
     for key, expected_value in stable.items():
         if row[key] != expected_value:
-            raise DemoFinancialFixtureConflictError("demo operator differs from contract")
+            raise DemoFinancialFixtureConflictError(
+                "demo operator differs from contract"
+            )
 
     password_service = PasswordService()
     try:
         encoded_hash = row["password_hash"]
-        if not isinstance(encoded_hash, str) or password_service.needs_rehash(encoded_hash):
-            raise DemoFinancialFixtureConflictError("demo operator hash profile differs")
+        if not isinstance(encoded_hash, str) or password_service.needs_rehash(
+            encoded_hash
+        ):
+            raise DemoFinancialFixtureConflictError(
+                "demo operator hash profile differs"
+            )
         if operator_password is not None and not password_service.verify(
             encoded_hash, operator_password
         ):
             raise DemoFinancialFixtureConflictError("demo operator credential differs")
     except PasswordHashError:
-        raise DemoFinancialFixtureConflictError("demo operator hash is invalid") from None
+        raise DemoFinancialFixtureConflictError(
+            "demo operator hash is invalid"
+        ) from None
 
 
 def _movement_values(movement: Any) -> dict[str, object]:
@@ -467,7 +479,9 @@ def _verify_row(
         raise DemoFinancialFixtureConflictError(f"demo {label} is missing")
     for key, expected_value in expected.items():
         if row[key] != expected_value:
-            raise DemoFinancialFixtureConflictError(f"demo {label} differs from contract")
+            raise DemoFinancialFixtureConflictError(
+                f"demo {label} differs from contract"
+            )
 
 
 def _set_financial_context(connection: Connection) -> None:

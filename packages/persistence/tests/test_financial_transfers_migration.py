@@ -14,7 +14,8 @@ _TRANSFER_FUNCTION = "finance.validate_transfer_integrity()"
 def _transfer_function_exists(engine: Engine) -> bool:
     with engine.begin() as connection:
         return (
-            connection.scalar(select(func.to_regprocedure(_TRANSFER_FUNCTION))) is not None
+            connection.scalar(select(func.to_regprocedure(_TRANSFER_FUNCTION)))
+            is not None
         )
 
 

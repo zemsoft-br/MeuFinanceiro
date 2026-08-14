@@ -41,7 +41,9 @@ class FinancialTransferRecord:
             raise TypeError("role must be FinancialTransferRole")
         if self.role is FinancialTransferRole.STANDARD:
             if self.reversal_of_id is not None:
-                raise ValueError("STANDARD transfer must not reference another transfer")
+                raise ValueError(
+                    "STANDARD transfer must not reference another transfer"
+                )
         else:
             if self.reversal_of_id is None:
                 raise ValueError("REVERSAL transfer requires reversal_of_id")

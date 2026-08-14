@@ -4,7 +4,9 @@ from sqlalchemy import delete
 from sqlalchemy.exc import DBAPIError
 
 from meufinanceiro_persistence.demo_contract import DEMO_FIXTURE_ID
-from meufinanceiro_persistence.demo_financial_fixture import reset_demo_financial_fixture
+from meufinanceiro_persistence.demo_financial_fixture import (
+    reset_demo_financial_fixture,
+)
 from meufinanceiro_persistence.demo_store_base import (
     DemoFixtureConflictError,
     DemoFixtureStatus,

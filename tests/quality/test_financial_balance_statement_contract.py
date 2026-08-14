@@ -2,7 +2,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DOMAIN = ROOT / "packages/finance/src/meufinanceiro_finance/balance_statement.py"
-QUERY = ROOT / "packages/persistence/src/meufinanceiro_persistence/financial_balance_query.py"
+QUERY = (
+    ROOT
+    / "packages/persistence/src/meufinanceiro_persistence/financial_balance_query.py"
+)
 
 
 def test_balance_derivation_is_read_only_and_provider_neutral() -> None:
@@ -10,7 +13,7 @@ def test_balance_derivation_is_read_only_and_provider_neutral() -> None:
     query = QUERY.read_text(encoding="utf-8")
     combined = domain + query
 
-    assert "Decimal(\"0\")" in domain
+    assert 'Decimal("0")' in domain
     assert "effective_date" in domain
     assert "created_at" in domain
     assert "movement.id.int" in domain

@@ -215,7 +215,9 @@ class FinancialTransferStore:
                     destination_movement_id=destination_movement_id,
                 )
         except FinancialMovementAccessError:
-            raise FinancialTransferAccessError("financial transfer access denied") from None
+            raise FinancialTransferAccessError(
+                "financial transfer access denied"
+            ) from None
         except FinancialMovementAccountNotFoundError:
             raise FinancialTransferAccountNotFoundError(
                 "financial transfer account was not found"
@@ -390,7 +392,9 @@ class FinancialTransferStore:
                     destination_movement_id=destination_movement_id,
                 )
         except FinancialMovementAccessError:
-            raise FinancialTransferAccessError("financial transfer access denied") from None
+            raise FinancialTransferAccessError(
+                "financial transfer access denied"
+            ) from None
         except FinancialMovementAccountNotFoundError:
             raise FinancialTransferAccountNotFoundError(
                 "financial transfer account was not found"
@@ -458,7 +462,9 @@ class FinancialTransferStore:
                     transfer_id=transfer_id,
                 )
         except FinancialMovementAccessError:
-            raise FinancialTransferAccessError("financial transfer access denied") from None
+            raise FinancialTransferAccessError(
+                "financial transfer access denied"
+            ) from None
         except DBAPIError:
             raise FinancialTransferPersistenceError(
                 "financial transfer could not be read"
@@ -518,7 +524,9 @@ class FinancialTransferStore:
                     .all()
                 )
         except FinancialMovementAccessError:
-            raise FinancialTransferAccessError("financial transfer access denied") from None
+            raise FinancialTransferAccessError(
+                "financial transfer access denied"
+            ) from None
         except DBAPIError:
             raise FinancialTransferPersistenceError(
                 "financial transfers could not be read"

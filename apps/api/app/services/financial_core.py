@@ -102,7 +102,9 @@ class FinancialCoreService:
                 "opening_balance_store must satisfy FinancialOpeningBalanceStoreBoundary"
             )
         if not isinstance(movement_store, FinancialMovementStoreBoundary):
-            raise TypeError("movement_store must satisfy FinancialMovementStoreBoundary")
+            raise TypeError(
+                "movement_store must satisfy FinancialMovementStoreBoundary"
+            )
         self._accounts = account_store
         self._opening_balances = opening_balance_store
         self._movements = movement_store

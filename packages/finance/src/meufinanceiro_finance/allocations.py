@@ -148,7 +148,9 @@ def _validate_allocations(
         raise TypeError("allocations must be a tuple")
     if not allocations:
         raise ValueError("at least one allocation is required")
-    if not all(isinstance(item, FinancialMovementAllocationDraft) for item in allocations):
+    if not all(
+        isinstance(item, FinancialMovementAllocationDraft) for item in allocations
+    ):
         raise TypeError("allocations must contain FinancialMovementAllocationDraft")
 
     category_ids = [item.category_id for item in allocations]

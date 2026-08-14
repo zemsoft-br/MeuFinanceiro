@@ -200,7 +200,11 @@ def _require_currency(money: Money, currency: str, field_name: str) -> None:
 
 
 def _require_aware_datetime(value: datetime, field_name: str) -> None:
-    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
         raise ValueError(f"{field_name} must be timezone-aware")
 
 

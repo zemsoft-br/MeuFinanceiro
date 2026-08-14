@@ -48,9 +48,8 @@ class FinancialAuditEventRecord:
         validate_financial_resource_id(self.subject_id)
         if self.related_subject_id is not None:
             validate_financial_resource_id(self.related_subject_id)
-        if (
-            isinstance(self.event_schema_version, bool)
-            or not isinstance(self.event_schema_version, int)
+        if isinstance(self.event_schema_version, bool) or not isinstance(
+            self.event_schema_version, int
         ):
             raise TypeError("event_schema_version must be an integer")
         if self.event_schema_version != FINANCIAL_AUDIT_EVENT_SCHEMA_VERSION:

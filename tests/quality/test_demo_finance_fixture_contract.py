@@ -3,9 +3,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_contract.py"
 DATA = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_finance_data.py"
-FIXTURE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_financial_fixture.py"
+FIXTURE = (
+    ROOT
+    / "packages/persistence/src/meufinanceiro_persistence/demo_financial_fixture.py"
+)
 STORE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo.py"
-BASE_STORE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_store_base.py"
+BASE_STORE = (
+    ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_store_base.py"
+)
 CLI = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_cli.py"
 COMPOSE = ROOT / "compose.yaml"
 API = ROOT / "apps/api/app/api/routes/demo.py"

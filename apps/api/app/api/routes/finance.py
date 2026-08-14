@@ -58,7 +58,9 @@ class FinancialAccountCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     name: str = Field(strict=True, min_length=1, max_length=96)
-    account_type: str = Field(alias="accountType", strict=True, min_length=1, max_length=32)
+    account_type: str = Field(
+        alias="accountType", strict=True, min_length=1, max_length=32
+    )
     custom_type_name: str | None = Field(
         default=None,
         alias="customTypeName",
@@ -369,7 +371,9 @@ def list_accounts(
         )
     except FinancialAccountPersistenceError as error:
         _raise_account_error(error)
-    return FinancialAccountsResponse(accounts=tuple(_account_response(item) for item in records))
+    return FinancialAccountsResponse(
+        accounts=tuple(_account_response(item) for item in records)
+    )
 
 
 @router.post(

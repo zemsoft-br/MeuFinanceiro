@@ -17,7 +17,9 @@ from meufinanceiro_persistence.demo_contract import (
 from meufinanceiro_persistence.demo_finance_data import DEMO_MOVEMENTS
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
-from meufinanceiro_persistence.financial_opening_balance_schema import financial_opening_balances
+from meufinanceiro_persistence.financial_opening_balance_schema import (
+    financial_opening_balances,
+)
 from meufinanceiro_persistence.schema import demo_fixture
 
 _TEST_INPUT = "demo-fixture-test-input"
@@ -51,9 +53,16 @@ def test_finance_v2_load_is_deterministic_and_idempotent(
 
     with engine.connect() as connection:
         assert connection.scalar(select(func.count()).select_from(demo_fixture)) == 1
-        assert connection.scalar(select(func.count()).select_from(financial_accounts)) == 2
-        assert connection.scalar(select(func.count()).select_from(financial_movements)) == 5
-        openings = connection.execute(select(financial_opening_balances)).mappings().all()
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_accounts)) == 2
+        )
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_movements))
+            == 5
+        )
+        openings = (
+            connection.execute(select(financial_opening_balances)).mappings().all()
+        )
 
     assert len(openings) == 1
     assert openings[0]["account_id"] == DEMO_CHECKING_ACCOUNT_ID
@@ -86,8 +95,13 @@ def test_finance_v2_preserves_standard_and_reversal_events(
         "STANDARD",
         "REVERSAL",
     ]
-    assert sum((row["amount"] for row in rows), Decimal("0")) == DEMO_EXPECTED_MOVEMENT_NET
-    assert DEMO_OPENING_AMOUNT + DEMO_EXPECTED_MOVEMENT_NET == DEMO_EXPECTED_CHECKING_BALANCE
+    assert (
+        sum((row["amount"] for row in rows), Decimal("0")) == DEMO_EXPECTED_MOVEMENT_NET
+    )
+    assert (
+        DEMO_OPENING_AMOUNT + DEMO_EXPECTED_MOVEMENT_NET
+        == DEMO_EXPECTED_CHECKING_BALANCE
+    )
     assert rows[-1]["reversal_of_id"] == rows[-2]["id"]
     assert rows[-1]["amount"] == -rows[-2]["amount"]
 
@@ -104,5 +118,10 @@ def test_finance_v2_admin_reset_is_idempotent(
     assert store.status().loaded is False
 
     with engine.connect() as connection:
-        assert connection.scalar(select(func.count()).select_from(financial_movements)) == 0
-        assert connection.scalar(select(func.count()).select_from(financial_accounts)) == 0
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_movements))
+            == 0
+        )
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_accounts)) == 0
+        )

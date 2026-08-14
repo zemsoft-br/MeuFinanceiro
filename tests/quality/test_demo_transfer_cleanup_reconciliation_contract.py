@@ -11,4 +11,6 @@ def test_demo_reset_orders_transfer_cleanup_before_financial_cleanup() -> None:
     assert "DEMO_RESIDENCE_ID" in CLEANUP
     assert "financial_transfer_legs" in CLEANUP
     assert 'role == "REVERSAL"' in CLEANUP
-    assert STORE.index("reset_demo_transfers(connection)") < STORE.index("reset_demo_financial_fixture(connection)")
+    assert STORE.index("reset_demo_transfers(connection)") < STORE.index(
+        "reset_demo_financial_fixture(connection)"
+    )

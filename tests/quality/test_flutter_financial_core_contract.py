@@ -5,12 +5,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FLUTTER = ROOT / "apps/app/lib"
 API = (FLUTTER / "features/finance/financial_core_api.dart").read_text(encoding="utf-8")
-CONTROLLER = (
-    FLUTTER / "features/finance/financial_core_controller.dart"
-).read_text(encoding="utf-8")
-LIST_SCREEN = (
-    FLUTTER / "features/finance/financial_accounts_screen.dart"
-).read_text(encoding="utf-8")
+CONTROLLER = (FLUTTER / "features/finance/financial_core_controller.dart").read_text(
+    encoding="utf-8"
+)
+LIST_SCREEN = (FLUTTER / "features/finance/financial_accounts_screen.dart").read_text(
+    encoding="utf-8"
+)
 CREATE_SCREEN = (
     FLUTTER / "features/finance/financial_account_create_screen.dart"
 ).read_text(encoding="utf-8")
@@ -96,10 +96,17 @@ def test_financial_flutter_does_not_invent_current_balance() -> None:
     assert "não significa saldo zero" in DETAIL_SCREEN
 
 
-def test_financial_routes_are_under_app_namespace_and_select_finance_destination() -> None:
+def test_financial_routes_are_under_app_namespace_and_select_finance_destination() -> (
+    None
+):
     assert "static const financePath = '/app/financas'" in ROUTES
-    assert "static const financeAccountCreatePath = '/app/financas/contas/nova'" in ROUTES
-    assert "static const financeAccountDetailPath = '/app/financas/contas/:accountId'" in ROUTES
+    assert (
+        "static const financeAccountCreatePath = '/app/financas/contas/nova'" in ROUTES
+    )
+    assert (
+        "static const financeAccountDetailPath = '/app/financas/contas/:accountId'"
+        in ROUTES
+    )
     assert "destination.id == AppRouteId.finance" in ROUTES
     assert "FinancialAccountsScreen" in ROUTER
     assert "FinancialAccountCreateScreen" in ROUTER

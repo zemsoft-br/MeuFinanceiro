@@ -100,7 +100,9 @@ def test_demo_mode_is_required(runtime_engine: Engine, engine: Engine) -> None:
         store.reset()
 
 
-def test_reset_preserves_normal_task_queue(runtime_engine: Engine, engine: Engine) -> None:
+def test_reset_preserves_normal_task_queue(
+    runtime_engine: Engine, engine: Engine
+) -> None:
     queue = TaskQueue(engine)
     task = queue.enqueue(
         task_type="demo.echo",

@@ -128,14 +128,54 @@ def test_revision_requires_valid_predecessor_and_reuses_same_invariants() -> Non
         "expected",
     ),
     (
-        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.PERSONAL, True, True),
-        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.PERSONAL, False, False),
-        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.HOUSEHOLD, True, True),
-        (FinancialVisibilityScope.SHARED, FinancialVisibilityScope.PERSONAL, True, False),
-        (FinancialVisibilityScope.SHARED, FinancialVisibilityScope.HOUSEHOLD, False, True),
-        (FinancialVisibilityScope.HOUSEHOLD, FinancialVisibilityScope.PERSONAL, True, False),
-        (FinancialVisibilityScope.HOUSEHOLD, FinancialVisibilityScope.HOUSEHOLD, False, True),
-        (FinancialVisibilityScope.PERSONAL, FinancialVisibilityScope.SHARED, True, False),
+        (
+            FinancialVisibilityScope.PERSONAL,
+            FinancialVisibilityScope.PERSONAL,
+            True,
+            True,
+        ),
+        (
+            FinancialVisibilityScope.PERSONAL,
+            FinancialVisibilityScope.PERSONAL,
+            False,
+            False,
+        ),
+        (
+            FinancialVisibilityScope.PERSONAL,
+            FinancialVisibilityScope.HOUSEHOLD,
+            True,
+            True,
+        ),
+        (
+            FinancialVisibilityScope.SHARED,
+            FinancialVisibilityScope.PERSONAL,
+            True,
+            False,
+        ),
+        (
+            FinancialVisibilityScope.SHARED,
+            FinancialVisibilityScope.HOUSEHOLD,
+            False,
+            True,
+        ),
+        (
+            FinancialVisibilityScope.HOUSEHOLD,
+            FinancialVisibilityScope.PERSONAL,
+            True,
+            False,
+        ),
+        (
+            FinancialVisibilityScope.HOUSEHOLD,
+            FinancialVisibilityScope.HOUSEHOLD,
+            False,
+            True,
+        ),
+        (
+            FinancialVisibilityScope.PERSONAL,
+            FinancialVisibilityScope.SHARED,
+            True,
+            False,
+        ),
     ),
 )
 def test_category_audience_must_contain_movement_audience(

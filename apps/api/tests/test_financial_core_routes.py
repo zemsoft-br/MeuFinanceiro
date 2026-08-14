@@ -121,10 +121,14 @@ class FakeFinancialCoreService:
             ),
         )
 
-    def _scope(self, name: str, installation_id: UUID, residence_id: UUID, operator_id: UUID) -> None:
+    def _scope(
+        self, name: str, installation_id: UUID, residence_id: UUID, operator_id: UUID
+    ) -> None:
         self.calls.append((name, (installation_id, residence_id, operator_id)))
 
-    def list_accounts(self, *, installation_id: UUID, residence_id: UUID, operator_id: UUID):
+    def list_accounts(
+        self, *, installation_id: UUID, residence_id: UUID, operator_id: UUID
+    ):
         self._scope("list_accounts", installation_id, residence_id, operator_id)
         return (self.account,)
 
@@ -173,7 +177,9 @@ class FakeFinancialCoreService:
         account_id: UUID,
         draft: FinancialOpeningBalanceDraft,
     ) -> FinancialOpeningBalanceRecord:
-        self._scope("create_opening_balance", installation_id, residence_id, operator_id)
+        self._scope(
+            "create_opening_balance", installation_id, residence_id, operator_id
+        )
         self.calls.append(("opening_draft", (account_id, draft)))
         assert self.opening_balance is not None
         return self.opening_balance

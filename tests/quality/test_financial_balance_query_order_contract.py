@@ -1,7 +1,10 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-QUERY = ROOT / "packages/persistence/src/meufinanceiro_persistence/financial_balance_query.py"
+QUERY = (
+    ROOT
+    / "packages/persistence/src/meufinanceiro_persistence/financial_balance_query.py"
+)
 
 
 def test_account_is_resolved_before_derived_inputs() -> None:
@@ -20,4 +23,4 @@ def test_query_does_not_silently_replace_store_failures() -> None:
     assert "except" not in source
     assert "opening_balance = None" not in source
     assert "movements = ()" not in source
-    assert "Decimal(\"0\")" not in source
+    assert 'Decimal("0")' not in source

@@ -88,9 +88,13 @@ def _movement(
         role=role,
         effective_date=effective_date,
         competence_date=effective_date,
-        description="Movimento canônico" if role is FinancialMovementRole.STANDARD else None,
+        description="Movimento canônico"
+        if role is FinancialMovementRole.STANDARD
+        else None,
         reversal_of_id=reversal_of_id,
-        reversal_reason="Correção integral" if role is FinancialMovementRole.REVERSAL else None,
+        reversal_reason="Correção integral"
+        if role is FinancialMovementRole.REVERSAL
+        else None,
         created_by_operator_id=OPERATOR_ID,
         created_at=created_at or datetime(2026, 1, 2, 10, sequence, tzinfo=UTC),
     )
@@ -248,7 +252,9 @@ def test_duplicate_movement_input_fails_closed() -> None:
 
 
 def test_opening_account_mismatch_fails_closed() -> None:
-    with pytest.raises(FinancialLedgerStateError, match="opening balance account mismatch"):
+    with pytest.raises(
+        FinancialLedgerStateError, match="opening balance account mismatch"
+    ):
         derive_financial_account_balance_and_statement(
             account=_account(),
             opening_balance=_opening("10", account_id=OTHER_ACCOUNT_ID),

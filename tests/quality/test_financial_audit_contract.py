@@ -7,9 +7,9 @@ FINANCE = ROOT / "packages/finance/src/meufinanceiro_finance"
 DOMAIN = (FINANCE / "audit_events.py").read_text(encoding="utf-8")
 RECORD = (FINANCE / "audit_event_records.py").read_text(encoding="utf-8")
 PUBLIC = (FINANCE / "__init__.py").read_text(encoding="utf-8")
-ADR = (
-    ROOT / "docs/adr/0023-financial-transactional-audit-trail.md"
-).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0023-financial-transactional-audit-trail.md").read_text(
+    encoding="utf-8"
+)
 
 
 def test_audit_contract_remains_provider_and_persistence_neutral() -> None:
