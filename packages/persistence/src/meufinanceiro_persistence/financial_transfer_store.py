@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from typing import Any
 from uuid import UUID
 
 from meufinanceiro_finance.ids import (
@@ -29,6 +30,7 @@ from sqlalchemy import Connection, Engine, func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
+from sqlalchemy.sql import Select
 
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_movement_store import (
@@ -535,7 +537,7 @@ class FinancialTransferStore:
         return tuple(_record(row) for row in rows)
 
 
-def _transfer_select():  # type: ignore[no-untyped-def]
+def _transfer_select() -> Select[Any]:
     source_leg = financial_transfer_legs.alias("source_leg")
     destination_leg = financial_transfer_legs.alias("destination_leg")
     return (
