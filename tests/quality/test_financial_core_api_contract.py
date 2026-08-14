@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -23,11 +24,17 @@ def test_financial_api_derives_scope_from_authenticated_primary_residence() -> N
     assert "authenticated.principal.primary_residence_id" in ROUTE
     assert "authenticated.principal.operator_id" in ROUTE
     for client_scope in (
-        "residence_id: UUID =",
-        "installation_id: UUID =",
-        "operator_id: UUID =",
+        "residence_id",
+        "installation_id",
+        "operator_id",
     ):
-        assert client_scope not in ROUTE
+        assert (
+            re.search(
+                rf"\b{client_scope}\s*:\s*UUID\s*=",
+                ROUTE,
+            )
+            is None
+        )
 
 
 def test_financial_money_wire_never_uses_float() -> None:

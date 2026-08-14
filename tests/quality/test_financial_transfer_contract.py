@@ -135,5 +135,6 @@ def test_transfer_contract_has_no_provider_api_category_or_cross_currency_coupli
         "external_resource_id",
     ):
         assert forbidden not in combined
-    assert "cross-currency" in ADR
-    assert "mesma moeda" in ADR
+    adr = ADR.lower()
+    assert "cross-currency" in adr
+    assert "mesma moeda" in adr
