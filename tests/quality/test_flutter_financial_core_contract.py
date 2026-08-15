@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -55,12 +56,25 @@ def test_financial_flutter_parser_is_fail_closed_and_provider_neutral() -> None:
 
 
 def test_financial_flutter_uses_current_riverpod_notifier_family_shape() -> None:
-    assert "NotifierProvider.autoDispose.family" in CONTROLLER
+    assert (
+        re.search(
+            r"NotifierProvider\s*\.\s*autoDispose\s*\.\s*family",
+            CONTROLLER,
+        )
+        is not None
+    )
     assert "extends Notifier<FinancialAccountDetailState>" in CONTROLLER
     assert "FinancialAccountDetailController(this.accountId)" in CONTROLLER
     assert "FamilyNotifier" not in CONTROLLER
     assert "AutoDisposeNotifier" not in CONTROLLER
-    assert "NotifierProvider.autoDispose<FinancialAccountsController" in CONTROLLER
+    assert (
+        re.search(
+            r"NotifierProvider\s*\.\s*autoDispose\s*<\s*"
+            r"FinancialAccountsController\s*,\s*FinancialAccountsState\s*>",
+            CONTROLLER,
+        )
+        is not None
+    )
 
 
 def test_detail_controller_revalidates_currency_across_resources() -> None:
