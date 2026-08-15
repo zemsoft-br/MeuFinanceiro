@@ -42,29 +42,35 @@ void main() {
       _accountsResponse.replaceFirst('"ownerOperatorId":"$_ownerId",', ''),
     ]) {
       await expectLater(
-        _api(FakeAuthTransport.response(statusCode: 200, body: body)).listAccounts(),
+        _api(
+          FakeAuthTransport.response(statusCode: 200, body: body),
+        ).listAccounts(),
         throwsA(isA<FormatException>()),
       );
     }
   });
 
-  test('opening balance preserves decimal string and rejects JSON number', () async {
-    final valid = await _api(
-      FakeAuthTransport.response(statusCode: 200, body: _openingResponse),
-    ).getOpeningBalance(_accountId);
-    expect(valid, isNotNull);
-    expect(valid!.money.amount, '1234.50000000');
+  test(
+    'opening balance preserves decimal string and rejects JSON number',
+    () async {
+      final valid = await _api(
+        FakeAuthTransport.response(statusCode: 200, body: _openingResponse),
+      ).getOpeningBalance(_accountId);
+      expect(valid, isNotNull);
+      expect(valid!.money.amount, '1234.50000000');
 
-    final numeric = _openingResponse.replaceFirst(
-      '"amount":"1234.50000000"',
-      '"amount":1234.5',
-    );
-    await expectLater(
-      _api(FakeAuthTransport.response(statusCode: 200, body: numeric))
-          .getOpeningBalance(_accountId),
-      throwsA(isA<FormatException>()),
-    );
-  });
+      final numeric = _openingResponse.replaceFirst(
+        '"amount":"1234.50000000"',
+        '"amount":1234.5',
+      );
+      await expectLater(
+        _api(
+          FakeAuthTransport.response(statusCode: 200, body: numeric),
+        ).getOpeningBalance(_accountId),
+        throwsA(isA<FormatException>()),
+      );
+    },
+  );
 
   test('explicit null opening balance remains null', () async {
     final result = await _api(
@@ -76,46 +82,59 @@ void main() {
     expect(result, isNull);
   });
 
-  test('movement parser preserves original and reversal as separate events', () async {
-    final movements = await _api(
-      FakeAuthTransport.response(statusCode: 200, body: _movementsResponse),
-    ).listMovements(_accountId);
+  test(
+    'movement parser preserves original and reversal as separate events',
+    () async {
+      final movements = await _api(
+        FakeAuthTransport.response(statusCode: 200, body: _movementsResponse),
+      ).listMovements(_accountId);
 
-    expect(movements, hasLength(2));
-    expect(movements[0].role, FinancialMovementRole.standard);
-    expect(movements[0].money.amount, '-75.25');
-    expect(movements[1].role, FinancialMovementRole.reversal);
-    expect(movements[1].reversalOfId, _movementId);
-    expect(movements[1].reversalReason, 'Lançamento incorreto');
-  });
+      expect(movements, hasLength(2));
+      expect(movements[0].role, FinancialMovementRole.standard);
+      expect(movements[0].money.amount, '-75.25');
+      expect(movements[1].role, FinancialMovementRole.reversal);
+      expect(movements[1].reversalOfId, _movementId);
+      expect(movements[1].reversalReason, 'Lançamento incorreto');
+    },
+  );
 
-  test('create account body contains no client-controlled scope or balance', () async {
-    final transport = FakeAuthTransport.response(statusCode: 201, body: _accountObject);
-    await _api(transport).createAccount(
-      const FinancialAccountCreateInput(
-        name: 'Conta principal',
-        accountType: FinancialAccountType.checking,
-        currency: 'BRL',
-        visibilityScope: FinancialVisibilityScope.personal,
-      ),
-    );
+  test(
+    'create account body contains no client-controlled scope or balance',
+    () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: _accountObject,
+      );
+      await _api(transport).createAccount(
+        const FinancialAccountCreateInput(
+          name: 'Conta principal',
+          accountType: FinancialAccountType.checking,
+          currency: 'BRL',
+          visibilityScope: FinancialVisibilityScope.personal,
+        ),
+      );
 
-    final body = jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
-    expect(
-      body.keys.toSet(),
-      {'name', 'accountType', 'customTypeName', 'currency', 'visibilityScope'},
-    );
-    for (final forbidden in [
-      'ownerOperatorId',
-      'residenceId',
-      'installationId',
-      'operatorId',
-      'balance',
-      'status',
-    ]) {
-      expect(body, isNot(contains(forbidden)));
-    }
-  });
+      final body =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(body.keys.toSet(), {
+        'name',
+        'accountType',
+        'customTypeName',
+        'currency',
+        'visibilityScope',
+      });
+      for (final forbidden in [
+        'ownerOperatorId',
+        'residenceId',
+        'installationId',
+        'operatorId',
+        'balance',
+        'status',
+      ]) {
+        expect(body, isNot(contains(forbidden)));
+      }
+    },
+  );
 
   test('CUSTOM input requires customTypeName and non-CUSTOM forbids it', () {
     expect(
@@ -139,45 +158,60 @@ void main() {
     );
   });
 
-  test('opening create keeps amount as JSON string without floating point', () async {
-    final transport = FakeAuthTransport.response(statusCode: 201, body: _openingObject);
-    await _api(transport).createOpeningBalance(
-      _accountId,
-      FinancialOpeningBalanceCreateInput(
-        amount: '-12.34000000',
-        currency: 'BRL',
-        effectiveDate: '2026-08-01',
-      ),
-    );
-    final body = jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
-    expect(body['amount'], '-12.34000000');
-    expect(body['amount'], isA<String>());
-  });
+  test(
+    'opening create keeps amount as JSON string without floating point',
+    () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: _openingObject,
+      );
+      await _api(transport).createOpeningBalance(
+        _accountId,
+        FinancialOpeningBalanceCreateInput(
+          amount: '-12.34000000',
+          currency: 'BRL',
+          effectiveDate: '2026-08-01',
+        ),
+      );
+      final body =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(body['amount'], '-12.34000000');
+      expect(body['amount'], isA<String>());
+    },
+  );
 
-  test('wire validation rejects invalid ids currency enum timestamp and date', () async {
-    for (final body in [
-      _accountsResponse.replaceFirst(_accountId, 'not-a-resource-id'),
-      _accountsResponse.replaceFirst('"currency":"BRL"', '"currency":"brl"'),
-      _accountsResponse.replaceFirst('"status":"ACTIVE"', '"status":"UNKNOWN"'),
-      _accountsResponse.replaceFirst(
-        '"createdAt":"2026-08-13T12:00:00Z"',
-        '"createdAt":"2026-08-13T12:00:00"',
-      ),
-    ]) {
-      await expectLater(
-        _api(FakeAuthTransport.response(statusCode: 200, body: body)).listAccounts(),
+  test(
+    'wire validation rejects invalid ids currency enum timestamp and date',
+    () async {
+      for (final body in [
+        _accountsResponse.replaceFirst(_accountId, 'not-a-resource-id'),
+        _accountsResponse.replaceFirst('"currency":"BRL"', '"currency":"brl"'),
+        _accountsResponse.replaceFirst(
+          '"status":"ACTIVE"',
+          '"status":"UNKNOWN"',
+        ),
+        _accountsResponse.replaceFirst(
+          '"createdAt":"2026-08-13T12:00:00Z"',
+          '"createdAt":"2026-08-13T12:00:00"',
+        ),
+      ]) {
+        await expectLater(
+          _api(
+            FakeAuthTransport.response(statusCode: 200, body: body),
+          ).listAccounts(),
+          throwsA(isA<FormatException>()),
+        );
+      }
+      expect(
+        () => FinancialOpeningBalanceCreateInput(
+          amount: '1.00',
+          currency: 'BRL',
+          effectiveDate: '2026-02-30',
+        ),
         throwsA(isA<FormatException>()),
       );
-    }
-    expect(
-      () => FinancialOpeningBalanceCreateInput(
-        amount: '1.00',
-        currency: 'BRL',
-        effectiveDate: '2026-02-30',
-      ),
-      throwsA(isA<FormatException>()),
-    );
-  });
+    },
+  );
 
   test('FinancialMoneyWire preserves high precision and redacts repr', () {
     final money = FinancialMoneyWire(
@@ -203,7 +237,8 @@ FinancialCoreApi _api(FakeAuthTransport transport) {
   );
 }
 
-const _accountObject = '''
+const _accountObject =
+    '''
 {
   "accountId":"$_accountId",
   "ownerOperatorId":"$_ownerId",
@@ -221,7 +256,8 @@ const _accountObject = '''
 
 const _accountsResponse = '''{"accounts":[$_accountObject]}''';
 
-const _openingObject = '''
+const _openingObject =
+    '''
 {
   "openingBalanceId":"$_openingId",
   "accountId":"$_accountId",
@@ -233,7 +269,8 @@ const _openingObject = '''
 
 const _openingResponse = '''{"openingBalance":$_openingObject}''';
 
-const _movementsResponse = '''
+const _movementsResponse =
+    '''
 {
   "movements":[
     {

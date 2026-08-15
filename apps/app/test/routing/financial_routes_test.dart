@@ -30,12 +30,21 @@ void main() {
         '40000000-0000-4000-8000-000000000004',
       ),
     ]) {
-      expect(AuthRouteGuard.requiresAuthentication(Uri.parse(location)), isTrue);
+      expect(
+        AuthRouteGuard.requiresAuthentication(Uri.parse(location)),
+        isTrue,
+      );
     }
   });
 
-  test('detail location keeps the canonical account id as one path segment', () {
-    const id = '40000000-0000-4000-8000-000000000004';
-    expect(AppRoutes.financeAccountDetailLocation(id), '/app/financas/contas/$id');
-  });
+  test(
+    'detail location keeps the canonical account id as one path segment',
+    () {
+      const id = '40000000-0000-4000-8000-000000000004';
+      expect(
+        AppRoutes.financeAccountDetailLocation(id),
+        '/app/financas/contas/$id',
+      );
+    },
+  );
 }

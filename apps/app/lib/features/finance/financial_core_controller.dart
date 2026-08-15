@@ -30,8 +30,7 @@ class FinancialAccountsState {
     this.refreshFailure = FinancialRefreshFailure.none,
   });
 
-  const FinancialAccountsState.idle()
-    : this._(phase: FinancialLoadPhase.idle);
+  const FinancialAccountsState.idle() : this._(phase: FinancialLoadPhase.idle);
   const FinancialAccountsState.phase(FinancialLoadPhase phase)
     : this._(phase: phase);
 
@@ -57,9 +56,10 @@ class FinancialAccountsState {
 }
 
 final financialAccountsControllerProvider =
-    NotifierProvider.autoDispose<FinancialAccountsController, FinancialAccountsState>(
-      FinancialAccountsController.new,
-    );
+    NotifierProvider.autoDispose<
+      FinancialAccountsController,
+      FinancialAccountsState
+    >(FinancialAccountsController.new);
 
 class FinancialAccountsController extends Notifier<FinancialAccountsState> {
   int _generation = 0;
@@ -77,8 +77,12 @@ class FinancialAccountsController extends Notifier<FinancialAccountsState> {
   Future<void> load() => _load(refresh: false);
   Future<void> refresh() => _load(refresh: true);
 
-  Future<FinancialAccount> createAccount(FinancialAccountCreateInput input) async {
-    final account = await ref.read(financialCoreApiProvider).createAccount(input);
+  Future<FinancialAccount> createAccount(
+    FinancialAccountCreateInput input,
+  ) async {
+    final account = await ref
+        .read(financialCoreApiProvider)
+        .createAccount(input);
     if (state.phase == FinancialLoadPhase.loaded ||
         state.phase == FinancialLoadPhase.refreshing) {
       state = FinancialAccountsState.loaded([
@@ -173,8 +177,8 @@ class FinancialAccountDetailState {
       openingBalanceMutationInFlight;
 }
 
-final financialAccountDetailControllerProvider =
-    NotifierProvider.autoDispose.family<
+final financialAccountDetailControllerProvider = NotifierProvider.autoDispose
+    .family<
       FinancialAccountDetailController,
       FinancialAccountDetailState,
       String
@@ -230,7 +234,9 @@ class FinancialAccountDetailController
         await _load(refresh: true, force: true);
         return false;
       }
-      state = FinancialAccountDetailState.phase(financialPhaseForFailure(error));
+      state = FinancialAccountDetailState.phase(
+        financialPhaseForFailure(error),
+      );
       return false;
     } on FormatException {
       state = const FinancialAccountDetailState.phase(
@@ -259,10 +265,13 @@ class FinancialAccountDetailController
       final account = await api.getAccount(accountId);
       final openingBalance = await api.getOpeningBalance(accountId);
       final movements = await api.listMovements(accountId);
-      if (openingBalance != null && openingBalance.money.currency != account.currency) {
+      if (openingBalance != null &&
+          openingBalance.money.currency != account.currency) {
         throw const FormatException('opening balance currency mismatch.');
       }
-      if (movements.any((movement) => movement.money.currency != account.currency)) {
+      if (movements.any(
+        (movement) => movement.money.currency != account.currency,
+      )) {
         throw const FormatException('movement currency mismatch.');
       }
       if (!_isCurrent(generation)) return;
@@ -307,8 +316,12 @@ FinancialLoadPhase financialPhaseForFailure(Object error) {
         error.statusCode == 403) {
       return FinancialLoadPhase.forbidden;
     }
-    if (error.statusCode == 404) return FinancialLoadPhase.notFound;
-    if (error.statusCode == 409) return FinancialLoadPhase.primaryResidenceRequired;
+    if (error.statusCode == 404) {
+      return FinancialLoadPhase.notFound;
+    }
+    if (error.statusCode == 409) {
+      return FinancialLoadPhase.primaryResidenceRequired;
+    }
     if (error.failure == AuthenticatedApiFailure.temporarilyUnavailable ||
         error.failure == AuthenticatedApiFailure.transportFailure ||
         (error.statusCode != null && error.statusCode! >= 500)) {

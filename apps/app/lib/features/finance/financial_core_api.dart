@@ -8,9 +8,7 @@ final _financialResourceIdPattern = RegExp(
 final _uuidPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
 );
-final _moneyPattern = RegExp(
-  r'^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$',
-);
+final _moneyPattern = RegExp(r'^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$');
 final _zeroMoneyPattern = RegExp(r'^-?0(?:\.0{1,8})?$');
 final _currencyPattern = RegExp(r'^[A-Z]{3}$');
 final _datePattern = RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
@@ -127,7 +125,8 @@ class FinancialMoneyWire {
   Map<String, Object?> toJson() => {'amount': amount, 'currency': currency};
 
   @override
-  String toString() => 'FinancialMoneyWire(currency=$currency, amount=<redacted>)';
+  String toString() =>
+      'FinancialMoneyWire(currency=$currency, amount=<redacted>)';
 }
 
 class FinancialAccount {
@@ -223,10 +222,12 @@ class FinancialAccountCreateInput {
     final normalizedCustom = customTypeName == null
         ? null
         : _boundedText(customTypeName, 'customTypeName', maxLength: 96);
-    if (accountType == FinancialAccountType.custom && normalizedCustom == null) {
+    if (accountType == FinancialAccountType.custom &&
+        normalizedCustom == null) {
       throw const FormatException('customTypeName is required.');
     }
-    if (accountType != FinancialAccountType.custom && normalizedCustom != null) {
+    if (accountType != FinancialAccountType.custom &&
+        normalizedCustom != null) {
       throw const FormatException('customTypeName is invalid.');
     }
     return {
@@ -290,7 +291,9 @@ class FinancialCoreApi {
     return account;
   }
 
-  Future<FinancialAccount> createAccount(FinancialAccountCreateInput input) async {
+  Future<FinancialAccount> createAccount(
+    FinancialAccountCreateInput input,
+  ) async {
     final response = await client.post(
       'finance/accounts',
       jsonBody: input.toJson(),
@@ -347,7 +350,9 @@ class FinancialCoreApi {
     if (raw is! List || raw.length > 10000) {
       throw const FormatException('movements is invalid.');
     }
-    final movements = List<FinancialMovement>.unmodifiable(raw.map(_parseMovement));
+    final movements = List<FinancialMovement>.unmodifiable(
+      raw.map(_parseMovement),
+    );
     if (movements.any((item) => item.accountId != id)) {
       throw const FormatException('movement account mismatch.');
     }
@@ -566,7 +571,8 @@ String? _optionalBoundedText(
   Object? value,
   String fieldName, {
   required int maxLength,
-}) => value == null ? null : _boundedText(value, fieldName, maxLength: maxLength);
+}) =>
+    value == null ? null : _boundedText(value, fieldName, maxLength: maxLength);
 
 String _financialResourceId(Object? value, String fieldName) {
   final normalized = _boundedText(value, fieldName, maxLength: 36);

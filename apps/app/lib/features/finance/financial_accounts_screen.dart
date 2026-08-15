@@ -17,13 +17,16 @@ class FinancialAccountsScreen extends ConsumerStatefulWidget {
   static const emptyKey = Key('financial-accounts-empty');
   static const listKey = Key('financial-accounts-list');
 
-  static Key accountCardKey(String accountId) => Key('financial-account-$accountId');
+  static Key accountCardKey(String accountId) =>
+      Key('financial-account-$accountId');
 
   @override
-  ConsumerState<FinancialAccountsScreen> createState() => _FinancialAccountsScreenState();
+  ConsumerState<FinancialAccountsScreen> createState() =>
+      _FinancialAccountsScreenState();
 }
 
-class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScreen> {
+class _FinancialAccountsScreenState
+    extends ConsumerState<FinancialAccountsScreen> {
   final _headingFocusNode = FocusNode(debugLabel: 'financial-accounts-heading');
 
   @override
@@ -45,7 +48,8 @@ class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScree
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(financialAccountsControllerProvider);
-    final refreshEnabled = !state.isBusy &&
+    final refreshEnabled =
+        !state.isBusy &&
         state.phase != FinancialLoadPhase.authenticationRequired &&
         state.phase != FinancialLoadPhase.forbidden &&
         state.phase != FinancialLoadPhase.primaryResidenceRequired;
@@ -68,7 +72,9 @@ class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScree
                   children: [
                     Text(
                       'Finanças · Residência principal',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: AppTokens.forest700,
+                      ),
                     ),
                     const SizedBox(height: AppTokens.space8),
                     Focus(
@@ -85,7 +91,9 @@ class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScree
                     const SizedBox(height: AppTokens.space8),
                     Text(
                       'Contas canônicas da residência. O saldo corrente será exibido somente quando a consulta de saldo estiver disponível.',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: AppTokens.neutral700,
+                      ),
                     ),
                   ],
                 ),
@@ -97,7 +105,13 @@ class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScree
                   OutlinedButton.icon(
                     key: FinancialAccountsScreen.refreshButtonKey,
                     onPressed: refreshEnabled
-                        ? () => unawaited(ref.read(financialAccountsControllerProvider.notifier).refresh())
+                        ? () => unawaited(
+                            ref
+                                .read(
+                                  financialAccountsControllerProvider.notifier,
+                                )
+                                .refresh(),
+                          )
                         : null,
                     icon: state.phase == FinancialLoadPhase.refreshing
                         ? const SizedBox.square(
@@ -109,7 +123,8 @@ class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScree
                   ),
                   FilledButton.icon(
                     key: FinancialAccountsScreen.createButtonKey,
-                    onPressed: () => context.go(AppRoutes.financeAccountCreatePath),
+                    onPressed: () =>
+                        context.go(AppRoutes.financeAccountCreatePath),
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Nova conta'),
                   ),
@@ -124,7 +139,9 @@ class _FinancialAccountsScreenState extends ConsumerState<FinancialAccountsScree
           ],
           _AccountsContent(
             state: state,
-            onRetry: () => unawaited(ref.read(financialAccountsControllerProvider.notifier).refresh()),
+            onRetry: () => unawaited(
+              ref.read(financialAccountsControllerProvider.notifier).refresh(),
+            ),
           ),
         ],
       ),
@@ -140,7 +157,8 @@ class _AccountsContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (state.phase == FinancialLoadPhase.idle || state.phase == FinancialLoadPhase.loading) {
+    if (state.phase == FinancialLoadPhase.idle ||
+        state.phase == FinancialLoadPhase.loading) {
       return const _StatusCard(
         icon: Icons.hourglass_top_rounded,
         title: 'Carregando contas…',
@@ -160,7 +178,9 @@ class _AccountsContent extends StatelessWidget {
               SizedBox(height: AppTokens.space16),
               Text('Nenhuma conta financeira cadastrada'),
               SizedBox(height: AppTokens.space8),
-              Text('Crie a primeira conta para começar a registrar sua base financeira.'),
+              Text(
+                'Crie a primeira conta para começar a registrar sua base financeira.',
+              ),
             ],
           ),
         ),
@@ -202,7 +222,9 @@ class _AccountCard extends StatelessWidget {
       key: FinancialAccountsScreen.accountCardKey(account.accountId),
       child: InkWell(
         borderRadius: BorderRadius.circular(AppTokens.radiusMedium),
-        onTap: () => context.go(AppRoutes.financeAccountDetailLocation(account.accountId)),
+        onTap: () => context.go(
+          AppRoutes.financeAccountDetailLocation(account.accountId),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(AppTokens.space20),
           child: Wrap(
@@ -216,15 +238,22 @@ class _AccountCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(account.name, style: Theme.of(context).textTheme.titleMedium),
-                    const SizedBox(height: AppTokens.space4),
                     Text(
-                      '${_accountTypeLabel(account.accountType)} · ${account.currency} · ${_visibilityLabel(account.visibilityScope)}',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+                      account.name,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
                     const SizedBox(height: AppTokens.space4),
                     Text(
-                      account.status == FinancialAccountStatus.active ? 'Conta ativa' : 'Conta arquivada',
+                      '${_accountTypeLabel(account.accountType)} · ${account.currency} · ${_visibilityLabel(account.visibilityScope)}',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppTokens.neutral700,
+                      ),
+                    ),
+                    const SizedBox(height: AppTokens.space4),
+                    Text(
+                      account.status == FinancialAccountStatus.active
+                          ? 'Conta ativa'
+                          : 'Conta arquivada',
                       style: Theme.of(context).textTheme.labelMedium,
                     ),
                   ],
@@ -318,7 +347,9 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-(IconData, String, String, bool) _failurePresentation(FinancialLoadPhase phase) {
+(IconData, String, String, bool) _failurePresentation(
+  FinancialLoadPhase phase,
+) {
   return switch (phase) {
     FinancialLoadPhase.authenticationRequired => (
       Icons.lock_outline_rounded,

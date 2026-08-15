@@ -76,7 +76,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.financeAccountCreatePath,
             name: AppRoutes.financeAccountCreate,
             pageBuilder: (context, state) {
-              return const NoTransitionPage(child: FinancialAccountCreateScreen());
+              return const NoTransitionPage(
+                child: FinancialAccountCreateScreen(),
+              );
             },
           ),
           GoRoute(

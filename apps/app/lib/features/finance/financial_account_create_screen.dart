@@ -29,7 +29,9 @@ class _FinancialAccountCreateScreenState
   final _nameController = TextEditingController();
   final _customTypeController = TextEditingController();
   final _currencyController = TextEditingController(text: 'BRL');
-  final _headingFocusNode = FocusNode(debugLabel: 'financial-account-create-heading');
+  final _headingFocusNode = FocusNode(
+    debugLabel: 'financial-account-create-heading',
+  );
   FinancialAccountType _type = FinancialAccountType.checking;
   FinancialVisibilityScope _visibility = FinancialVisibilityScope.personal;
   bool _submitting = false;
@@ -81,8 +83,10 @@ class _FinancialAccountCreateScreenState
       if (!mounted) return;
       setState(() {
         _submissionError = switch (financialPhaseForFailure(error)) {
-          FinancialLoadPhase.authenticationRequired => 'Sua sessão expirou. Entre novamente.',
-          FinancialLoadPhase.forbidden => 'Sua sessão não pode criar esta conta.',
+          FinancialLoadPhase.authenticationRequired =>
+            'Sua sessão expirou. Entre novamente.',
+          FinancialLoadPhase.forbidden =>
+            'Sua sessão não pode criar esta conta.',
           FinancialLoadPhase.primaryResidenceRequired =>
             'Configure uma residência principal antes de criar a conta.',
           _ => 'Não foi possível criar a conta agora.',
@@ -124,9 +128,9 @@ class _FinancialAccountCreateScreenState
           const SizedBox(height: AppTokens.space8),
           Text(
             'Cadastre somente a identidade da conta. Saldo inicial é informado separadamente e saldo corrente não é editável.',
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: AppTokens.neutral700,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
           ),
           const SizedBox(height: AppTokens.space24),
           Card(
@@ -147,14 +151,18 @@ class _FinancialAccountCreateScreenState
                       ),
                       validator: (value) {
                         final normalized = value?.trim() ?? '';
-                        return normalized.isEmpty ? 'Informe o nome da conta.' : null;
+                        return normalized.isEmpty
+                            ? 'Informe o nome da conta.'
+                            : null;
                       },
                     ),
                     const SizedBox(height: AppTokens.space16),
                     DropdownButtonFormField<FinancialAccountType>(
                       key: FinancialAccountCreateScreen.typeFieldKey,
                       initialValue: _type,
-                      decoration: const InputDecoration(labelText: 'Tipo de conta'),
+                      decoration: const InputDecoration(
+                        labelText: 'Tipo de conta',
+                      ),
                       items: FinancialAccountType.values
                           .map(
                             (type) => DropdownMenuItem(
@@ -194,7 +202,8 @@ class _FinancialAccountCreateScreenState
                       textCapitalization: TextCapitalization.characters,
                       decoration: const InputDecoration(
                         labelText: 'Moeda',
-                        helperText: 'Código ISO de três letras, como BRL ou USD',
+                        helperText:
+                            'Código ISO de três letras, como BRL ou USD',
                       ),
                       validator: (value) {
                         final normalized = value ?? '';
@@ -207,7 +216,9 @@ class _FinancialAccountCreateScreenState
                     DropdownButtonFormField<FinancialVisibilityScope>(
                       key: FinancialAccountCreateScreen.visibilityFieldKey,
                       initialValue: _visibility,
-                      decoration: const InputDecoration(labelText: 'Visibilidade'),
+                      decoration: const InputDecoration(
+                        labelText: 'Visibilidade',
+                      ),
                       items: FinancialVisibilityScope.values
                           .map(
                             (scope) => DropdownMenuItem(
@@ -219,7 +230,9 @@ class _FinancialAccountCreateScreenState
                       onChanged: _submitting
                           ? null
                           : (value) {
-                              if (value != null) setState(() => _visibility = value);
+                              if (value != null) {
+                                setState(() => _visibility = value);
+                              }
                             },
                     ),
                     if (_submissionError != null) ...[
@@ -228,7 +241,9 @@ class _FinancialAccountCreateScreenState
                         liveRegion: true,
                         child: Text(
                           _submissionError!,
-                          style: TextStyle(color: Theme.of(context).colorScheme.error),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
                       ),
                     ],
@@ -241,7 +256,9 @@ class _FinancialAccountCreateScreenState
                         icon: _submitting
                             ? const SizedBox.square(
                                 dimension: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
                               )
                             : const Icon(Icons.save_outlined),
                         label: Text(_submitting ? 'Salvando…' : 'Criar conta'),

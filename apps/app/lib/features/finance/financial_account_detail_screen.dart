@@ -15,9 +15,13 @@ class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
 
   static const titleKey = Key('financial-account-detail-title');
   static const refreshButtonKey = Key('financial-account-detail-refresh');
-  static const openingBalanceKey = Key('financial-account-detail-opening-balance');
+  static const openingBalanceKey = Key(
+    'financial-account-detail-opening-balance',
+  );
   static const movementsKey = Key('financial-account-detail-movements');
-  static const createOpeningButtonKey = Key('financial-account-detail-create-opening');
+  static const createOpeningButtonKey = Key(
+    'financial-account-detail-create-opening',
+  );
 
   @override
   ConsumerState<FinancialAccountDetailScreen> createState() =>
@@ -26,7 +30,9 @@ class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
 
 class _FinancialAccountDetailScreenState
     extends ConsumerState<FinancialAccountDetailScreen> {
-  final _headingFocusNode = FocusNode(debugLabel: 'financial-account-detail-heading');
+  final _headingFocusNode = FocusNode(
+    debugLabel: 'financial-account-detail-heading',
+  );
 
   @override
   void initState() {
@@ -36,7 +42,11 @@ class _FinancialAccountDetailScreenState
       _headingFocusNode.requestFocus();
       unawaited(
         ref
-            .read(financialAccountDetailControllerProvider(widget.accountId).notifier)
+            .read(
+              financialAccountDetailControllerProvider(
+                widget.accountId,
+              ).notifier,
+            )
             .load(),
       );
     });
@@ -55,13 +65,17 @@ class _FinancialAccountDetailScreenState
     );
     if (result == null || !mounted) return;
     final created = await ref
-        .read(financialAccountDetailControllerProvider(widget.accountId).notifier)
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
         .createOpeningBalance(result);
     if (!mounted) return;
     final message = created
         ? 'Saldo inicial cadastrado.'
         : 'O detalhe foi atualizado com o estado persistido.';
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -69,7 +83,8 @@ class _FinancialAccountDetailScreenState
     final provider = financialAccountDetailControllerProvider(widget.accountId);
     final state = ref.watch(provider);
     final account = state.account;
-    final refreshEnabled = !state.isBusy &&
+    final refreshEnabled =
+        !state.isBusy &&
         state.phase != FinancialLoadPhase.authenticationRequired &&
         state.phase != FinancialLoadPhase.forbidden &&
         state.phase != FinancialLoadPhase.primaryResidenceRequired;
@@ -101,7 +116,9 @@ class _FinancialAccountDetailScreenState
                   children: [
                     Text(
                       'Finanças · Conta',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(color: AppTokens.forest700),
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: AppTokens.forest700,
+                      ),
                     ),
                     const SizedBox(height: AppTokens.space8),
                     Focus(
@@ -118,7 +135,9 @@ class _FinancialAccountDetailScreenState
                     const SizedBox(height: AppTokens.space8),
                     Text(
                       'Saldo inicial e Movements são exibidos como registros canônicos. O saldo corrente ainda não é calculado nesta tela.',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppTokens.neutral700),
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: AppTokens.neutral700,
+                      ),
                     ),
                   ],
                 ),
@@ -155,7 +174,8 @@ class _FinancialAccountDetailScreenState
               account: account,
               openingBalance: state.openingBalance,
               mutationInFlight: state.openingBalanceMutationInFlight,
-              onCreate: state.openingBalance == null &&
+              onCreate:
+                  state.openingBalance == null &&
                       account.status == FinancialAccountStatus.active
                   ? () => unawaited(_createOpeningBalance(account))
                   : null,
@@ -184,10 +204,15 @@ class _AccountIdentityCard extends StatelessWidget {
           children: [
             _Metadata(label: 'Tipo', value: _typeLabel(account.accountType)),
             _Metadata(label: 'Moeda', value: account.currency),
-            _Metadata(label: 'Visibilidade', value: _visibilityLabel(account.visibilityScope)),
+            _Metadata(
+              label: 'Visibilidade',
+              value: _visibilityLabel(account.visibilityScope),
+            ),
             _Metadata(
               label: 'Status',
-              value: account.status == FinancialAccountStatus.active ? 'Ativa' : 'Arquivada',
+              value: account.status == FinancialAccountStatus.active
+                  ? 'Ativa'
+                  : 'Arquivada',
             ),
           ],
         ),
@@ -219,14 +244,22 @@ class _OpeningBalanceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Saldo inicial', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Saldo inicial',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: AppTokens.space8),
             if (opening == null) ...[
-              Text('Saldo inicial não informado.', style: Theme.of(context).textTheme.bodyLarge),
+              Text(
+                'Saldo inicial não informado.',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
               const SizedBox(height: AppTokens.space4),
               Text(
                 'A ausência de registro não significa saldo zero.',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
               ),
               if (onCreate != null) ...[
                 const SizedBox(height: AppTokens.space16),
@@ -248,7 +281,10 @@ class _OpeningBalanceCard extends StatelessWidget {
                 runSpacing: AppTokens.space12,
                 children: [
                   _Metadata(label: 'Valor', value: _moneyLabel(opening.money)),
-                  _Metadata(label: 'Data efetiva', value: _dateLabel(opening.effectiveDate)),
+                  _Metadata(
+                    label: 'Data efetiva',
+                    value: _dateLabel(opening.effectiveDate),
+                  ),
                 ],
               ),
           ],
@@ -271,11 +307,16 @@ class _MovementsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Movimentações', style: Theme.of(context).textTheme.titleLarge),
+            Text(
+              'Movimentações',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
             const SizedBox(height: AppTokens.space8),
             Text(
               'Eventos STANDARD e REVERSAL permanecem visíveis separadamente.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
             const SizedBox(height: AppTokens.space16),
             if (movements.isEmpty)
@@ -325,13 +366,16 @@ class _MovementRow extends StatelessWidget {
                 const SizedBox(height: AppTokens.space4),
                 Text(
                   '${_dateLabel(movement.effectiveDate)} · ${_effectLabel(movement.resultEffect)} · ${reversal ? 'Reversão' : 'Original'}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
                 ),
               ],
             ),
           ),
           Semantics(
-            label: '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
+            label:
+                '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
             child: Text(
               _moneyLabel(movement.money),
               style: Theme.of(context).textTheme.titleMedium,
@@ -361,7 +405,8 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
     super.initState();
     final now = DateTime.now();
     _dateController = TextEditingController(
-      text: '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
+      text:
+          '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}',
     );
   }
 
@@ -407,7 +452,9 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
                 ),
                 validator: (value) {
                   final source = value ?? '';
-                  return RegExp(r'^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$').hasMatch(source)
+                  return RegExp(
+                        r'^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$',
+                      ).hasMatch(source)
                       ? null
                       : 'Informe um valor decimal válido.';
                 },
@@ -419,7 +466,10 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
                   labelText: 'Data efetiva',
                   helperText: 'Formato AAAA-MM-DD',
                 ),
-                validator: (value) => RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$').hasMatch(value ?? '')
+                validator: (value) =>
+                    RegExp(
+                      r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$',
+                    ).hasMatch(value ?? '')
                     ? null
                     : 'Informe a data no formato AAAA-MM-DD.',
               ),
@@ -490,7 +540,8 @@ class _FailureOrLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (phase == FinancialLoadPhase.idle || phase == FinancialLoadPhase.loading) {
+    if (phase == FinancialLoadPhase.idle ||
+        phase == FinancialLoadPhase.loading) {
       return const Card(
         child: Padding(
           padding: EdgeInsets.all(AppTokens.space24),
@@ -550,7 +601,10 @@ class _FailureOrLoading extends StatelessWidget {
             Text(content.$2),
             if (content.$3) ...[
               const SizedBox(height: AppTokens.space16),
-              OutlinedButton(onPressed: onRetry, child: const Text('Tentar novamente')),
+              OutlinedButton(
+                onPressed: onRetry,
+                child: const Text('Tentar novamente'),
+              ),
             ],
           ],
         ),
