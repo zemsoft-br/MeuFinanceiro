@@ -50,8 +50,10 @@ jobs:
           umask 077
           admin_secret="diagnostics-admin-$(openssl rand -hex 24)"
           app_secret="diagnostics-app-$(openssl rand -hex 24)"
+          demo_secret="diagnostics-demo-$(openssl rand -hex 24)"
           echo "::add-mask::$admin_secret"
           echo "::add-mask::$app_secret"
+          echo "::add-mask::$demo_secret"
           printf 'DIAGNOSTICS_ADMIN_SECRET=%s\n' "$admin_secret" >> "$GITHUB_ENV"
           printf 'DIAGNOSTICS_APP_SECRET=%s\n' "$app_secret" >> "$GITHUB_ENV"
           cat > .env <<EOF_ENV
@@ -63,6 +65,7 @@ jobs:
           APP_HTTP_PORT=8080
           COMPOSE_PROJECT_NAME=meufinanceiro-diagnostics-ci
           APP_KEYRING_FILE_HOST=.secrets/keyring.json
+          DEMO_OPERATOR_PASSWORD=$demo_secret
           EOF_ENV
           python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
 
