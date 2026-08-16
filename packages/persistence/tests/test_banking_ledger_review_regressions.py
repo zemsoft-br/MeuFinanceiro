@@ -6,6 +6,7 @@ from decimal import Decimal
 from threading import Barrier
 from uuid import UUID, uuid4
 
+import pytest
 from meufinanceiro_finance import (
     FinancialAccountDraft,
     FinancialAccountType,
@@ -21,6 +22,7 @@ from meufinanceiro_persistence import (
     BankingIntegrationStore,
     BankingLedgerReviewDecision,
     BankingLedgerReviewDraft,
+    BankingLedgerReviewNotFoundError,
     BankingLedgerReviewRecord,
     BankingLedgerReviewStore,
     ExternalAccountSnapshot,
@@ -260,6 +262,55 @@ def test_expense_import_preserves_negative_observation_amount(
     assert movement["amount"] == Decimal("-87.65000000")
     assert movement["result_effect"] == "EXPENSE"
     assert movement["role"] == "STANDARD"
+
+
+def test_candidate_lookup_fails_closed_across_residences(
+    engine: Engine,
+    runtime_engine: Engine,
+) -> None:
+    installation_id, source_residence_id, operator_id = _household(engine)
+    other_residence_id = uuid4()
+    with engine.begin() as connection:
+        connection.execute(
+            insert(household_residences).values(
+                id=other_residence_id,
+                installation_id=installation_id,
+                name="Synthetic isolated review residence",
+                status="active",
+                created_at=_NOW,
+                updated_at=_NOW,
+            )
+        )
+        connection.execute(
+            insert(household_memberships).values(
+                id=uuid4(),
+                installation_id=installation_id,
+                residence_id=other_residence_id,
+                operator_id=operator_id,
+                role="owner",
+                status="active",
+                is_primary=False,
+                created_at=_NOW,
+                updated_at=_NOW,
+            )
+        )
+
+    reconciled_id = _reconciled(
+        engine,
+        runtime_engine,
+        installation_id=installation_id,
+        residence_id=source_residence_id,
+        amount=Decimal("19.90"),
+    )
+    store = BankingLedgerReviewStore(runtime_engine)
+
+    with pytest.raises(BankingLedgerReviewNotFoundError):
+        store.get_candidate(
+            installation_id=installation_id,
+            residence_id=other_residence_id,
+            operator_id=operator_id,
+            reconciled_transaction_id=reconciled_id,
+        )
 
 
 def test_concurrent_same_idempotency_key_replays_one_decision(
