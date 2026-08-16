@@ -182,6 +182,23 @@ O opening balance representa o saldo no início da sua `effective_date`; Movemen
 
 O contrato base não contém `category_id`. O vínculo classificatório permanece etapa posterior porque contas `SHARED` e categorias atualmente possuem modelos de audiência diferentes.
 
+## Entrada manual de receita e despesa
+
+A #167 define um caso de uso provider-neutral sobre o mesmo ledger. A intenção manual recebe uma **magnitude positiva** e um tipo explícito:
+
+```text
+INCOME  -> Movement STANDARD com amount positivo
+EXPENSE -> Movement STANDARD com amount negativo
+```
+
+O chamador de alto nível não inverte sinal para despesa. A camada financeira converte a magnitude positiva para o `FinancialMovementDraft` assinado e delega a persistência exclusivamente a `create_movement(...)`.
+
+Cada lançamento manual bem-sucedido produz exatamente um `Movement` `STANDARD`. O caso de uso não cria outra tabela, outra entidade persistida de receita/despesa, outra idempotency key ou um segundo ledger.
+
+A fronteira de persistência é um `Protocol` mínimo. O módulo de entrada manual não importa SQLAlchemy nem `meufinanceiro_persistence`; por isso autorização, owner-only, conta `ACTIVE`, RLS, opening anchor, replay idempotente e concorrência continuam sendo aplicados pelo store canônico.
+
+Correções continuam sendo novos eventos de reversão. Categoria permanece opcional e fora desse caso de uso.
+
 ## Transferência futura
 
 Transferência será uma operação atômica externa ao Movement básico:
@@ -212,6 +229,13 @@ create_movement
 reverse_movement
 get_movement
 list_movements
+```
+
+Caso de uso manual:
+
+```text
+FinancialManualEntryDraft
+FinancialManualEntryService.record
 ```
 
 Sem:

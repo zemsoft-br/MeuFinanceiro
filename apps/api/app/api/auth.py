@@ -20,6 +20,7 @@ _NO_STORE_PREFIXES = (
     "/api/v1/auth/",
     "/api/v1/admin/banking/",
     "/api/v1/banking/",
+    "/api/v1/finance/",
 )
 
 

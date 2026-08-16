@@ -55,6 +55,13 @@ from meufinanceiro_persistence.banking_queries import (
 )
 from meufinanceiro_persistence.database import Database
 from meufinanceiro_persistence.demo import (
+    DemoFixtureConflictError,
+    DemoFixtureStatus,
+    DemoFixtureStore,
+    DemoModeDisabledError,
+    unloaded_demo_status,
+)
+from meufinanceiro_persistence.demo_contract import (
     DEMO_CONTRACT_CHECKSUM,
     DEMO_CURRENCY,
     DEMO_FIXTURE_ID,
@@ -62,11 +69,6 @@ from meufinanceiro_persistence.demo import (
     DEMO_REFERENCE_DATE,
     DEMO_SCOPE,
     DEMO_TIMEZONE,
-    DemoFixtureConflictError,
-    DemoFixtureStatus,
-    DemoFixtureStore,
-    DemoModeDisabledError,
-    unloaded_demo_status,
 )
 from meufinanceiro_persistence.financial_account_store import (
     FinancialAccountAccessError,

@@ -30,6 +30,16 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
+if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
+  if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+    DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
+    export DEMO_OPERATOR_PASSWORD
+  else
+    echo "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo." >&2
+    exit 1
+  fi
+fi
+
 generate_password() {
   python3 -c 'import secrets; print(secrets.token_hex(24))'
 }
@@ -119,6 +129,7 @@ else:
     raise SystemExit("O ambiente demo não confirmou fixture carregada.")
 PY
     echo "MeuFinanceiro demo disponível em http://127.0.0.1:${PORT}"
+    echo "Login demo: demo"
     ;;
   load|status|reset)
     run_fixture_command "$ACTION"

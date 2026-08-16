@@ -24,6 +24,10 @@ from meufinanceiro_persistence.financial_movement_schema import financial_moveme
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
 )
+from meufinanceiro_persistence.financial_transfer_schema import (
+    financial_transfer_legs,
+    financial_transfers,
+)
 from meufinanceiro_persistence.migrations import upgrade
 from meufinanceiro_persistence.schema import (
     connection_capabilities,
@@ -187,6 +191,8 @@ def create_canonical_residences(
 @pytest.fixture(autouse=True)
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
+        connection.execute(delete(financial_transfer_legs))
+        connection.execute(delete(financial_transfers))
         connection.execute(delete(financial_movements))
         connection.execute(delete(financial_opening_balances))
         connection.execute(delete(financial_categories))

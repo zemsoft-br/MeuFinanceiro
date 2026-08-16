@@ -192,6 +192,8 @@ services:
     environment:
       APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
       DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
+      ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?run infra/scripts/demo-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
+      DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:?run infra/scripts/demo-up.sh first}
     depends_on:
       migrate:
         condition: service_completed_successfully

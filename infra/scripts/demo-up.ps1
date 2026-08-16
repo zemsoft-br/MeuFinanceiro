@@ -83,6 +83,9 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
 }
 Invoke-DockerCompose @("version") | Out-Null
+if ([string]::IsNullOrWhiteSpace($env:DEMO_OPERATOR_PASSWORD)) {
+    throw "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo."
+}
 
 New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
 Set-PrivateAcl -Path $StateDir -IsDirectory $true
@@ -155,6 +158,7 @@ try {
                 throw "O ambiente demo não confirmou fixture carregada."
             }
             Write-Host "MeuFinanceiro demo disponível em http://127.0.0.1:$port"
+            Write-Host "Login demo: demo"
         }
         { $_ -in @("load", "status", "reset") } {
             Invoke-FixtureCommand $Action

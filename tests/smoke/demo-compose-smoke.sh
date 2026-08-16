@@ -6,6 +6,16 @@ ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 ENV_FILE=${DEMO_ENV_FILE:-$ROOT_DIR/.demo/.env}
 PROJECT_NAME=${DEMO_PROJECT_NAME:-meufinanceiro-demo}
 
+if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
+  if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+    DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
+    export DEMO_OPERATOR_PASSWORD
+  else
+    echo "Defina DEMO_OPERATOR_PASSWORD para executar o smoke da fixture demo." >&2
+    exit 1
+  fi
+fi
+
 PORT=$(awk -F= '$1 == "APP_HTTP_PORT" {print $2}' "$ENV_FILE" | tail -n 1)
 PORT=${PORT:-8081}
 BASE_URL="http://127.0.0.1:$PORT"
@@ -34,11 +44,11 @@ payload = json.load(sys.stdin)
 assert payload["enabled"] is True
 assert payload["loaded"] is True
 assert payload["fixture_id"] == "residencia-ipe-v1"
-assert payload["fixture_version"] == 1
+assert payload["fixture_version"] == 2
 assert payload["reference_date"] == "2026-11-01"
 assert payload["timezone"] == "America/Sao_Paulo"
 assert payload["currency"] == "BRL"
-assert payload["scope"] == "foundation_only"
+assert payload["scope"] == "finance_phase1"
 assert len(payload["contract_checksum"]) == 64
 '
 
@@ -80,6 +90,8 @@ second = json.loads(sys.argv[2])
 assert first == second
 assert first["loaded"] is True
 assert first["fixture_id"] == "residencia-ipe-v1"
+assert first["fixture_version"] == 2
+assert first["scope"] == "finance_phase1"
 PY
 
 status_json | python3 -c '
@@ -87,6 +99,8 @@ import json, sys
 payload = json.load(sys.stdin)
 assert payload["enabled"] is True
 assert payload["loaded"] is True
+assert payload["fixture_version"] == 2
+assert payload["scope"] == "finance_phase1"
 '
 
 echo "Demo Compose smoke passed."

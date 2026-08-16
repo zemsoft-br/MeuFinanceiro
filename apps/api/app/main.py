@@ -18,6 +18,11 @@ from meufinanceiro_persistence import (
     BankingIntegrationStore,
     OperatorIdentityStore,
 )
+from meufinanceiro_persistence.financial_account_store import FinancialAccountStore
+from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
+from meufinanceiro_persistence.financial_opening_balance_store import (
+    FinancialOpeningBalanceStore,
+)
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
@@ -35,17 +40,20 @@ from app.api.routes.banking_reauthentication import (
     router as banking_reauthentication_router,
 )
 from app.api.routes.demo import router as demo_router
+from app.api.routes.finance import router as finance_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.database import create_database
 from app.services.banking_admin import BankingAdministrationService
 from app.services.banking_connections import BankingConnectionsService
+from app.services.financial_core import FinancialCoreService
 from app.services.operator_auth import OperatorAuthenticationService
 
 _BANKING_VALIDATION_PREFIXES = (
     "/api/v1/admin/banking/",
     "/api/v1/banking/",
 )
+_FINANCE_VALIDATION_PREFIX = "/api/v1/finance/"
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -62,6 +70,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         banking_connection_query_store = BankingConnectionQueryStore(database.engine)
         operator_identity_store = OperatorIdentityStore(database.engine)
         operator_authentication = OperatorAuthenticationService(operator_identity_store)
+        financial_account_store = FinancialAccountStore(database.engine)
+        financial_opening_balance_store = FinancialOpeningBalanceStore(database.engine)
+        financial_movement_store = FinancialMovementStore(database.engine)
         available_providers = (
             ("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()
         )
@@ -104,6 +115,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         app.state.operator_identity_store = operator_identity_store
         app.state.operator_authentication = operator_authentication
+        app.state.financial_core = FinancialCoreService(
+            financial_account_store,
+            financial_opening_balance_store,
+            financial_movement_store,
+        )
         app.state.banking_administration = BankingAdministrationService(
             banking_store,
             provider_registry,
@@ -125,10 +141,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     @application.exception_handler(RequestValidationError)
-    async def sanitize_banking_validation_error(
+    async def sanitize_sensitive_validation_error(
         request: Request,
         error: RequestValidationError,
     ) -> Response:
+        if request.url.path.startswith(_FINANCE_VALIDATION_PREFIX):
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "invalid financial request"},
+            )
         if request.url.path.startswith(_BANKING_VALIDATION_PREFIXES):
             return JSONResponse(
                 status_code=422,
@@ -149,6 +170,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         banking_reauthentication_router,
         prefix="/api/v1",
     )
+    application.include_router(finance_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application

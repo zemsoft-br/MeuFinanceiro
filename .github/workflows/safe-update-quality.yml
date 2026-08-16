@@ -50,6 +50,8 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          demo_secret="update-demo-$(openssl rand -hex 24)"
+          echo "::add-mask::$demo_secret"
           cat > .env <<EOF_ENV
           POSTGRES_DB=meufinanceiro_update_ci
           POSTGRES_USER=meufinanceiro_admin_update_ci
@@ -59,6 +61,7 @@ jobs:
           APP_HTTP_PORT=8080
           COMPOSE_PROJECT_NAME=meufinanceiro-update-ci
           APP_KEYRING_FILE_HOST=.secrets/keyring.json
+          DEMO_OPERATOR_PASSWORD=$demo_secret
           EOF_ENV
           python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
 
