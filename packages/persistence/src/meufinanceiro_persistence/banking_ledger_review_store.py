@@ -171,6 +171,15 @@ class BankingLedgerReviewStore:
                     reconciled_transaction_id=reconciled_transaction_id,
                     lock=True,
                 )
+
+                replay_after_lock = _link_by_idempotency(
+                    connection,
+                    installation_id=installation_id,
+                    idempotency_key=idempotency_key,
+                )
+                if replay_after_lock is not None:
+                    return _require_review_replay(replay_after_lock, request_digest)
+
                 _require_source_snapshot(reconciled, observation, draft)
 
                 existing = _link_by_reconciled(
