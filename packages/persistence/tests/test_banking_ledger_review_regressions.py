@@ -14,7 +14,7 @@ from meufinanceiro_finance import (
 )
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import create_keyring
-from sqlalchemy import insert, select
+from sqlalchemy import func, insert, select
 from sqlalchemy.engine import Engine
 
 from meufinanceiro_persistence import (
@@ -296,7 +296,7 @@ def test_concurrent_same_idempotency_key_replays_one_decision(
     key = new_financial_idempotency_key()
     barrier = Barrier(2)
 
-    def _decide() -> BankingLedgerReviewRecord:
+    def _decide(_index: int) -> BankingLedgerReviewRecord:
         barrier.wait()
         return store.decide(
             installation_id=installation_id,
@@ -308,7 +308,7 @@ def test_concurrent_same_idempotency_key_replays_one_decision(
         )
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = tuple(executor.map(lambda _index: _decide(), range(2)))
+        results = tuple(executor.map(_decide, range(2)))
 
     assert results[0] == results[1]
     assert results[0].movement_id is not None
