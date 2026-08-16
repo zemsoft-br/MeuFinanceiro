@@ -18,7 +18,7 @@ from meufinanceiro_finance import (
 )
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import create_keyring
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import Table, func, insert, select, update
 from sqlalchemy.engine import Engine
 
 from meufinanceiro_persistence import (
@@ -230,7 +230,7 @@ def _create_reconciled_transaction(
     return reconciled_id
 
 
-def _count(engine: Engine, table) -> int:
+def _count(engine: Engine, table: Table) -> int:
     with engine.begin() as connection:
         value = connection.scalar(select(func.count()).select_from(table))
     assert isinstance(value, int)
@@ -462,6 +462,23 @@ def test_pending_can_be_ignored_but_not_imported(
     )
     assert candidate.status is StoredTransactionObservationStatus.PENDING
 
+    with pytest.raises(BankingLedgerReviewNotEligibleError):
+        store.decide(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            reconciled_transaction_id=reconciled_id,
+            idempotency_key=new_financial_idempotency_key(),
+            draft=BankingLedgerReviewDraft(
+                source_observation_id=candidate.source_observation_id,
+                source_observation_updated_at=candidate.source_observation_updated_at,
+                decision=BankingLedgerReviewDecision.IMPORT_AS_INCOME,
+                financial_account_id=account_id,
+            ),
+        )
+    assert _count(engine, reconciled_transaction_ledger_links) == 0
+    assert _count(engine, financial_movements) == 0
+
     ignored = store.decide(
         installation_id=installation_id,
         residence_id=residence_id,
@@ -475,38 +492,7 @@ def test_pending_can_be_ignored_but_not_imported(
         ),
     )
     assert ignored.movement_id is None
-    assert _count(engine, financial_movements) == 0
-
-    second_id = _create_reconciled_transaction(
-        engine,
-        runtime_engine,
-        installation_id=installation_id,
-        residence_id=residence_id,
-        amount="21.00",
-        status=StoredTransactionObservationStatus.PENDING,
-    )
-    second_candidate = store.get_candidate(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        reconciled_transaction_id=second_id,
-    )
-    with pytest.raises(BankingLedgerReviewNotEligibleError):
-        store.decide(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=owner_id,
-            reconciled_transaction_id=second_id,
-            idempotency_key=new_financial_idempotency_key(),
-            draft=BankingLedgerReviewDraft(
-                source_observation_id=second_candidate.source_observation_id,
-                source_observation_updated_at=(
-                    second_candidate.source_observation_updated_at
-                ),
-                decision=BankingLedgerReviewDecision.IMPORT_AS_INCOME,
-                financial_account_id=account_id,
-            ),
-        )
+    assert _count(engine, reconciled_transaction_ledger_links) == 1
     assert _count(engine, financial_movements) == 0
 
 
