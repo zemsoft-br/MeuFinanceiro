@@ -21,19 +21,6 @@ def _table_privilege(engine: Engine, role: str, privilege: str) -> bool:
 
 def _rls_state(engine: Engine) -> tuple[bool, bool]:
     with engine.begin() as connection:
-        row = connection.execute(
-            select(
-                func.coalesce(
-                    select(1)
-                    .select_from(
-                        func.pg_catalog.pg_class.alias("unused")
-                    )
-                    .scalar_subquery(),
-                    1,
-                )
-            )
-        )
-        row.close()
         state = connection.exec_driver_sql(
             """
             SELECT c.relrowsecurity, c.relforcerowsecurity
