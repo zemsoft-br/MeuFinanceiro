@@ -8,13 +8,14 @@ from uuid import UUID, uuid4
 
 from meufinanceiro_finance.ids import new_financial_resource_id
 from meufinanceiro_finance.money import Money
+from meufinanceiro_finance.movement_records import FinancialMovementRecord
 from meufinanceiro_finance.movements import (
     FinancialMovementDraft,
     FinancialMovementRole,
     FinancialResultEffect,
 )
 from meufinanceiro_finance.operation_ids import validate_financial_idempotency_key
-from sqlalchemy import Connection, Engine, and_, func, select
+from sqlalchemy import Connection, Engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -47,7 +48,6 @@ from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementBeforeOpeningBalanceError,
     FinancialMovementIdempotencyConflictError,
     FinancialMovementPersistenceError,
-    _integrity_error,
     _movement_by_idempotency,
     _owned_active_account_currency,
     _record as _movement_record,
@@ -196,7 +196,6 @@ class BankingLedgerReviewStore:
                     operator_id=operator_id,
                     idempotency_key=idempotency_key,
                     draft=draft,
-                    reconciled=reconciled,
                     observation=observation,
                 )
 
@@ -429,10 +428,8 @@ def _apply_decision(
     operator_id: UUID,
     idempotency_key: UUID,
     draft: BankingLedgerReviewDraft,
-    reconciled: RowMapping,
     observation: RowMapping,
 ) -> tuple[UUID | None, UUID | None, str | None, str | None]:
-    del reconciled
     if draft.decision is BankingLedgerReviewDecision.IGNORE:
         return None, None, None, None
 
@@ -523,7 +520,7 @@ def _create_standard_movement(
     operator_id: UUID,
     idempotency_key: UUID,
     draft: FinancialMovementDraft,
-):
+) -> FinancialMovementRecord:
     """Compose the canonical Movement guards in an existing transaction."""
     request_digest = _standard_request_digest(operator_id, draft)
     _require_active_membership(
