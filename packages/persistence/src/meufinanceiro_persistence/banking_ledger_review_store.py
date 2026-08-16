@@ -346,9 +346,7 @@ def _load_review_source(
         reconciled_query = reconciled_query.with_for_update()
     reconciled = connection.execute(reconciled_query).mappings().one_or_none()
     if reconciled is None:
-        raise BankingLedgerReviewNotFoundError(
-            "reconciled transaction was not found"
-        )
+        raise BankingLedgerReviewNotFoundError("reconciled transaction was not found")
 
     connection_scope = connection.scalar(
         select(connections.c.id).where(
@@ -358,9 +356,7 @@ def _load_review_source(
         )
     )
     if connection_scope is None:
-        raise BankingLedgerReviewNotFoundError(
-            "reconciled transaction was not found"
-        )
+        raise BankingLedgerReviewNotFoundError("reconciled transaction was not found")
 
     observation_query = select(external_observations).where(
         external_observations.c.id == reconciled["source_observation_id"],
@@ -419,8 +415,7 @@ def _require_source_snapshot(
 
     if draft.decision is not BankingLedgerReviewDecision.IGNORE:
         if (
-            reconciled["status"]
-            != StoredTransactionObservationStatus.CONFIRMED.value
+            reconciled["status"] != StoredTransactionObservationStatus.CONFIRMED.value
             or observation["status"]
             != StoredTransactionObservationStatus.CONFIRMED.value
         ):
@@ -464,9 +459,7 @@ def _apply_decision(
             .one_or_none()
         )
         if target is None:
-            raise BankingLedgerReviewNotFoundError(
-                "financial Movement was not found"
-            )
+            raise BankingLedgerReviewNotFoundError("financial Movement was not found")
         if target["currency"] != currency or Decimal(target["amount"]) != amount:
             raise BankingLedgerReviewConflictError(
                 "financial Movement does not match reviewed amount and currency"
@@ -554,9 +547,7 @@ def _create_standard_movement(
         account_id=draft.account_id,
     )
     if account_currency != draft.amount.currency:
-        raise FinancialMovementAccountNotFoundError(
-            "financial account was not found"
-        )
+        raise FinancialMovementAccountNotFoundError("financial account was not found")
     _require_not_before_opening(
         connection,
         account_id=draft.account_id,
@@ -606,9 +597,7 @@ def _create_standard_movement(
         idempotency_key=idempotency_key,
     )
     if raced is None:
-        raise FinancialMovementIdempotencyConflictError(
-            "movement idempotency conflict"
-        )
+        raise FinancialMovementIdempotencyConflictError("movement idempotency conflict")
     return _require_movement_replay(raced, request_digest)
 
 
@@ -632,9 +621,9 @@ def _review_request_digest(
 
 
 def _movement_idempotency_key(review_idempotency_key: UUID) -> UUID:
-    material = (
-        f"{_MOVEMENT_KEY_NAMESPACE}\x1f{review_idempotency_key}"
-    ).encode("utf-8")
+    material = (f"{_MOVEMENT_KEY_NAMESPACE}\x1f{review_idempotency_key}").encode(
+        "utf-8"
+    )
     raw = bytearray(hashlib.sha256(material).digest()[:16])
     raw[6] = (raw[6] & 0x0F) | 0x40
     raw[8] = (raw[8] & 0x3F) | 0x80

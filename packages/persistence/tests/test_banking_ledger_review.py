@@ -297,11 +297,15 @@ def test_confirmed_income_import_is_atomic_and_idempotent(
     assert _count(engine, financial_movements) == 1
 
     with engine.begin() as connection:
-        movement = connection.execute(
-            select(financial_movements).where(
-                financial_movements.c.id == created.movement_id
+        movement = (
+            connection.execute(
+                select(financial_movements).where(
+                    financial_movements.c.id == created.movement_id
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     assert movement["amount"] == Decimal("150.25000000")
     assert movement["result_effect"] == "INCOME"
     assert movement["role"] == "STANDARD"

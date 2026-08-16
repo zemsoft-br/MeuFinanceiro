@@ -110,17 +110,21 @@ def _account(
     residence_id: UUID,
     operator_id: UUID,
 ) -> UUID:
-    return FinancialAccountStore(runtime_engine).create_account(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=operator_id,
-        draft=FinancialAccountDraft(
-            name="Synthetic regression account",
-            currency="BRL",
-            account_type=FinancialAccountType.CHECKING,
-            visibility_scope=FinancialVisibilityScope.PERSONAL,
-        ),
-    ).id
+    return (
+        FinancialAccountStore(runtime_engine)
+        .create_account(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            draft=FinancialAccountDraft(
+                name="Synthetic regression account",
+                currency="BRL",
+                account_type=FinancialAccountType.CHECKING,
+                visibility_scope=FinancialVisibilityScope.PERSONAL,
+            ),
+        )
+        .id
+    )
 
 
 def _reconciled(
@@ -254,11 +258,15 @@ def test_expense_import_preserves_negative_observation_amount(
 
     assert result.movement_id is not None
     with engine.begin() as connection:
-        movement = connection.execute(
-            select(financial_movements).where(
-                financial_movements.c.id == result.movement_id
+        movement = (
+            connection.execute(
+                select(financial_movements).where(
+                    financial_movements.c.id == result.movement_id
+                )
             )
-        ).mappings().one()
+            .mappings()
+            .one()
+        )
     assert movement["amount"] == Decimal("-87.65000000")
     assert movement["result_effect"] == "EXPENSE"
     assert movement["role"] == "STANDARD"
