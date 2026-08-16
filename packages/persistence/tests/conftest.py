@@ -13,6 +13,9 @@ from psycopg import sql
 from sqlalchemy import create_engine, delete, insert, select
 from sqlalchemy.engine import Engine, make_url
 
+from meufinanceiro_persistence.banking_ledger_review_schema import (
+    reconciled_transaction_ledger_links,
+)
 from meufinanceiro_persistence.banking_observation_schema import external_observations
 from meufinanceiro_persistence.banking_reconciliation_schema import (
     reconciled_transactions,
@@ -191,6 +194,7 @@ def create_canonical_residences(
 @pytest.fixture(autouse=True)
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
+        connection.execute(delete(reconciled_transaction_ledger_links))
         connection.execute(delete(financial_transfer_legs))
         connection.execute(delete(financial_transfers))
         connection.execute(delete(financial_movements))
