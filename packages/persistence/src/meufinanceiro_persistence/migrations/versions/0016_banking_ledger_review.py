@@ -216,6 +216,10 @@ def upgrade() -> None:
     )
 
     op.execute(
+        f"REVOKE UPDATE, DELETE ON "
+        f"integrations.reconciled_transaction_ledger_links FROM {role}"
+    )
+    op.execute(
         f"GRANT SELECT, INSERT ON "
         f"integrations.reconciled_transaction_ledger_links TO {role}"
     )
