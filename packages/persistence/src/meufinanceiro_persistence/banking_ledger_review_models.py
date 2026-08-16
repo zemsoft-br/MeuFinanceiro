@@ -70,7 +70,7 @@ class BankingLedgerReviewCandidate:
             raise TypeError("amount must be a finite Decimal")
         if not isinstance(self.currency, str) or len(self.currency) != 3:
             raise ValueError("currency must be a three-letter code")
-        if self.currency != self.currency.upper() or not self.currency.isalpha():
+        if any(character < "A" or character > "Z" for character in self.currency):
             raise ValueError("currency must be uppercase ASCII letters")
         if self.description is not None:
             if not isinstance(self.description, str):
