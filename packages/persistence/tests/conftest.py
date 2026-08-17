@@ -23,6 +23,10 @@ from meufinanceiro_persistence.banking_reconciliation_schema import (
 from meufinanceiro_persistence.bootstrap import normalize_psycopg_url
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
 from meufinanceiro_persistence.financial_category_schema import financial_categories
+from meufinanceiro_persistence.financial_movement_allocation_schema import (
+    financial_movement_allocation_sets,
+    financial_movement_allocations,
+)
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
@@ -195,6 +199,8 @@ def create_canonical_residences(
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
         connection.execute(delete(reconciled_transaction_ledger_links))
+        connection.execute(delete(financial_movement_allocations))
+        connection.execute(delete(financial_movement_allocation_sets))
         connection.execute(delete(financial_transfer_legs))
         connection.execute(delete(financial_transfers))
         connection.execute(delete(financial_movements))
