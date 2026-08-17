@@ -456,7 +456,10 @@ def _lock_eligible_movement(
                 financial_movements.c.residence_id == residence_id,
                 financial_movements.c.role == FinancialMovementRole.STANDARD.value,
                 financial_movements.c.result_effect.in_(
-                    (FinancialResultEffect.INCOME.value, FinancialResultEffect.EXPENSE.value)
+                    (
+                        FinancialResultEffect.INCOME.value,
+                        FinancialResultEffect.EXPENSE.value,
+                    )
                 ),
             )
             .with_for_update()
@@ -544,7 +547,9 @@ def _validate_categories(
         if not is_category_audience_compatible_for_movement(
             movement_visibility_scope=movement_scope,
             movement_owner_operator_id=movement_owner,
-            category_visibility_scope=FinancialVisibilityScope(category["visibility_scope"]),
+            category_visibility_scope=FinancialVisibilityScope(
+                category["visibility_scope"]
+            ),
             category_owner_operator_id=category["owner_operator_id"],
         ):
             raise FinancialMovementAllocationCategoryNotFoundError(
@@ -567,7 +572,9 @@ def _current_set_row(
                 financial_movement_allocation_sets.c.residence_id == residence_id,
                 financial_movement_allocation_sets.c.movement_id == movement_id,
                 ~select(successor.c.id)
-                .where(successor.c.supersedes_id == financial_movement_allocation_sets.c.id)
+                .where(
+                    successor.c.supersedes_id == financial_movement_allocation_sets.c.id
+                )
                 .exists(),
             )
         )

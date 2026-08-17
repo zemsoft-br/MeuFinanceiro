@@ -369,14 +369,8 @@ def upgrade() -> None:
         f"AND a.owner_operator_id = {operator})"
     )
 
-    op.execute(
-        "ALTER TABLE finance.movement_allocation_sets "
-        "ENABLE ROW LEVEL SECURITY"
-    )
-    op.execute(
-        "ALTER TABLE finance.movement_allocation_sets "
-        "FORCE ROW LEVEL SECURITY"
-    )
+    op.execute("ALTER TABLE finance.movement_allocation_sets ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE finance.movement_allocation_sets FORCE ROW LEVEL SECURITY")
     op.execute(
         "CREATE POLICY finance_allocation_sets_select "
         "ON finance.movement_allocation_sets FOR SELECT USING ("
@@ -407,12 +401,8 @@ def upgrade() -> None:
         "AND c.residence_id = movement_allocations.residence_id "
         "AND c.status = 'ACTIVE')"
     )
-    op.execute(
-        "ALTER TABLE finance.movement_allocations ENABLE ROW LEVEL SECURITY"
-    )
-    op.execute(
-        "ALTER TABLE finance.movement_allocations FORCE ROW LEVEL SECURITY"
-    )
+    op.execute("ALTER TABLE finance.movement_allocations ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE finance.movement_allocations FORCE ROW LEVEL SECURITY")
     op.execute(
         "CREATE POLICY finance_allocations_select "
         "ON finance.movement_allocations FOR SELECT USING ("
@@ -424,34 +414,16 @@ def upgrade() -> None:
         f"{parent_visible} AND {category_visible_active})"
     )
 
-    op.execute(
-        f"REVOKE UPDATE, DELETE ON "
-        f"finance.movement_allocation_sets FROM {role}"
-    )
-    op.execute(
-        f"REVOKE UPDATE, DELETE ON "
-        f"finance.movement_allocations FROM {role}"
-    )
-    op.execute(
-        f"GRANT SELECT, INSERT ON "
-        f"finance.movement_allocation_sets TO {role}"
-    )
-    op.execute(
-        f"GRANT SELECT, INSERT ON "
-        f"finance.movement_allocations TO {role}"
-    )
+    op.execute(f"REVOKE UPDATE, DELETE ON finance.movement_allocation_sets FROM {role}")
+    op.execute(f"REVOKE UPDATE, DELETE ON finance.movement_allocations FROM {role}")
+    op.execute(f"GRANT SELECT, INSERT ON finance.movement_allocation_sets TO {role}")
+    op.execute(f"GRANT SELECT, INSERT ON finance.movement_allocations TO {role}")
 
 
 def downgrade() -> None:
     role = _quoted_role()
-    op.execute(
-        f"REVOKE SELECT, INSERT ON "
-        f"finance.movement_allocations FROM {role}"
-    )
-    op.execute(
-        f"REVOKE SELECT, INSERT ON "
-        f"finance.movement_allocation_sets FROM {role}"
-    )
+    op.execute(f"REVOKE SELECT, INSERT ON finance.movement_allocations FROM {role}")
+    op.execute(f"REVOKE SELECT, INSERT ON finance.movement_allocation_sets FROM {role}")
     op.execute(
         "DROP TRIGGER IF EXISTS trg_finance_validate_allocation_share "
         "ON finance.movement_allocations"
@@ -461,16 +433,9 @@ def downgrade() -> None:
         "ON finance.movement_allocation_sets"
     )
     op.execute(
-        "DROP FUNCTION IF EXISTS "
-        "finance.validate_movement_allocation_share_row()"
+        "DROP FUNCTION IF EXISTS finance.validate_movement_allocation_share_row()"
     )
-    op.execute(
-        "DROP FUNCTION IF EXISTS "
-        "finance.validate_movement_allocation_set_row()"
-    )
-    op.execute(
-        "DROP FUNCTION IF EXISTS "
-        "finance.assert_movement_allocation_set(uuid)"
-    )
+    op.execute("DROP FUNCTION IF EXISTS finance.validate_movement_allocation_set_row()")
+    op.execute("DROP FUNCTION IF EXISTS finance.assert_movement_allocation_set(uuid)")
     op.execute("DROP TABLE finance.movement_allocations")
     op.execute("DROP TABLE finance.movement_allocation_sets")

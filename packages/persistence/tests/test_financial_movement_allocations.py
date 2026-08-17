@@ -288,12 +288,15 @@ def test_create_simple_classification_replays_without_touching_movement(
     assert created.revision == 1
     assert created.supersedes_id is None
     assert created.allocations[0].amount == Money(Decimal("-100.00"), "BRL")
-    assert store.get_current_allocation_set(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=owner_id,
-        movement_id=movement_id,
-    ) == created
+    assert (
+        store.get_current_allocation_set(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=owner_id,
+            movement_id=movement_id,
+        )
+        == created
+    )
     assert _count(engine, financial_movements) == 1
     assert _count(engine, financial_movement_allocation_sets) == 1
     assert _count(engine, financial_movement_allocations) == 1
@@ -755,10 +758,13 @@ def test_concurrent_revisions_cannot_fork(
             except FinancialMovementAllocationConflictError as error:
                 outcomes.append(error)
 
-    assert sum(
-        not isinstance(item, FinancialMovementAllocationConflictError)
-        for item in outcomes
-    ) == 1
+    assert (
+        sum(
+            not isinstance(item, FinancialMovementAllocationConflictError)
+            for item in outcomes
+        )
+        == 1
+    )
     assert _count(engine, financial_movement_allocation_sets) == 2
 
 
