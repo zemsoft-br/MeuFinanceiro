@@ -120,8 +120,8 @@ def upgrade() -> None:
             ) REFERENCES household.memberships (
                 residence_id, operator_id
             ) ON DELETE RESTRICT,
-            CONSTRAINT uq_finance_audit_events_subject UNIQUE (
-                subject_type, subject_id
+            CONSTRAINT uq_finance_audit_events_event_subject UNIQUE (
+                event_type, subject_type, subject_id
             )
         )
         """
