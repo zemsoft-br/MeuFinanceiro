@@ -69,9 +69,11 @@ O ambiente demo usa:
 - `.demo/secrets/keyring.json` exclusivo;
 - `APP_DEMO_MODE=true`.
 
-A carga e o status usam a role de runtime e respeitam RLS/guards normais. O reset funcional usa a conexão administrativa **somente no serviço isolado `demo-fixture`**, porque o ledger não concede DELETE à runtime.
+A **materialização determinística** da fixture usa a conexão administrativa exclusiva do serviço isolado `demo-fixture`. Isso é bootstrap controlado: os registros possuem IDs e timestamps canônicos históricos e não representam mutações financeiras runtime do operador.
 
-Nenhum grant de UPDATE/DELETE é adicionado a `finance.movements` para atender o modo demo.
+Depois do commit da carga, `status` relê e valida metadata e dados funcionais usando a role de runtime, sob RLS/guards normais. O reset também usa a conexão administrativa porque o ledger e o audit trail não concedem DELETE à runtime.
+
+Nenhum grant de UPDATE/DELETE é adicionado a `finance.movements`, `finance.audit_events` ou às tabelas de rateio para atender o modo demo.
 
 ## Credencial do operador demo
 
@@ -127,31 +129,33 @@ bash infra/scripts/demo-up.sh purge
 
 ### `load`
 
-Em uma transação:
+A materialização ocorre em uma transação administrativa isolada:
 
-1. valida metadata v2;
+1. valida/materializa metadata v2;
 2. materializa/verifica instalação, operador, residência e membership;
-3. define contexto financeiro de instalação/residência/operador;
+3. define o contexto financeiro determinístico da fixture;
 4. materializa/verifica categorias e contas;
 5. materializa/verifica o opening balance;
 6. materializa/verifica Movements STANDARD;
-7. materializa/verifica a REVERSAL.
+7. materializa/verifica a REVERSAL;
+8. commit administrativo;
+9. releitura integral por `status()` usando a role runtime e RLS.
 
 As inserções funcionais usam `ON CONFLICT DO NOTHING` seguido de verificação exata. Divergência falha explicitamente; nenhum registro append-only é atualizado.
 
-Uma segunda carga preserva `loaded_at` e não duplica dados.
+A seed administrativa não fabrica `finance.audit_events`: auditoria obrigatória é reservada às mutações runtime efetivamente executadas após o bootstrap. Uma segunda carga preserva `loaded_at` e não duplica dados.
 
 ### `status`
 
-`loaded=true` só é retornado quando metadata **e todo o conjunto funcional esperado** estão consistentes. Metadata isolada não é suficiente.
+`loaded=true` só é retornado quando metadata **e todo o conjunto funcional esperado** estão consistentes pela conexão runtime. Metadata isolada não é suficiente.
 
 Telemetria normal de autenticação do operador, como último login e tentativas, não faz parte da igualdade estável da fixture.
 
 ### `reset`
 
-O reset remove o escopo da instalação demo em ordem de dependência, incluindo sessões e Movements criados durante a própria demonstração. Dados de outra instalação e `infra.task_queue` são preservados.
+O reset administrativo remove o escopo da instalação demo em ordem de dependência. Antes do ledger base, remove audit events e rateios criados durante o uso da demo; depois remove relações de transferências, Movements, saldos de abertura, categorias, contas e identidade da fixture.
 
-O reset pode ser repetido com segurança.
+Isso permite que o usuário teste mutações canônicas normalmente e ainda execute `reset` sem violar FKs append-only. Dados de outra instalação e `infra.task_queue` são preservados. O reset pode ser repetido com segurança.
 
 ## Endpoint somente leitura
 
@@ -184,21 +188,25 @@ A fixture v2 não chama nem popula Pluggy ou qualquer provider externo. Não há
 
 ## Testes esperados
 
-A suíte da #175 deve validar:
+A suíte da #175 e as regressões financeiras posteriores devem validar:
 
 - metadata v2/checksum;
 - carga em banco vazio;
+- materialização somente pela conexão administrativa;
+- releitura pós-load pela conexão runtime/RLS;
 - segunda carga idempotente e `loaded_at` preservado;
 - IDs estáveis;
 - identidade/residência completas;
 - hash de autenticação válido;
 - duas contas, categorias, opening balance e cinco Movements exatos;
 - STANDARD + REVERSAL como eventos separados;
+- seed administrativa sem audit events fabricados;
 - saldo derivável de R$ 4.979,25 sem coluna de saldo;
 - conta cash sem opening balance;
 - tolerância à telemetria mutável de autenticação;
 - conflito em drift funcional;
 - reset administrativo limitado à instalação demo;
+- reset removendo audit events/rateios runtime antes do ledger;
 - segundo reset idempotente;
 - preservação da fila normal;
 - contrato HTTP v2 somente leitura;
