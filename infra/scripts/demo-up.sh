@@ -37,11 +37,19 @@ generate_password() {
 }
 
 migrate_legacy_operator_password() {
-  if ! grep -q '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE"; then
+  legacy_count=$(grep -c '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE" || true)
+  if [ "$legacy_count" -eq 0 ]; then
+    unset legacy_count
     return
   fi
+  if [ "$legacy_count" -ne 1 ]; then
+    echo "A configuração demo contém múltiplas credenciais legadas; nenhuma fonte foi alterada." >&2
+    unset legacy_count
+    exit 1
+  fi
+  unset legacy_count
 
-  legacy_password=$(sed -n 's/^DEMO_OPERATOR_PASSWORD=//p' "$ENV_FILE" | head -n 1)
+  legacy_password=$(sed -n 's/^DEMO_OPERATOR_PASSWORD=//p' "$ENV_FILE")
   if [ -z "$legacy_password" ]; then
     echo "A credencial legada do operador demo está vazia." >&2
     unset legacy_password
