@@ -6,6 +6,10 @@ import hashlib
 from typing import Any
 from uuid import UUID
 
+from meufinanceiro_finance.audit_events import (
+    FinancialAuditEventDraft,
+    FinancialAuditEventType,
+)
 from meufinanceiro_finance.ids import (
     new_financial_resource_id,
     validate_financial_resource_id,
@@ -32,6 +36,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.sql import Select
 
+from meufinanceiro_persistence.financial_audit_store import _append_financial_audit_event
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementAccessError,
@@ -211,6 +216,16 @@ class FinancialTransferStore:
                     idempotency_key=new_financial_idempotency_key(),
                     draft=destination_draft,
                 )
+                _append_financial_audit_event(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    actor_operator_id=operator_id,
+                    draft=FinancialAuditEventDraft(
+                        event_type=FinancialAuditEventType.TRANSFER_CREATED,
+                        subject_id=transfer_id,
+                    ),
+                )
                 return _record(
                     inserted,
                     source_movement_id=source_movement_id,
@@ -386,6 +401,17 @@ class FinancialTransferStore:
                         effective_date=draft.effective_date,
                         competence_date=draft.competence_date,
                         reason=draft.reason,
+                    ),
+                )
+                _append_financial_audit_event(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    actor_operator_id=operator_id,
+                    draft=FinancialAuditEventDraft(
+                        event_type=FinancialAuditEventType.TRANSFER_REVERSED,
+                        subject_id=reversal_transfer_id,
+                        related_subject_id=draft.transfer_id,
                     ),
                 )
                 return _record(
