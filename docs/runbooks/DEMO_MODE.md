@@ -67,6 +67,7 @@ O ambiente demo usa:
 - volume Docker próprio do projeto;
 - `.demo/.env` exclusivo;
 - `.demo/secrets/keyring.json` exclusivo;
+- `.demo/secrets/operator_password.txt` exclusivo;
 - `APP_DEMO_MODE=true`.
 
 A carga e o status usam a role de runtime e respeitam RLS/guards normais. O reset funcional usa a conexão administrativa **somente no serviço isolado `demo-fixture`**, porque o ledger não concede DELETE à runtime.
@@ -81,21 +82,32 @@ O login é fixo:
 demo
 ```
 
-A senha não é fixa nem versionada no repositório. Defina `DEMO_OPERATOR_PASSWORD` no ambiente do terminal antes de executar qualquer comando demo. O valor não é gravado pelo script em `.demo/.env`.
+A senha não é fixa nem versionada no repositório. Ela é **gerada automaticamente** na primeira preparação do ambiente demo usando CSPRNG e armazenada apenas em:
 
-Linux/macOS/WSL:
-
-```bash
-export DEMO_OPERATOR_PASSWORD='<senha-local-demo>'
+```text
+.demo/secrets/operator_password.txt
 ```
 
-Windows PowerShell:
+O arquivo recebe permissões privadas equivalentes aos demais secrets locais. O Compose o monta em `demo-fixture` como **Docker secret** somente leitura em:
 
-```powershell
-$env:DEMO_OPERATOR_PASSWORD = '<senha-local-demo>'
+```text
+/run/secrets/demo_operator_password
 ```
 
-Na primeira carga, o valor é armazenado no banco apenas como hash Argon2id. Cargas seguintes verificam a mesma credencial sem reescrever o operador.
+Você **não precisa definir `DEMO_OPERATOR_PASSWORD`** para usar `demo-up.sh` ou `demo-up.ps1`. A variável continua aceita internamente pelo CLI somente como compatibilidade para testes e tooling legado; arquivo e variável ao mesmo tempo são rejeitados para evitar fonte ambígua.
+
+A mesma senha é reutilizada enquanto o diretório `.demo` existir. O comando `purge` remove o arquivo junto com todo o estado demo; uma preparação futura gera outra credencial.
+
+Na primeira carga, a senha é armazenada no banco apenas como hash Argon2id. Cargas seguintes verificam a mesma credencial sem reescrever o operador.
+
+Após `up`, o script mostra localmente no terminal:
+
+```text
+Login demo: demo
+Senha demo: <senha-gerada-localmente>
+```
+
+A senha não é enviada à API, não é persistida em logs do serviço e não é adicionada ao `.demo/.env`.
 
 ## Operação no Linux/macOS/WSL
 
@@ -119,9 +131,9 @@ bash infra/scripts/demo-up.sh purge
 & .\infra\scripts\demo-up.ps1 -Action purge
 ```
 
-`up` gera apenas as credenciais do banco demo e o keyring local, aplica as migrações, carrega a fixture e exige que a API confirme `enabled=true` e `loaded=true`.
+`up` gera as credenciais do banco demo, o keyring local e a credencial privada do operador demo quando ainda não existirem; aplica as migrações, carrega a fixture e exige que a API confirme `enabled=true` e `loaded=true`.
 
-`down` encerra os containers sem apagar o volume. `purge` remove containers, volume, `.demo/.env` e keyring. A remoção dos dados é explícita.
+`down` encerra os containers sem apagar o volume. `purge` remove containers, volume, `.demo/.env`, keyring e `.demo/secrets/operator_password.txt`. A remoção dos dados e da credencial é explícita.
 
 ## Lifecycle da fixture
 
@@ -184,7 +196,7 @@ A fixture v2 não chama nem popula Pluggy ou qualquer provider externo. Não há
 
 ## Testes esperados
 
-A suíte da #175 deve validar:
+A suíte da #175 e os contratos de qualidade do modo demo devem validar:
 
 - metadata v2/checksum;
 - carga em banco vazio;
@@ -202,7 +214,10 @@ A suíte da #175 deve validar:
 - segundo reset idempotente;
 - preservação da fila normal;
 - contrato HTTP v2 somente leitura;
-- scripts Linux/PowerShell exigindo credencial externa;
+- scripts Linux/PowerShell gerando e reutilizando credencial privada local, sem segredo manual;
+- montagem da senha como Docker secret somente leitura;
+- fallback de `DEMO_OPERATOR_PASSWORD` restrito ao CLI de compatibilidade/testes;
+- `purge` removendo a credencial gerada;
 - ausência de provider externo.
 
 ## Regras para próximas expansões
@@ -217,7 +232,7 @@ A suíte da #175 deve validar:
 
 ## Segurança
 
-- nunca copiar `.env`, keyring ou volume do ambiente comum;
+- nunca copiar `.env`, keyring, senha de operador ou volume do ambiente comum;
 - nunca inserir credenciais de integração externa;
 - nunca utilizar dados do mantenedor, familiares, clientes ou instituições reais;
 - nunca habilitar o modo demo em HML ou produção por inferência deste runbook;
