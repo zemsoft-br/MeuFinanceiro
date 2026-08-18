@@ -91,12 +91,27 @@ from meufinanceiro_persistence.financial_account_store import (
     FinancialAccountPersistenceError,
     FinancialAccountStore,
 )
+from meufinanceiro_persistence.financial_audit_store import (
+    FinancialAuditAccessError,
+    FinancialAuditNotFoundError,
+    FinancialAuditPersistenceError,
+    FinancialAuditStore,
+)
 from meufinanceiro_persistence.financial_category_store import (
     FinancialCategoryAccessError,
     FinancialCategoryNotFoundError,
     FinancialCategoryParentNotFoundError,
     FinancialCategoryPersistenceError,
     FinancialCategoryStore,
+)
+from meufinanceiro_persistence.financial_movement_allocation_store import (
+    FinancialMovementAllocationAccessError,
+    FinancialMovementAllocationCategoryNotFoundError,
+    FinancialMovementAllocationConflictError,
+    FinancialMovementAllocationMovementNotFoundError,
+    FinancialMovementAllocationNotFoundError,
+    FinancialMovementAllocationPersistenceError,
+    FinancialMovementAllocationStore,
 )
 from meufinanceiro_persistence.health import (
     PersistenceHealth,
@@ -174,11 +189,22 @@ __all__ = [
     "FinancialAccountNotFoundError",
     "FinancialAccountPersistenceError",
     "FinancialAccountStore",
+    "FinancialAuditAccessError",
+    "FinancialAuditNotFoundError",
+    "FinancialAuditPersistenceError",
+    "FinancialAuditStore",
     "FinancialCategoryAccessError",
     "FinancialCategoryNotFoundError",
     "FinancialCategoryParentNotFoundError",
     "FinancialCategoryPersistenceError",
     "FinancialCategoryStore",
+    "FinancialMovementAllocationAccessError",
+    "FinancialMovementAllocationCategoryNotFoundError",
+    "FinancialMovementAllocationConflictError",
+    "FinancialMovementAllocationMovementNotFoundError",
+    "FinancialMovementAllocationNotFoundError",
+    "FinancialMovementAllocationPersistenceError",
+    "FinancialMovementAllocationStore",
     "HouseholdBootstrapConflictError",
     "HouseholdPersistenceError",
     "IdentityBootstrapConflictError",
