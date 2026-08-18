@@ -121,11 +121,14 @@ if ($EnvContent -notcontains "POSTGRES_DB=meufinanceiro_demo") {
     throw "A configuração demo existente usa um banco inesperado."
 }
 
-$LegacyPasswordLine = @(
+$LegacyPasswordLines = @(
     $EnvContent | Where-Object { $_ -match '^DEMO_OPERATOR_PASSWORD=' }
-) | Select-Object -First 1
-if ($null -ne $LegacyPasswordLine) {
-    $LegacyPassword = $LegacyPasswordLine.Substring("DEMO_OPERATOR_PASSWORD=".Length)
+)
+if ($LegacyPasswordLines.Count -gt 1) {
+    throw "A configuração demo contém múltiplas credenciais legadas; nenhuma fonte foi alterada."
+}
+if ($LegacyPasswordLines.Count -eq 1) {
+    $LegacyPassword = $LegacyPasswordLines[0].Substring("DEMO_OPERATOR_PASSWORD=".Length)
     if ([string]::IsNullOrEmpty($LegacyPassword)) {
         throw "A credencial demo legada está vazia e não pode ser migrada com segurança."
     }
