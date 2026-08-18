@@ -126,53 +126,6 @@ class BankingConnectionDisconnectionStoreMixin:
                 "banking connection disconnection transaction failed"
             ) from None
 
-    def prepare_connection_disconnection(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        operator_id: UUID,
-        connection_id: UUID,
-    ) -> BankingConnectionRecord:
-        """Read and validate a candidate without performing provider I/O."""
-        _require_uuid(installation_id, "installation_id")
-        _require_uuid(residence_id, "residence_id")
-        _require_uuid(operator_id, "operator_id")
-        _require_uuid(connection_id, "connection_id")
-        try:
-            with self._engine.begin() as connection:
-                _set_context(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    operator_id=operator_id,
-                )
-                _require_active_member(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    operator_id=operator_id,
-                )
-                local = _load_visible_connection(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    connection_id=connection_id,
-                )
-                if local.status is not StoredConnectionStatus.DISCONNECTED:
-                    _require_no_active_sync(
-                        connection,
-                        residence_id=residence_id,
-                        connection_id=connection_id,
-                    )
-                return local
-        except BankingPersistenceError:
-            raise
-        except DBAPIError:
-            raise BankingPersistenceError(
-                "banking connection could not be prepared for disconnection"
-            ) from None
-
     def finalize_connection_disconnection(
         self,
         *,
@@ -181,7 +134,14 @@ class BankingConnectionDisconnectionStoreMixin:
         operator_id: UUID,
         connection_id: UUID,
     ) -> BankingConnectionRecord:
-        """Idempotently finalize local state without any provider call."""
+        """Trusted recovery primitive that only reconciles local terminal state.
+
+        Normal provider-facing disconnects must use
+        ``connection_disconnection_transaction`` so provider confirmation and
+        local finalization stay serialized. This method exists for trusted
+        recovery/tooling after the provider is independently known to be
+        disconnected; it is never a client-facing authorization boundary.
+        """
         _require_uuid(installation_id, "installation_id")
         _require_uuid(residence_id, "residence_id")
         _require_uuid(operator_id, "operator_id")
