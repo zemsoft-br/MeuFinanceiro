@@ -62,64 +62,44 @@ class _Store:
         self.record = record
         self.finalize_failures = 0
         self.busy = False
-        self.lock_entries = 0
+        self.transaction_entries = 0
 
     @contextmanager
-    def hold_connection_disconnection_lock(
+    def connection_disconnection_transaction(
         self,
         *,
         installation_id: UUID,
         residence_id: UUID,
         operator_id: UUID,
         connection_id: UUID,
-    ) -> Iterator[None]:
-        assert installation_id == self.record.installation_id
-        assert residence_id == self.record.residence_id
-        assert connection_id == self.record.id
-        assert isinstance(operator_id, UUID)
-        self.lock_entries += 1
-        yield
-
-    def prepare_connection_disconnection(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        operator_id: UUID,
-        connection_id: UUID,
-    ) -> BankingConnectionRecord:
+    ) -> Iterator[BankingConnectionRecord]:
         assert installation_id == self.record.installation_id
         assert residence_id == self.record.residence_id
         assert connection_id == self.record.id
         assert isinstance(operator_id, UUID)
         if self.busy:
             raise ConnectionConflictError("synthetic busy connection")
-        return self.record
-
-    def finalize_connection_disconnection(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        operator_id: UUID,
-        connection_id: UUID,
-    ) -> BankingConnectionRecord:
-        assert installation_id == self.record.installation_id
-        assert residence_id == self.record.residence_id
-        assert connection_id == self.record.id
-        assert isinstance(operator_id, UUID)
-        if self.finalize_failures:
-            self.finalize_failures -= 1
-            raise BankingPersistenceError("synthetic local finalization failure")
-        self.record = replace(
-            self.record,
-            status=StoredConnectionStatus.DISCONNECTED,
-            requires_user_action=False,
-            provider_reason_code=None,
-            disconnected_at=_NOW,
-            updated_at=_NOW,
-        )
-        return self.record
+        self.transaction_entries += 1
+        original = self.record
+        try:
+            yield original
+        except Exception:
+            raise
+        else:
+            if original.status is not StoredConnectionStatus.DISCONNECTED:
+                if self.finalize_failures:
+                    self.finalize_failures -= 1
+                    raise BankingPersistenceError(
+                        "synthetic local finalization failure"
+                    )
+                self.record = replace(
+                    original,
+                    status=StoredConnectionStatus.DISCONNECTED,
+                    requires_user_action=False,
+                    provider_reason_code=None,
+                    disconnected_at=_NOW,
+                    updated_at=_NOW,
+                )
 
 
 class _SerializingStore(_Store):
@@ -131,25 +111,26 @@ class _SerializingStore(_Store):
         self.second_attempted = Event()
 
     @contextmanager
-    def hold_connection_disconnection_lock(
+    def connection_disconnection_transaction(
         self,
         *,
         installation_id: UUID,
         residence_id: UUID,
         operator_id: UUID,
         connection_id: UUID,
-    ) -> Iterator[None]:
-        assert installation_id == self.record.installation_id
-        assert residence_id == self.record.residence_id
-        assert connection_id == self.record.id
-        assert isinstance(operator_id, UUID)
+    ) -> Iterator[BankingConnectionRecord]:
         with self._attempt_guard:
             self.lock_attempts += 1
             if self.lock_attempts >= 2:
                 self.second_attempted.set()
         with self._operation_lock:
-            self.lock_entries += 1
-            yield
+            with super().connection_disconnection_transaction(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                connection_id=connection_id,
+            ) as record:
+                yield record
 
 
 class _CountingProvider(FakeBankingProvider):
@@ -193,6 +174,11 @@ class _BlockingProvider(_CountingProvider):
         if not self.release_disconnect.wait(timeout=5):
             raise AssertionError("synthetic disconnect release was not signaled")
         FakeBankingProvider.disconnect(self, external_connection_id, actor_id)
+
+
+class _UnexpectedFailureProvider(_CountingProvider):
+    def get_connection(self, external_connection_id: str) -> ConnectionState:
+        raise RuntimeError(f"unexpected provider detail: {external_connection_id}")
 
 
 class _WrongProvider(_CountingProvider):
@@ -247,7 +233,7 @@ def test_disconnect_mutates_provider_once_then_finalizes_local_state() -> None:
     assert result.recovered_from_provider_state is False
     assert store.record.status is StoredConnectionStatus.DISCONNECTED
     assert provider.disconnect_calls == 1
-    assert store.lock_entries == 1
+    assert store.transaction_entries == 1
     assert "external-sensitive-connection" not in repr(result)
 
 
@@ -323,6 +309,20 @@ def test_provider_read_failure_leaves_local_state_unchanged() -> None:
     assert store.record.status is StoredConnectionStatus.AVAILABLE
     assert provider.disconnect_calls == 0
     assert "external-sensitive-connection" not in str(captured.value)
+
+
+def test_unexpected_provider_failure_is_sanitized_as_internal() -> None:
+    record = _local_record()
+    store = _Store(record)
+    provider = _UnexpectedFailureProvider()
+
+    with pytest.raises(BankingDisconnectExecutionError) as captured:
+        _run(store, provider)
+
+    assert captured.value.code is BankingDisconnectErrorCode.INTERNAL
+    assert store.record.status is StoredConnectionStatus.AVAILABLE
+    assert "external-sensitive-connection" not in str(captured.value)
+    assert "unexpected provider detail" not in str(captured.value)
 
 
 def test_provider_disconnect_failure_leaves_local_state_unchanged() -> None:
