@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
+from threading import Barrier, Event, Lock
 from uuid import UUID, uuid4
 
 import pytest
@@ -120,6 +122,36 @@ class _Store:
         return self.record
 
 
+class _SerializingStore(_Store):
+    def __init__(self, record: BankingConnectionRecord) -> None:
+        super().__init__(record)
+        self._operation_lock = Lock()
+        self._attempt_guard = Lock()
+        self.lock_attempts = 0
+        self.second_attempted = Event()
+
+    @contextmanager
+    def hold_connection_disconnection_lock(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        connection_id: UUID,
+    ) -> Iterator[None]:
+        assert installation_id == self.record.installation_id
+        assert residence_id == self.record.residence_id
+        assert connection_id == self.record.id
+        assert isinstance(operator_id, UUID)
+        with self._attempt_guard:
+            self.lock_attempts += 1
+            if self.lock_attempts >= 2:
+                self.second_attempted.set()
+        with self._operation_lock:
+            self.lock_entries += 1
+            yield
+
+
 class _CountingProvider(FakeBankingProvider):
     def __init__(self) -> None:
         super().__init__()
@@ -147,6 +179,20 @@ class _CountingProvider(FakeBankingProvider):
                 safe_message="synthetic disconnect unsupported",
             )
         super().disconnect(external_connection_id, actor_id)
+
+
+class _BlockingProvider(_CountingProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.disconnect_entered = Event()
+        self.release_disconnect = Event()
+
+    def disconnect(self, external_connection_id: str, actor_id: str) -> None:
+        self.disconnect_calls += 1
+        self.disconnect_entered.set()
+        if not self.release_disconnect.wait(timeout=5):
+            raise AssertionError("synthetic disconnect release was not signaled")
+        FakeBankingProvider.disconnect(self, external_connection_id, actor_id)
 
 
 class _WrongProvider(_CountingProvider):
@@ -203,6 +249,39 @@ def test_disconnect_mutates_provider_once_then_finalizes_local_state() -> None:
     assert provider.disconnect_calls == 1
     assert store.lock_entries == 1
     assert "external-sensitive-connection" not in repr(result)
+
+
+def test_concurrent_disconnects_serialize_to_one_provider_mutation() -> None:
+    record = _local_record()
+    store = _SerializingStore(record)
+    provider = _BlockingProvider()
+    provider.seed_connection(
+        ConnectionState(
+            external_connection_id=record.external_connection_id,
+            status=ConnectionStatus.AVAILABLE,
+            capabilities=(),
+        ),
+        residence_id=str(record.residence_id),
+    )
+    start = Barrier(3)
+
+    def worker() -> BankingDisconnectResult:
+        start.wait()
+        return _run(store, provider)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(worker)
+        second = pool.submit(worker)
+        start.wait()
+        assert provider.disconnect_entered.wait(timeout=5)
+        assert store.second_attempted.wait(timeout=5)
+        assert provider.disconnect_calls == 1
+        provider.release_disconnect.set()
+        results = (first.result(timeout=5), second.result(timeout=5))
+
+    assert provider.disconnect_calls == 1
+    assert sum(item.provider_mutation_performed for item in results) == 1
+    assert store.record.status is StoredConnectionStatus.DISCONNECTED
 
 
 def test_local_disconnected_replay_performs_no_provider_io() -> None:
