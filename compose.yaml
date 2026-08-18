@@ -193,7 +193,9 @@ services:
       APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
       DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
       ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?run infra/scripts/demo-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
-      DEMO_OPERATOR_PASSWORD: ${DEMO_OPERATOR_PASSWORD:?run infra/scripts/demo-up.sh first}
+      DEMO_OPERATOR_PASSWORD_FILE: /run/secrets/demo_operator_password
+    secrets:
+      - demo_operator_password
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -239,3 +241,5 @@ volumes:
 secrets:
   app_keyring:
     file: ${APP_KEYRING_FILE_HOST:-./.secrets/keyring.json}
+  demo_operator_password:
+    file: ${DEMO_OPERATOR_PASSWORD_FILE_HOST:-./.demo/secrets/operator_password.txt}
