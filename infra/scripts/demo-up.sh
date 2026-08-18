@@ -42,8 +42,28 @@ migrate_legacy_operator_password() {
   fi
 
   legacy_password=$(sed -n 's/^DEMO_OPERATOR_PASSWORD=//p' "$ENV_FILE" | head -n 1)
-  if [ ! -f "$OPERATOR_PASSWORD_FILE" ] && [ -n "$legacy_password" ]; then
+  if [ -z "$legacy_password" ]; then
+    echo "A credencial legada do operador demo está vazia." >&2
+    unset legacy_password
+    exit 1
+  fi
+
+  if [ -f "$OPERATOR_PASSWORD_FILE" ]; then
+    current_password=$(tr -d '\r\n' < "$OPERATOR_PASSWORD_FILE")
+    if [ -z "$current_password" ]; then
+      echo "A credencial privada do operador demo está vazia." >&2
+      unset legacy_password current_password
+      exit 1
+    fi
+    if [ "$current_password" != "$legacy_password" ]; then
+      echo "Conflito entre a credencial demo legada e o secret file; nenhuma fonte foi alterada." >&2
+      unset legacy_password current_password
+      exit 1
+    fi
+    unset current_password
+  else
     printf '%s\n' "$legacy_password" > "$OPERATOR_PASSWORD_FILE"
+    chmod 600 "$OPERATOR_PASSWORD_FILE"
   fi
   unset legacy_password
 
