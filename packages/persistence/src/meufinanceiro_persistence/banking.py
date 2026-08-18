@@ -143,26 +143,6 @@ class BankingIntegrationStore(
                 "provider configuration could not be persisted"
             ) from None
 
-    def begin_manual_sync(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        connection_id: UUID,
-        idempotency_key: str,
-    ) -> SyncRunRecord:
-        with self.hold_connection_sync_start_lock(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            connection_id=connection_id,
-        ):
-            return super().begin_manual_sync(
-                installation_id=installation_id,
-                residence_id=residence_id,
-                connection_id=connection_id,
-                idempotency_key=idempotency_key,
-            )
-
     def use_enabled_credentials(
         self,
         *,
