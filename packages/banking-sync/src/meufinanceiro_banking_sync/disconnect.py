@@ -212,6 +212,10 @@ class BankingConnectionDisconnectionService:
             raise BankingDisconnectExecutionError(
                 BankingDisconnectErrorCode.INTERNAL
             ) from None
+        except Exception:
+            raise BankingDisconnectExecutionError(
+                BankingDisconnectErrorCode.INTERNAL
+            ) from None
 
     def _finalize_local(
         self,
