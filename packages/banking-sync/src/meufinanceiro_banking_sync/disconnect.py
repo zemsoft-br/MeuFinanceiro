@@ -67,32 +67,14 @@ class BankingDisconnectResult:
 
 
 class ConnectionDisconnectionStore(Protocol):
-    def hold_connection_disconnection_lock(
+    def connection_disconnection_transaction(
         self,
         *,
         installation_id: UUID,
         residence_id: UUID,
         operator_id: UUID,
         connection_id: UUID,
-    ) -> AbstractContextManager[None]: ...
-
-    def prepare_connection_disconnection(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        operator_id: UUID,
-        connection_id: UUID,
-    ) -> BankingConnectionRecord: ...
-
-    def finalize_connection_disconnection(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        operator_id: UUID,
-        connection_id: UUID,
-    ) -> BankingConnectionRecord: ...
+    ) -> AbstractContextManager[BankingConnectionRecord]: ...
 
 
 class BankingConnectionDisconnectionService:
@@ -124,20 +106,16 @@ class BankingConnectionDisconnectionService:
             if not isinstance(value, UUID):
                 raise TypeError(f"{field_name} must be UUID")
 
+        provider_mutation_performed = False
+        recovered_from_provider_state = False
         try:
-            lock = self._store.hold_connection_disconnection_lock(
+            transaction = self._store.connection_disconnection_transaction(
                 installation_id=installation_id,
                 residence_id=residence_id,
                 operator_id=operator_id,
                 connection_id=connection_id,
             )
-            with lock:
-                local = self._store.prepare_connection_disconnection(
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    operator_id=operator_id,
-                    connection_id=connection_id,
-                )
+            with transaction as local:
                 if local.status is StoredConnectionStatus.DISCONNECTED:
                     return _result(
                         connection_id=connection_id,
@@ -165,39 +143,24 @@ class BankingConnectionDisconnectionService:
                     )
 
                 if remote.status is ConnectionStatus.DISCONNECTED:
-                    self._finalize_local(
-                        installation_id=installation_id,
-                        residence_id=residence_id,
-                        operator_id=operator_id,
-                        connection_id=connection_id,
-                    )
-                    return _result(
-                        connection_id=connection_id,
-                        provider_mutation_performed=False,
-                        recovered_from_provider_state=True,
-                    )
+                    recovered_from_provider_state = True
+                else:
+                    try:
+                        self._provider.disconnect(
+                            local.external_connection_id,
+                            str(operator_id),
+                        )
+                    except BankingProviderError:
+                        raise BankingDisconnectExecutionError(
+                            BankingDisconnectErrorCode.PROVIDER_REJECTED
+                        ) from None
+                    provider_mutation_performed = True
 
-                try:
-                    self._provider.disconnect(
-                        local.external_connection_id,
-                        str(operator_id),
-                    )
-                except BankingProviderError:
-                    raise BankingDisconnectExecutionError(
-                        BankingDisconnectErrorCode.PROVIDER_REJECTED
-                    ) from None
-
-                self._finalize_local(
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    operator_id=operator_id,
-                    connection_id=connection_id,
-                )
-                return _result(
-                    connection_id=connection_id,
-                    provider_mutation_performed=True,
-                    recovered_from_provider_state=False,
-                )
+            return _result(
+                connection_id=connection_id,
+                provider_mutation_performed=provider_mutation_performed,
+                recovered_from_provider_state=recovered_from_provider_state,
+            )
         except BankingDisconnectExecutionError:
             raise
         except ConnectionNotFoundError:
@@ -209,37 +172,16 @@ class BankingConnectionDisconnectionService:
                 BankingDisconnectErrorCode.BUSY
             ) from None
         except BankingPersistenceError:
-            raise BankingDisconnectExecutionError(
-                BankingDisconnectErrorCode.INTERNAL
-            ) from None
+            code = (
+                BankingDisconnectErrorCode.LOCAL_FINALIZATION_PENDING
+                if provider_mutation_performed or recovered_from_provider_state
+                else BankingDisconnectErrorCode.INTERNAL
+            )
+            raise BankingDisconnectExecutionError(code) from None
         except Exception:
             raise BankingDisconnectExecutionError(
                 BankingDisconnectErrorCode.INTERNAL
             ) from None
-
-    def _finalize_local(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        operator_id: UUID,
-        connection_id: UUID,
-    ) -> None:
-        try:
-            record = self._store.finalize_connection_disconnection(
-                installation_id=installation_id,
-                residence_id=residence_id,
-                operator_id=operator_id,
-                connection_id=connection_id,
-            )
-        except BankingPersistenceError:
-            raise BankingDisconnectExecutionError(
-                BankingDisconnectErrorCode.LOCAL_FINALIZATION_PENDING
-            ) from None
-        if record.status is not StoredConnectionStatus.DISCONNECTED:
-            raise BankingDisconnectExecutionError(
-                BankingDisconnectErrorCode.LOCAL_FINALIZATION_PENDING
-            )
 
 
 def _result(
