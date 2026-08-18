@@ -4,16 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Protocol, cast
 from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError
 
-from meufinanceiro_persistence.banking_connection_lock import (
-    connection_operation_lock_key,
-)
 from meufinanceiro_persistence.banking_models import (
     BankingConnectionRecord,
     BankingPersistenceError,
@@ -31,16 +27,23 @@ _ACTIVE_SYNC_STATUSES = (
     StoredSyncStatus.REQUESTED.value,
     StoredSyncStatus.RUNNING.value,
 )
-
-
-class _ConnectionReader(Protocol):
-    def get_connection(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        connection_id: UUID,
-    ) -> BankingConnectionRecord: ...
+_CONNECTION_COLUMNS = (
+    connections.c.id,
+    connections.c.installation_id,
+    connections.c.residence_id,
+    connections.c.provider,
+    connections.c.external_connection_id,
+    connections.c.status,
+    connections.c.requires_user_action,
+    connections.c.last_successful_sync_at,
+    connections.c.last_attempt_at,
+    connections.c.next_refresh_allowed_at,
+    connections.c.consent_expires_at,
+    connections.c.provider_reason_code,
+    connections.c.disconnected_at,
+    connections.c.created_at,
+    connections.c.updated_at,
+)
 
 
 class BankingConnectionDisconnectionStoreMixin:
@@ -49,102 +52,68 @@ class BankingConnectionDisconnectionStoreMixin:
     _engine: Engine
 
     @contextmanager
-    def hold_connection_disconnection_lock(
+    def connection_disconnection_transaction(
         self,
         *,
         installation_id: UUID,
         residence_id: UUID,
         operator_id: UUID,
         connection_id: UUID,
-    ) -> Iterator[None]:
-        """Serialize provider-side disconnect I/O without holding a DB transaction."""
-        _require_uuid(operator_id, "operator_id")
-        with self._hold_connection_operation_lock(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            connection_id=connection_id,
-            operator_id=operator_id,
-        ):
-            yield
+    ) -> Iterator[BankingConnectionRecord]:
+        """Hold the connection row lock through provider I/O and local finalization.
 
-    @contextmanager
-    def hold_connection_sync_start_lock(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        connection_id: UUID,
-    ) -> Iterator[None]:
-        """Serialize creation of a sync run against an explicit disconnect."""
-        with self._hold_connection_operation_lock(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            connection_id=connection_id,
-            operator_id=None,
-        ):
-            yield
-
-    @contextmanager
-    def _hold_connection_operation_lock(
-        self,
-        *,
-        installation_id: UUID,
-        residence_id: UUID,
-        connection_id: UUID,
-        operator_id: UUID | None,
-    ) -> Iterator[None]:
+        Manual sync already acquires the same connection row with ``FOR UPDATE``
+        before creating a run. Holding this row lock therefore serializes sync
+        start and concurrent disconnect attempts without a second pool checkout
+        or a distributed idempotency assumption.
+        """
         _require_uuid(installation_id, "installation_id")
         _require_uuid(residence_id, "residence_id")
+        _require_uuid(operator_id, "operator_id")
         _require_uuid(connection_id, "connection_id")
-        lock_key = connection_operation_lock_key(connection_id)
-        connection = self._engine.connect()
-        locked = False
         try:
-            try:
-                with connection.begin():
-                    _set_context(
+            with self._engine.begin() as connection:
+                _set_context(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                )
+                _require_active_member(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                )
+                local = _load_visible_connection(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    connection_id=connection_id,
+                    for_update=True,
+                )
+                if local.status is not StoredConnectionStatus.DISCONNECTED:
+                    _require_no_active_sync(
                         connection,
-                        installation_id=installation_id,
                         residence_id=residence_id,
-                        operator_id=operator_id,
+                        connection_id=connection_id,
                     )
-                    if operator_id is not None:
-                        _require_active_member(
-                            connection,
-                            installation_id=installation_id,
-                            residence_id=residence_id,
-                            operator_id=operator_id,
-                        )
-                    _require_visible_connection(
+
+                yield local
+
+                if local.status is not StoredConnectionStatus.DISCONNECTED:
+                    _finalize_on_connection(
                         connection,
                         installation_id=installation_id,
                         residence_id=residence_id,
                         connection_id=connection_id,
                     )
-
-                connection.execute(select(func.pg_advisory_lock(lock_key)))
-                connection.commit()
-                locked = True
-            except BankingPersistenceError:
-                raise
-            except DBAPIError:
-                raise BankingPersistenceError(
-                    "banking connection operation lock could not be acquired"
-                ) from None
-
-            yield
-        finally:
-            if locked:
-                try:
-                    unlocked = connection.scalar(
-                        select(func.pg_advisory_unlock(lock_key))
-                    )
-                    connection.commit()
-                    if unlocked is not True:
-                        connection.invalidate()
-                except DBAPIError:
-                    connection.invalidate()
-            connection.close()
+        except BankingPersistenceError:
+            raise
+        except DBAPIError:
+            raise BankingPersistenceError(
+                "banking connection disconnection transaction failed"
+            ) from None
 
     def prepare_connection_disconnection(
         self,
@@ -154,7 +123,7 @@ class BankingConnectionDisconnectionStoreMixin:
         operator_id: UUID,
         connection_id: UUID,
     ) -> BankingConnectionRecord:
-        """Revalidate actor/scope and reject disconnect while sync is active."""
+        """Read and validate a candidate without performing provider I/O."""
         _require_uuid(installation_id, "installation_id")
         _require_uuid(residence_id, "residence_id")
         _require_uuid(operator_id, "operator_id")
@@ -167,37 +136,31 @@ class BankingConnectionDisconnectionStoreMixin:
                     residence_id=residence_id,
                     operator_id=operator_id,
                 )
-                status = _require_visible_connection(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    connection_id=connection_id,
-                )
                 _require_active_member(
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
                     operator_id=operator_id,
                 )
-                if status is not StoredConnectionStatus.DISCONNECTED:
+                local = _load_visible_connection(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    connection_id=connection_id,
+                )
+                if local.status is not StoredConnectionStatus.DISCONNECTED:
                     _require_no_active_sync(
                         connection,
                         residence_id=residence_id,
                         connection_id=connection_id,
                     )
+                return local
         except BankingPersistenceError:
             raise
         except DBAPIError:
             raise BankingPersistenceError(
                 "banking connection could not be prepared for disconnection"
             ) from None
-
-        reader = cast(_ConnectionReader, self)
-        return reader.get_connection(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            connection_id=connection_id,
-        )
 
     def finalize_connection_disconnection(
         self,
@@ -207,7 +170,7 @@ class BankingConnectionDisconnectionStoreMixin:
         operator_id: UUID,
         connection_id: UUID,
     ) -> BankingConnectionRecord:
-        """Atomically mark the local connection/accounts disconnected, preserving history."""
+        """Idempotently finalize local state without any provider call."""
         _require_uuid(installation_id, "installation_id")
         _require_uuid(residence_id, "residence_id")
         _require_uuid(operator_id, "operator_id")
@@ -226,52 +189,25 @@ class BankingConnectionDisconnectionStoreMixin:
                     residence_id=residence_id,
                     operator_id=operator_id,
                 )
-                status = _require_visible_connection(
+                local = _load_visible_connection(
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
                     connection_id=connection_id,
                     for_update=True,
                 )
-                if status is not StoredConnectionStatus.DISCONNECTED:
+                if local.status is not StoredConnectionStatus.DISCONNECTED:
                     _require_no_active_sync(
                         connection,
                         residence_id=residence_id,
                         connection_id=connection_id,
                     )
-                    connection.execute(
-                        update(external_accounts)
-                        .where(
-                            external_accounts.c.residence_id == residence_id,
-                            external_accounts.c.connection_id == connection_id,
-                        )
-                        .values(
-                            status=StoredExternalAccountStatus.DISCONNECTED.value,
-                            updated_at=func.transaction_timestamp(),
-                        )
+                    _finalize_on_connection(
+                        connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
                     )
-                    updated = connection.execute(
-                        update(connections)
-                        .where(
-                            connections.c.id == connection_id,
-                            connections.c.installation_id == installation_id,
-                            connections.c.residence_id == residence_id,
-                            connections.c.status
-                            != StoredConnectionStatus.DISCONNECTED.value,
-                        )
-                        .values(
-                            status=StoredConnectionStatus.DISCONNECTED.value,
-                            requires_user_action=False,
-                            next_refresh_allowed_at=None,
-                            provider_reason_code=None,
-                            disconnected_at=func.transaction_timestamp(),
-                            updated_at=func.transaction_timestamp(),
-                        )
-                    )
-                    if updated.rowcount != 1:
-                        raise ConnectionConflictError(
-                            "banking connection state changed during disconnection"
-                        )
         except BankingPersistenceError:
             raise
         except DBAPIError:
@@ -279,11 +215,51 @@ class BankingConnectionDisconnectionStoreMixin:
                 "banking connection could not be disconnected locally"
             ) from None
 
-        reader = cast(_ConnectionReader, self)
-        return reader.get_connection(
+        return self.get_connection(
             installation_id=installation_id,
             residence_id=residence_id,
             connection_id=connection_id,
+        )
+
+
+def _finalize_on_connection(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    connection_id: UUID,
+) -> None:
+    connection.execute(
+        update(external_accounts)
+        .where(
+            external_accounts.c.residence_id == residence_id,
+            external_accounts.c.connection_id == connection_id,
+        )
+        .values(
+            status=StoredExternalAccountStatus.DISCONNECTED.value,
+            updated_at=func.transaction_timestamp(),
+        )
+    )
+    updated = connection.execute(
+        update(connections)
+        .where(
+            connections.c.id == connection_id,
+            connections.c.installation_id == installation_id,
+            connections.c.residence_id == residence_id,
+            connections.c.status != StoredConnectionStatus.DISCONNECTED.value,
+        )
+        .values(
+            status=StoredConnectionStatus.DISCONNECTED.value,
+            requires_user_action=False,
+            next_refresh_allowed_at=None,
+            provider_reason_code=None,
+            disconnected_at=func.transaction_timestamp(),
+            updated_at=func.transaction_timestamp(),
+        )
+    )
+    if updated.rowcount != 1:
+        raise ConnectionConflictError(
+            "banking connection state changed during disconnection"
         )
 
 
@@ -292,17 +268,15 @@ def _set_context(
     *,
     installation_id: UUID,
     residence_id: UUID,
-    operator_id: UUID | None,
+    operator_id: UUID,
 ) -> None:
-    settings = [
-        func.set_config("app.current_installation_id", str(installation_id), True),
-        func.set_config("app.current_residence_id", str(residence_id), True),
-    ]
-    if operator_id is not None:
-        settings.append(
-            func.set_config("app.current_operator_id", str(operator_id), True)
+    connection.execute(
+        select(
+            func.set_config("app.current_installation_id", str(installation_id), True),
+            func.set_config("app.current_residence_id", str(residence_id), True),
+            func.set_config("app.current_operator_id", str(operator_id), True),
         )
-    connection.execute(select(*settings))
+    )
 
 
 def _require_active_member(
@@ -324,25 +298,41 @@ def _require_active_member(
         raise ConnectionNotFoundError("banking connection was not found")
 
 
-def _require_visible_connection(
+def _load_visible_connection(
     connection: Connection,
     *,
     installation_id: UUID,
     residence_id: UUID,
     connection_id: UUID,
     for_update: bool = False,
-) -> StoredConnectionStatus:
-    statement = select(connections.c.status).where(
+) -> BankingConnectionRecord:
+    statement = select(*_CONNECTION_COLUMNS).where(
         connections.c.id == connection_id,
         connections.c.installation_id == installation_id,
         connections.c.residence_id == residence_id,
     )
     if for_update:
         statement = statement.with_for_update()
-    value = connection.scalar(statement)
-    if value is None:
+    row = connection.execute(statement).mappings().one_or_none()
+    if row is None:
         raise ConnectionNotFoundError("banking connection was not found")
-    return StoredConnectionStatus(value)
+    return BankingConnectionRecord(
+        id=row["id"],
+        installation_id=row["installation_id"],
+        residence_id=row["residence_id"],
+        provider=row["provider"],
+        external_connection_id=row["external_connection_id"],
+        status=StoredConnectionStatus(row["status"]),
+        requires_user_action=row["requires_user_action"],
+        last_successful_sync_at=row["last_successful_sync_at"],
+        last_attempt_at=row["last_attempt_at"],
+        next_refresh_allowed_at=row["next_refresh_allowed_at"],
+        consent_expires_at=row["consent_expires_at"],
+        provider_reason_code=row["provider_reason_code"],
+        disconnected_at=row["disconnected_at"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
 
 
 def _require_no_active_sync(
