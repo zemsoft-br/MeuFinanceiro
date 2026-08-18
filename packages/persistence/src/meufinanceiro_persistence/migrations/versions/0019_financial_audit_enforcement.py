@@ -1,5 +1,5 @@
 # mypy: ignore-errors
-"""Require audit coverage for successful financial mutations.
+"""Require audit coverage for successful runtime financial mutations.
 
 Revision ID: 0019_financial_audit_enforcement
 Revises: 0018_financial_audit_trail
@@ -8,24 +8,37 @@ Create Date: 2026-08-18
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 
-from alembic import op
+from alembic import context, op
 
 revision: str = "0019_financial_audit_enforcement"
 down_revision: str | None = "0018_financial_audit_trail"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
+_ROLE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,62}$")
+
+
+def _runtime_role_literal() -> str:
+    role_name = context.config.get_main_option("app_database_user")
+    if not _ROLE_PATTERN.fullmatch(role_name):
+        raise RuntimeError("invalid app_database_user for audit enforcement")
+    return f"'{role_name}'"
+
 
 def upgrade() -> None:
+    runtime_role = _runtime_role_literal()
+
     # SECURITY DEFINER is the only normal writer. Keeping RLS enabled while
     # allowing the table owner to bypass it avoids coupling the function to a
-    # migration role with BYPASSRLS. The runtime still has SELECT only.
+    # migration role with BYPASSRLS. The runtime remains subject to RLS and has
+    # SELECT only on the table.
     op.execute("ALTER TABLE finance.audit_events NO FORCE ROW LEVEL SECURITY")
 
     op.execute(
-        """
+        f"""
         CREATE FUNCTION finance.require_financial_audit_event()
         RETURNS trigger
         LANGUAGE plpgsql
@@ -37,6 +50,13 @@ def upgrade() -> None:
             transfer_id uuid;
             transfer_role varchar(16);
         BEGIN
+            -- Migration/admin fixtures are outside the application runtime
+            -- threat model. Enforce mandatory audit only for the configured
+            -- runtime role, which is the role granted financial DML access.
+            IF pg_catalog.session_user <> {runtime_role} THEN
+                RETURN NEW;
+            END IF;
+
             IF TG_TABLE_SCHEMA <> 'finance' THEN
                 RAISE EXCEPTION 'financial audit enforcement schema mismatch'
                     USING ERRCODE = '23514';
