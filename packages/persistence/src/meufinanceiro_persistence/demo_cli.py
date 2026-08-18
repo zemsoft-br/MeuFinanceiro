@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from dataclasses import asdict
+from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -20,9 +21,34 @@ class DemoCliSettings(BaseSettings):
     database_url: SecretStr
     admin_database_url: SecretStr | None = None
     demo_operator_password: SecretStr | None = None
+    demo_operator_password_file: Path | None = None
     app_demo_mode: bool = False
 
     model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
+
+
+def _resolve_operator_password(settings: DemoCliSettings) -> str | None:
+    direct = settings.demo_operator_password
+    password_file = settings.demo_operator_password_file
+    if direct is not None and password_file is not None:
+        raise ValueError(
+            "configure only one of DEMO_OPERATOR_PASSWORD or "
+            "DEMO_OPERATOR_PASSWORD_FILE"
+        )
+    if password_file is not None:
+        try:
+            value = password_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise ValueError("demo operator password file could not be read") from exc
+        if not value:
+            raise ValueError("demo operator password file is empty")
+        return value
+    if direct is not None:
+        value = direct.get_secret_value()
+        if not value:
+            raise ValueError("demo operator password is empty")
+        return value
+    return None
 
 
 def _serialize(value: object) -> str:
@@ -41,11 +67,10 @@ def main() -> None:
         if settings.admin_database_url is not None
         else None
     )
-    operator_password = (
-        settings.demo_operator_password.get_secret_value()
-        if settings.demo_operator_password is not None
-        else None
-    )
+    try:
+        operator_password = _resolve_operator_password(settings)
+    except ValueError as exc:
+        parser.error(str(exc))
     store = DemoFixtureStore(
         database.engine,
         enabled=settings.app_demo_mode,
