@@ -19,6 +19,9 @@ from meufinanceiro_persistence.demo_contract import (
     DEMO_SCOPE,
     DEMO_TIMEZONE,
 )
+from meufinanceiro_persistence.demo_financial_extensions_cleanup import (
+    reset_demo_financial_extensions,
+)
 from meufinanceiro_persistence.demo_financial_fixture import (
     DemoFinancialFixtureConflictError,
     demo_functional_rows_exist,
@@ -91,12 +94,15 @@ class DemoFixtureStore:
             raise DemoFixtureConflictError("demo operator credential is not configured")
         return value
 
-    def _require_reset_engine(self) -> Engine:
+    def _require_admin_engine(self) -> Engine:
         if self._reset_engine is None:
             raise DemoFixtureConflictError(
-                "demo administrative reset is not configured"
+                "demo administrative database is not configured"
             )
         return self._reset_engine
+
+    def _require_reset_engine(self) -> Engine:
+        return self._require_admin_engine()
 
     def status(self) -> DemoFixtureStatus:
         if not self._enabled:
@@ -134,6 +140,7 @@ class DemoFixtureStore:
     def load(self) -> DemoFixtureStatus:
         self._require_enabled()
         operator_password = self._require_operator_password()
+        admin_engine = self._require_admin_engine()
         statement = (
             postgresql_insert(demo_fixture)
             .values(
@@ -149,7 +156,11 @@ class DemoFixtureStore:
             .on_conflict_do_nothing(index_elements=[demo_fixture.c.fixture_id])
         )
         try:
-            with self._engine.begin() as connection:
+            # The deterministic fixture is administrative bootstrap data, not a
+            # runtime financial mutation. Materialize it with the same narrowly
+            # scoped administrative connection already required for reset, then
+            # verify the committed result through the normal runtime/RLS path.
+            with admin_engine.begin() as connection:
                 connection.execute(statement)
                 row = (
                     connection.execute(
@@ -160,13 +171,12 @@ class DemoFixtureStore:
                     .mappings()
                     .one()
                 )
-                status = self._validated_status(row)
+                self._validated_status(row)
                 load_demo_financial_fixture(
                     connection,
                     operator_password=operator_password,
                 )
                 verify_demo_financial_fixture(connection)
-                return status
         except DemoFixtureConflictError:
             raise
         except DemoFinancialFixtureConflictError as exc:
@@ -176,18 +186,25 @@ class DemoFixtureStore:
                 "demo fixture could not be materialized"
             ) from None
 
+        return self.status()
+
     def reset(self) -> bool:
         self._require_enabled()
         reset_engine = self._require_reset_engine()
         try:
             with reset_engine.begin() as connection:
-                changed = reset_demo_financial_fixture(connection)
+                extension_changed = reset_demo_financial_extensions(connection)
+                financial_changed = reset_demo_financial_fixture(connection)
                 result = connection.execute(
                     delete(demo_fixture).where(
                         demo_fixture.c.fixture_id == DEMO_FIXTURE_ID
                     )
                 )
-                return changed or bool(result.rowcount)
+                return (
+                    extension_changed
+                    or financial_changed
+                    or bool(result.rowcount)
+                )
         except DBAPIError:
             raise DemoFixtureConflictError("demo fixture could not be reset") from None
 
