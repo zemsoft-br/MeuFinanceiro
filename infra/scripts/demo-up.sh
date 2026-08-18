@@ -5,8 +5,10 @@ ACTION=${1:-up}
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 STATE_DIR="$ROOT_DIR/.demo"
+SECRETS_DIR="$STATE_DIR/secrets"
 ENV_FILE="$STATE_DIR/.env"
-KEYRING_FILE="$STATE_DIR/secrets/keyring.json"
+KEYRING_FILE="$SECRETS_DIR/keyring.json"
+OPERATOR_PASSWORD_FILE="$SECRETS_DIR/operator_password.txt"
 PROJECT_NAME="meufinanceiro-demo"
 
 case "$ACTION" in
@@ -30,24 +32,14 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
-if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
-  if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
-    DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
-    export DEMO_OPERATOR_PASSWORD
-  else
-    echo "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo." >&2
-    exit 1
-  fi
-fi
-
 generate_password() {
   python3 -c 'import secrets; print(secrets.token_hex(24))'
 }
 
 ensure_configuration() {
   umask 077
-  mkdir -p "$STATE_DIR/secrets"
-  chmod 700 "$STATE_DIR" "$STATE_DIR/secrets"
+  mkdir -p "$SECRETS_DIR"
+  chmod 700 "$STATE_DIR" "$SECRETS_DIR"
 
   if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" <<ENV
@@ -59,6 +51,7 @@ APP_DATABASE_PASSWORD=$(generate_password)
 APP_HTTP_PORT=8081
 APP_DEMO_MODE=true
 APP_KEYRING_FILE_HOST=.demo/secrets/keyring.json
+DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt
 ENV
   fi
   chmod 600 "$ENV_FILE"
@@ -71,6 +64,22 @@ ENV
     echo "A configuração demo existente usa um banco inesperado." >&2
     exit 1
   }
+
+  if ! grep -q '^DEMO_OPERATOR_PASSWORD_FILE_HOST=' "$ENV_FILE"; then
+    printf '%s\n' \
+      'DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt' \
+      >> "$ENV_FILE"
+  fi
+
+  if [ ! -f "$OPERATOR_PASSWORD_FILE" ]; then
+    generate_password > "$OPERATOR_PASSWORD_FILE"
+  fi
+  chmod 600 "$OPERATOR_PASSWORD_FILE"
+
+  if [ ! -s "$OPERATOR_PASSWORD_FILE" ]; then
+    echo "A credencial privada do operador demo está vazia." >&2
+    exit 1
+  fi
 
   if [ ! -f "$KEYRING_FILE" ]; then
     python3 "$ROOT_DIR/infra/scripts/manage-secrets.py" init --path "$KEYRING_FILE"
@@ -130,6 +139,8 @@ else:
 PY
     echo "MeuFinanceiro demo disponível em http://127.0.0.1:${PORT}"
     echo "Login demo: demo"
+    printf 'Senha demo: '
+    cat "$OPERATOR_PASSWORD_FILE"
     ;;
   load|status|reset)
     run_fixture_command "$ACTION"
