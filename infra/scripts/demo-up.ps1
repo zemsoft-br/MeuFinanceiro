@@ -126,10 +126,21 @@ $LegacyPasswordLine = @(
 ) | Select-Object -First 1
 if ($null -ne $LegacyPasswordLine) {
     $LegacyPassword = $LegacyPasswordLine.Substring("DEMO_OPERATOR_PASSWORD=".Length)
-    if (-not (Test-Path $OperatorPasswordFile) -and -not [string]::IsNullOrEmpty($LegacyPassword)) {
+    if ([string]::IsNullOrEmpty($LegacyPassword)) {
+        throw "A credencial demo legada está vazia e não pode ser migrada com segurança."
+    }
+
+    if (Test-Path $OperatorPasswordFile) {
+        $ExistingOperatorPassword = (Get-Content $OperatorPasswordFile -Raw).Trim()
+        if ($ExistingOperatorPassword -cne $LegacyPassword) {
+            throw "A credencial demo legada diverge do secret file existente."
+        }
+    }
+    else {
         Write-Utf8NoBom -Path $OperatorPasswordFile -Content "$LegacyPassword`n"
         Set-PrivateAcl -Path $OperatorPasswordFile -IsDirectory $false
     }
+
     $EnvContent = @(
         $EnvContent | Where-Object { $_ -notmatch '^DEMO_OPERATOR_PASSWORD=' }
     )
