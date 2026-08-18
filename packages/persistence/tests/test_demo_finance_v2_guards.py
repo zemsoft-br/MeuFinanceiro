@@ -86,6 +86,21 @@ def test_metadata_drift_fails_closed(
         store.status()
 
 
+def test_demo_load_requires_administrative_bootstrap_engine(
+    runtime_engine: Engine,
+) -> None:
+    store = DemoFixtureStore(
+        runtime_engine,
+        enabled=True,
+        operator_password=_TEST_INPUT,
+    )
+
+    assert store.status().loaded is False
+    with pytest.raises(DemoFixtureConflictError, match="administrative database"):
+        store.load()
+    assert store.status().loaded is False
+
+
 def test_demo_mode_is_required(runtime_engine: Engine, engine: Engine) -> None:
     store = DemoFixtureStore(
         runtime_engine,
