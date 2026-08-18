@@ -11,6 +11,10 @@ STORE = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo.py"
 BASE_STORE = (
     ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_store_base.py"
 )
+EXTENSION_CLEANUP = (
+    ROOT
+    / "packages/persistence/src/meufinanceiro_persistence/demo_financial_extensions_cleanup.py"
+)
 CLI = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_cli.py"
 COMPOSE = ROOT / "compose.yaml"
 API = ROOT / "apps/api/app/api/routes/demo.py"
@@ -29,10 +33,11 @@ def test_demo_finance_contract_is_versioned_and_deterministic() -> None:
     assert "reversal_of_id=_REVERSED_EXPENSE_ID" in data
 
 
-def test_load_is_runtime_scoped_and_reset_is_separately_scoped() -> None:
+def test_load_is_admin_bootstrap_status_is_runtime_and_reset_is_admin_scoped() -> None:
     fixture = FIXTURE.read_text(encoding="utf-8")
     store = STORE.read_text(encoding="utf-8")
     base_store = BASE_STORE.read_text(encoding="utf-8")
+    extension_cleanup = EXTENSION_CLEANUP.read_text(encoding="utf-8")
     cli = CLI.read_text(encoding="utf-8")
     compose = COMPOSE.read_text(encoding="utf-8")
     store_contract = base_store + store
@@ -42,9 +47,16 @@ def test_load_is_runtime_scoped_and_reset_is_separately_scoped() -> None:
     assert "on_conflict_do_update" not in fixture + store_contract
     assert "self._reset_engine = reset_engine" in base_store
     assert "reset_engine or engine" not in store_contract
+    assert "admin_engine = self._require_admin_engine()" in base_store
+    assert "with admin_engine.begin() as connection:" in base_store
+    assert "return self.status()" in base_store
     assert "_require_reset_engine" in store_contract
+    assert "reset_demo_financial_extensions(connection)" in store
     assert "reset_demo_transfers(connection)" in store
     assert "reset_demo_financial_fixture(connection)" in store
+    assert "financial_audit_events" in extension_cleanup
+    assert "financial_movement_allocation_sets" in extension_cleanup
+    assert "financial_movement_allocations" in extension_cleanup
     assert "admin_database_url" in cli
     assert "ADMIN_DATABASE_URL:" in compose
     assert "DATABASE_URL:" in compose
