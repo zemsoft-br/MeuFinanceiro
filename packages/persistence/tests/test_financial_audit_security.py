@@ -9,7 +9,7 @@ from meufinanceiro_finance import (
     FinancialAccountType,
     FinancialVisibilityScope,
 )
-from sqlalchemy import func, insert, select
+from sqlalchemy import Connection, func, insert, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError
 
@@ -84,13 +84,13 @@ def _create_household(engine: Engine) -> tuple[UUID, UUID, UUID, UUID]:
 
 
 def _set_context(
-    connection: object,
+    connection: Connection,
     *,
     installation_id: UUID,
     residence_id: UUID,
     operator_id: UUID,
 ) -> None:
-    connection.execute(  # type: ignore[attr-defined]
+    connection.execute(
         select(
             func.set_config(
                 "app.current_installation_id",
