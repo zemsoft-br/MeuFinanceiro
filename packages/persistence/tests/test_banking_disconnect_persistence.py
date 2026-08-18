@@ -119,7 +119,7 @@ def _setup_connection(
     return connection.id
 
 
-def test_finalize_disconnect_is_atomic_idempotent_and_preserves_history(
+def test_disconnect_transaction_is_atomic_idempotent_and_preserves_history(
     runtime_engine: Engine,
     engine: Engine,
     create_canonical_residences: Callable[[UUID, tuple[UUID, ...]], None],
@@ -188,26 +188,19 @@ def test_finalize_disconnect_is_atomic_idempotent_and_preserves_history(
     )
     assert reconciliation.processed_count == 1
 
-    with store.hold_connection_disconnection_lock(
+    with store.connection_disconnection_transaction(
         installation_id=installation_id,
         residence_id=residence_id,
         operator_id=operator_id,
         connection_id=connection_id,
-    ):
-        prepared = store.prepare_connection_disconnection(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=operator_id,
-            connection_id=connection_id,
-        )
+    ) as prepared:
         assert prepared.status is StoredConnectionStatus.AVAILABLE
-        finalized = store.finalize_connection_disconnection(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=operator_id,
-            connection_id=connection_id,
-        )
 
+    finalized = store.get_connection(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
     assert finalized.status is StoredConnectionStatus.DISCONNECTED
     assert finalized.requires_user_action is False
     assert finalized.disconnected_at is not None
@@ -273,19 +266,14 @@ def test_active_sync_blocks_disconnect_before_local_state_changes(
         idempotency_key="active-before-disconnect",
     )
 
-    with store.hold_connection_disconnection_lock(
-        installation_id=installation_id,
-        residence_id=residence_id,
-        operator_id=operator_id,
-        connection_id=connection_id,
-    ):
-        with pytest.raises(ConnectionConflictError, match="active synchronization"):
-            store.prepare_connection_disconnection(
-                installation_id=installation_id,
-                residence_id=residence_id,
-                operator_id=operator_id,
-                connection_id=connection_id,
-            )
+    with pytest.raises(ConnectionConflictError, match="active synchronization"):
+        with store.connection_disconnection_transaction(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            connection_id=connection_id,
+        ):
+            pass
 
     current = store.get_connection(
         installation_id=installation_id,
@@ -314,7 +302,7 @@ def test_inactive_membership_and_cross_residence_fail_closed(
     )
 
     with pytest.raises(ConnectionNotFoundError):
-        with store.hold_connection_disconnection_lock(
+        with store.connection_disconnection_transaction(
             installation_id=installation_id,
             residence_id=residence_b,
             operator_id=operator_id,
@@ -333,7 +321,7 @@ def test_inactive_membership_and_cross_residence_fail_closed(
         )
 
     with pytest.raises(ConnectionNotFoundError):
-        with store.hold_connection_disconnection_lock(
+        with store.connection_disconnection_transaction(
             installation_id=installation_id,
             residence_id=residence_a,
             operator_id=operator_id,
