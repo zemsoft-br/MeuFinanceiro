@@ -28,6 +28,9 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert 'cat "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'rm -rf "$STATE_DIR"' in unix
     assert "migrate_legacy_operator_password" in unix
+    assert "grep -c '^DEMO_OPERATOR_PASSWORD='" in unix
+    assert 'if [ "$legacy_count" -ne 1 ]; then' in unix
+    assert "múltiplas credenciais legadas" in unix
     assert "grep -v '^DEMO_OPERATOR_PASSWORD='" in unix
     assert 'if [ "$current_password" != "$legacy_password" ]; then' in unix
     assert "nenhuma fonte foi alterada" in unix
@@ -39,6 +42,8 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert "Set-PrivateAcl -Path $OperatorPasswordFile" in windows
     assert 'Write-Host "Senha demo: $OperatorPassword"' in windows
     assert "Remove-Item $StateDir -Recurse -Force" in windows
+    assert "$LegacyPasswordLines.Count -gt 1" in windows
+    assert "múltiplas credenciais legadas" in windows
     assert "^DEMO_OPERATOR_PASSWORD=" in windows
     assert "$ExistingOperatorPassword -cne $LegacyPassword" in windows
     assert "diverge do secret file existente" in windows
