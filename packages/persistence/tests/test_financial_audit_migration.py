@@ -6,7 +6,7 @@ from sqlalchemy.engine import Engine
 
 from meufinanceiro_persistence.migrations import build_alembic_config, current_revision
 
-_REVISION = "0019_financial_audit_enforcement"
+_REVISION = "0020_banking_review_audit_bridge"
 _PREVIOUS = "0017_movement_allocations"
 _TABLE = "finance.audit_events"
 _FUNCTION = (
@@ -74,9 +74,12 @@ def _audit_trigger_names(engine: Engine) -> set[str]:
                   FROM pg_catalog.pg_trigger t
                   JOIN pg_catalog.pg_class c ON c.oid = t.tgrelid
                   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
-                 WHERE n.nspname = 'finance'
-                   AND NOT t.tgisinternal
-                   AND t.tgname LIKE 'trg_finance_%_audit_required'
+                 WHERE NOT t.tgisinternal
+                   AND (
+                        (n.nspname = 'finance'
+                         AND t.tgname LIKE 'trg_finance_%_audit_required')
+                        OR t.tgname = 'trg_banking_ledger_import_audit'
+                   )
                 """
             )
         ).all()
@@ -114,10 +117,13 @@ def test_financial_audit_migrations_downgrade_and_reupgrade(
         assert _function_privilege(engine, app_database_user)
         assert _public_execute_grants(engine) == 0
 
-        columns = {column["name"] for column in inspect(engine).get_columns(
-            "audit_events",
-            schema="finance",
-        )}
+        columns = {
+            column["name"]
+            for column in inspect(engine).get_columns(
+                "audit_events",
+                schema="finance",
+            )
+        }
         assert columns == {
             "id",
             "installation_id",
@@ -152,6 +158,7 @@ def test_financial_audit_migrations_downgrade_and_reupgrade(
             "trg_finance_movements_audit_required",
             "trg_finance_transfers_audit_required",
             "trg_finance_movement_allocation_sets_audit_required",
+            "trg_banking_ledger_import_audit",
         }
 
         command.downgrade(config, _PREVIOUS)
