@@ -5,6 +5,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from meufinanceiro_finance import (
+    FinancialAuditEventDraft,
+    FinancialAuditEventType,
     FinancialOpeningBalanceDraft,
     FinancialOpeningBalanceRecord,
     Money,
@@ -16,6 +18,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_audit_store import _append_financial_audit_event
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
 )
@@ -123,6 +126,16 @@ class FinancialOpeningBalanceStore:
                     )
                     .mappings()
                     .one()
+                )
+                _append_financial_audit_event(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    actor_operator_id=operator_id,
+                    draft=FinancialAuditEventDraft(
+                        event_type=FinancialAuditEventType.OPENING_BALANCE_CREATED,
+                        subject_id=opening_balance_id,
+                    ),
                 )
         except (
             FinancialOpeningBalanceAccessError,
