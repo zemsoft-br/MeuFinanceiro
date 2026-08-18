@@ -171,6 +171,10 @@ def upgrade() -> None:
             "FOR EACH ROW EXECUTE FUNCTION finance.require_financial_audit_event()"
         )
 
+    op.execute(
+        "REVOKE ALL ON FUNCTION finance.require_financial_audit_event() FROM PUBLIC"
+    )
+
 
 def downgrade() -> None:
     for table_name in reversed(
