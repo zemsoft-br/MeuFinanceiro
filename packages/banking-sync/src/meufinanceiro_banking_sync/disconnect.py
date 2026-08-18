@@ -11,6 +11,7 @@ from uuid import UUID
 from meufinanceiro_banking import (
     BankingProvider,
     BankingProviderError,
+    ConnectionState,
     ConnectionStatus,
 )
 from meufinanceiro_persistence import (
@@ -128,15 +129,7 @@ class BankingConnectionDisconnectionService:
                         BankingDisconnectErrorCode.PROVIDER_MISMATCH
                     )
 
-                try:
-                    remote = self._provider.get_connection(
-                        local.external_connection_id
-                    )
-                except BankingProviderError:
-                    raise BankingDisconnectExecutionError(
-                        BankingDisconnectErrorCode.PROVIDER_REJECTED
-                    ) from None
-
+                remote = self._observe_remote(local.external_connection_id)
                 if remote.external_connection_id != local.external_connection_id:
                     raise BankingDisconnectExecutionError(
                         BankingDisconnectErrorCode.PROVIDER_MISMATCH
@@ -145,15 +138,10 @@ class BankingConnectionDisconnectionService:
                 if remote.status is ConnectionStatus.DISCONNECTED:
                     recovered_from_provider_state = True
                 else:
-                    try:
-                        self._provider.disconnect(
-                            local.external_connection_id,
-                            str(operator_id),
-                        )
-                    except BankingProviderError:
-                        raise BankingDisconnectExecutionError(
-                            BankingDisconnectErrorCode.PROVIDER_REJECTED
-                        ) from None
+                    self._disconnect_remote(
+                        external_connection_id=local.external_connection_id,
+                        actor_id=str(operator_id),
+                    )
                     provider_mutation_performed = True
 
             return _result(
@@ -178,6 +166,31 @@ class BankingConnectionDisconnectionService:
                 else BankingDisconnectErrorCode.INTERNAL
             )
             raise BankingDisconnectExecutionError(code) from None
+
+    def _observe_remote(self, external_connection_id: str) -> ConnectionState:
+        try:
+            return self._provider.get_connection(external_connection_id)
+        except BankingProviderError:
+            raise BankingDisconnectExecutionError(
+                BankingDisconnectErrorCode.PROVIDER_REJECTED
+            ) from None
+        except Exception:
+            raise BankingDisconnectExecutionError(
+                BankingDisconnectErrorCode.INTERNAL
+            ) from None
+
+    def _disconnect_remote(
+        self,
+        *,
+        external_connection_id: str,
+        actor_id: str,
+    ) -> None:
+        try:
+            self._provider.disconnect(external_connection_id, actor_id)
+        except BankingProviderError:
+            raise BankingDisconnectExecutionError(
+                BankingDisconnectErrorCode.PROVIDER_REJECTED
+            ) from None
         except Exception:
             raise BankingDisconnectExecutionError(
                 BankingDisconnectErrorCode.INTERNAL
