@@ -68,8 +68,8 @@ def test_disconnect_requires_active_membership_and_reauth_stays_fail_closed() ->
     reauth = REAUTH.read_text(encoding="utf-8")
 
     assert "household_memberships.c.status == \"active\"" in persistence
-    assert "StoredConnectionStatus.DISCONNECTED" in reauth
-    assert "connection is disconnected" in reauth
+    assert "connection.status is StoredConnectionStatus.DISCONNECTED" in reauth
+    assert "PluggyReauthenticationErrorCode.CONNECTION_NOT_AVAILABLE" in reauth
 
 
 def test_disconnect_public_result_and_errors_do_not_expose_external_ids() -> None:
