@@ -6,6 +6,8 @@ import hashlib
 from uuid import UUID
 
 from meufinanceiro_finance import (
+    FinancialAuditEventDraft,
+    FinancialAuditEventType,
     FinancialCategoryStatus,
     FinancialMovementAllocationDraft,
     FinancialMovementAllocationRecord,
@@ -27,6 +29,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_audit_store import _append_financial_audit_event
 from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
@@ -387,6 +390,21 @@ class FinancialMovementAllocationStore:
                             created_at=func.transaction_timestamp(),
                         )
                     )
+                _append_financial_audit_event(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    actor_operator_id=operator_id,
+                    draft=FinancialAuditEventDraft(
+                        event_type=(
+                            FinancialAuditEventType.ALLOCATION_SET_CREATED
+                            if supersedes_id is None
+                            else FinancialAuditEventType.ALLOCATION_SET_REVISED
+                        ),
+                        subject_id=set_id,
+                        related_subject_id=supersedes_id,
+                    ),
+                )
                 return _set_record(connection, inserted)
         except FinancialMovementAccessError:
             raise FinancialMovementAllocationAccessError(
@@ -456,7 +474,10 @@ def _lock_eligible_movement(
                 financial_movements.c.residence_id == residence_id,
                 financial_movements.c.role == FinancialMovementRole.STANDARD.value,
                 financial_movements.c.result_effect.in_(
-                    (FinancialResultEffect.INCOME.value, FinancialResultEffect.EXPENSE.value)
+                    (
+                        FinancialResultEffect.INCOME.value,
+                        FinancialResultEffect.EXPENSE.value,
+                    )
                 ),
             )
             .with_for_update()
@@ -544,7 +565,9 @@ def _validate_categories(
         if not is_category_audience_compatible_for_movement(
             movement_visibility_scope=movement_scope,
             movement_owner_operator_id=movement_owner,
-            category_visibility_scope=FinancialVisibilityScope(category["visibility_scope"]),
+            category_visibility_scope=FinancialVisibilityScope(
+                category["visibility_scope"]
+            ),
             category_owner_operator_id=category["owner_operator_id"],
         ):
             raise FinancialMovementAllocationCategoryNotFoundError(
@@ -567,7 +590,9 @@ def _current_set_row(
                 financial_movement_allocation_sets.c.residence_id == residence_id,
                 financial_movement_allocation_sets.c.movement_id == movement_id,
                 ~select(successor.c.id)
-                .where(successor.c.supersedes_id == financial_movement_allocation_sets.c.id)
+                .where(
+                    successor.c.supersedes_id == financial_movement_allocation_sets.c.id
+                )
                 .exists(),
             )
         )
