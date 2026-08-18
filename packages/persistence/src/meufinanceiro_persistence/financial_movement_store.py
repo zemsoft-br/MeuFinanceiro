@@ -6,6 +6,10 @@ import hashlib
 from datetime import date
 from uuid import UUID
 
+from meufinanceiro_finance.audit_events import (
+    FinancialAuditEventDraft,
+    FinancialAuditEventType,
+)
 from meufinanceiro_finance.ids import (
     new_financial_resource_id,
     validate_financial_resource_id,
@@ -25,6 +29,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_audit_store import _append_financial_audit_event
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
@@ -162,6 +167,16 @@ class FinancialMovementStore:
                     .one_or_none()
                 )
                 if inserted is not None:
+                    _append_financial_audit_event(
+                        connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        actor_operator_id=operator_id,
+                        draft=FinancialAuditEventDraft(
+                            event_type=FinancialAuditEventType.MOVEMENT_CREATED,
+                            subject_id=movement_id,
+                        ),
+                    )
                     return _record(inserted)
 
                 raced = _movement_by_idempotency(
@@ -273,8 +288,6 @@ class FinancialMovementStore:
                     operator_id=operator_id,
                 )
 
-                # A concurrent retry may have committed while this transaction waited
-                # for the original Movement lock.
                 replay_after_lock = _movement_by_idempotency(
                     connection,
                     installation_id=installation_id,
@@ -325,6 +338,17 @@ class FinancialMovementStore:
                     )
                     .mappings()
                     .one()
+                )
+                _append_financial_audit_event(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    actor_operator_id=operator_id,
+                    draft=FinancialAuditEventDraft(
+                        event_type=FinancialAuditEventType.MOVEMENT_REVERSED,
+                        subject_id=movement_id,
+                        related_subject_id=draft.movement_id,
+                    ),
                 )
                 return _record(inserted)
         except (
