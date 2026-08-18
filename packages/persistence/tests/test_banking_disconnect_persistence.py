@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
@@ -24,7 +25,13 @@ from meufinanceiro_persistence import (
     StoredExternalAccountStatus,
     StoredExternalAccountType,
     StoredSyncStatus,
+    StoredTransactionObservationStatus,
     SyncConflictError,
+    TransactionObservationSnapshot,
+)
+from meufinanceiro_persistence.banking_observation_schema import external_observations
+from meufinanceiro_persistence.banking_reconciliation_schema import (
+    reconciled_transactions,
 )
 from meufinanceiro_persistence.schema import (
     connection_capabilities,
@@ -151,6 +158,36 @@ def test_finalize_disconnect_is_atomic_idempotent_and_preserves_history(
         records_applied=0,
     )
 
+    store.apply_transaction_page(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        external_account_id="synthetic-account",
+        observations=(
+            TransactionObservationSnapshot(
+                external_account_id="synthetic-account",
+                external_resource_id="synthetic-transaction",
+                status=StoredTransactionObservationStatus.CONFIRMED,
+                provider_updated_at=_NOW,
+                effective_date=date(2026, 8, 18),
+                amount=Decimal("-42.50"),
+                currency="BRL",
+                description="Synthetic retained observation",
+                category="synthetic",
+                observed_at=_NOW,
+            ),
+        ),
+        cursor=None,
+        source_window="FULL",
+        committed_at=_NOW,
+    )
+    reconciliation = store.reconcile_transaction_observations(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
+    assert reconciliation.processed_count == 1
+
     with store.hold_connection_disconnection_lock(
         installation_id=installation_id,
         residence_id=residence_id,
@@ -192,6 +229,12 @@ def test_finalize_disconnect_is_atomic_idempotent_and_preserves_history(
             select(func.count()).select_from(connection_capabilities)
         ) == 1
         assert connection.scalar(select(func.count()).select_from(sync_runs)) == 1
+        assert connection.scalar(
+            select(func.count()).select_from(external_observations)
+        ) == 1
+        assert connection.scalar(
+            select(func.count()).select_from(reconciled_transactions)
+        ) == 1
         statuses = connection.scalars(
             select(external_accounts.c.status).where(
                 external_accounts.c.connection_id == connection_id
