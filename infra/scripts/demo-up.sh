@@ -36,6 +36,23 @@ generate_password() {
   python3 -c 'import secrets; print(secrets.token_hex(24))'
 }
 
+migrate_legacy_operator_password() {
+  if ! grep -q '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE"; then
+    return
+  fi
+
+  legacy_password=$(sed -n 's/^DEMO_OPERATOR_PASSWORD=//p' "$ENV_FILE" | head -n 1)
+  if [ ! -f "$OPERATOR_PASSWORD_FILE" ] && [ -n "$legacy_password" ]; then
+    printf '%s\n' "$legacy_password" > "$OPERATOR_PASSWORD_FILE"
+  fi
+  unset legacy_password
+
+  filtered_env="$STATE_DIR/.env.migrating"
+  grep -v '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE" > "$filtered_env"
+  chmod 600 "$filtered_env"
+  mv "$filtered_env" "$ENV_FILE"
+}
+
 ensure_configuration() {
   umask 077
   mkdir -p "$SECRETS_DIR"
@@ -64,6 +81,8 @@ ENV
     echo "A configuração demo existente usa um banco inesperado." >&2
     exit 1
   }
+
+  migrate_legacy_operator_password
 
   if ! grep -q '^DEMO_OPERATOR_PASSWORD_FILE_HOST=' "$ENV_FILE"; then
     printf '%s\n' \
