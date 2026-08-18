@@ -33,15 +33,18 @@ def test_disconnect_is_provider_neutral_and_history_preserving() -> None:
     assert "next_refresh_allowed_at=None" in persistence
 
 
-def test_disconnect_observes_provider_before_transaction_commit() -> None:
+def test_disconnect_observes_provider_before_destructive_mutation() -> None:
     orchestration = ORCHESTRATION.read_text(encoding="utf-8")
+    main_flow = orchestration.split("def disconnect_connection(", 1)[1].split(
+        "def _observe_remote(", 1
+    )[0]
 
-    observe = orchestration.index("self._provider.get_connection(")
-    mutate = orchestration.index("self._provider.disconnect(")
+    observe = main_flow.index("self._observe_remote(")
+    mutate = main_flow.index("self._disconnect_remote(")
     assert observe < mutate
-    assert "remote.status is ConnectionStatus.DISCONNECTED" in orchestration
+    assert "remote.status is ConnectionStatus.DISCONNECTED" in main_flow
+    assert "recovered_from_provider_state = True" in main_flow
     assert "LOCAL_FINALIZATION_PENDING" in orchestration
-    assert "recovered_from_provider_state = True" in orchestration
 
 
 def test_disconnect_and_sync_start_serialize_on_connection_row() -> None:
