@@ -458,7 +458,11 @@ def test_financial_audit_is_actor_only_and_inactive_membership_fails_closed(
                 household_memberships.c.residence_id == residence_id,
                 household_memberships.c.operator_id == owner_id,
             )
-            .values(status="disabled", updated_at=datetime(2026, 8, 18, 2, 0, tzinfo=UTC))
+            .values(
+                status="disabled",
+                is_primary=False,
+                updated_at=datetime(2026, 8, 18, 2, 0, tzinfo=UTC),
+            )
         )
 
     with pytest.raises(FinancialAuditAccessError):
