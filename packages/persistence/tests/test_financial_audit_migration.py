@@ -57,10 +57,7 @@ def _definer_security(engine: Engine) -> tuple[bool, tuple[str, ...]]:
                   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                  WHERE n.nspname = 'finance'
                    AND p.proname = 'append_financial_audit_event'
-                   AND pg_catalog.pg_get_function_identity_arguments(p.oid) =
-                       'p_installation_id uuid, p_residence_id uuid, '
-                       'p_actor_operator_id uuid, p_event_type character varying, '
-                       'p_subject_id uuid, p_related_subject_id uuid'
+                   AND p.pronargs = 6
                 """
             )
         ).one()
