@@ -25,12 +25,16 @@ from meufinanceiro_banking_sync import (
     BankingConnectionDisconnectionService,
     BankingDisconnectErrorCode,
     BankingDisconnectExecutionError,
+    BankingDisconnectResult,
 )
 
 _NOW = datetime(2026, 8, 18, 8, 0, tzinfo=UTC)
 
 
-def _local_record(*, status: StoredConnectionStatus = StoredConnectionStatus.AVAILABLE) -> BankingConnectionRecord:
+def _local_record(
+    *,
+    status: StoredConnectionStatus = StoredConnectionStatus.AVAILABLE,
+) -> BankingConnectionRecord:
     disconnected_at = _NOW if status is StoredConnectionStatus.DISCONNECTED else None
     return BankingConnectionRecord(
         id=uuid4(),
@@ -173,7 +177,7 @@ def _run(
     provider: FakeBankingProvider,
     *,
     operator_id: UUID | None = None,
-):
+) -> BankingDisconnectResult:
     return BankingConnectionDisconnectionService(
         store=store,
         provider=provider,
@@ -256,7 +260,7 @@ def test_provider_disconnect_failure_leaves_local_state_unchanged() -> None:
     assert provider.disconnect_calls == 1
 
 
-def test_local_failure_after_external_success_is_recovered_without_retrying_provider() -> None:
+def test_local_failure_after_external_success_is_recovered_without_retry() -> None:
     record = _local_record()
     store = _Store(record)
     store.finalize_failures = 1
@@ -264,10 +268,14 @@ def test_local_failure_after_external_success_is_recovered_without_retrying_prov
 
     with pytest.raises(BankingDisconnectExecutionError) as captured:
         _run(store, provider)
-    assert captured.value.code is BankingDisconnectErrorCode.LOCAL_FINALIZATION_PENDING
+    assert (
+        captured.value.code
+        is BankingDisconnectErrorCode.LOCAL_FINALIZATION_PENDING
+    )
     assert store.record.status is StoredConnectionStatus.AVAILABLE
     assert provider.disconnect_calls == 1
-    assert provider.get_connection(record.external_connection_id).status is ConnectionStatus.DISCONNECTED
+    remote = provider.get_connection(record.external_connection_id)
+    assert remote.status is ConnectionStatus.DISCONNECTED
 
     result = _run(store, provider)
 
