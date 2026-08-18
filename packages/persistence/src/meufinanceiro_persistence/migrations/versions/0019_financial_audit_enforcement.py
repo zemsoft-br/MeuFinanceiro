@@ -53,7 +53,7 @@ def upgrade() -> None:
             -- Migration/admin fixtures are outside the application runtime
             -- threat model. Enforce mandatory audit only for the configured
             -- runtime role, which is the role granted financial DML access.
-            IF pg_catalog.session_user <> {runtime_role} THEN
+            IF SESSION_USER <> {runtime_role} THEN
                 RETURN NEW;
             END IF;
 
