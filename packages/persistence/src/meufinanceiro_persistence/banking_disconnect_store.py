@@ -7,7 +7,8 @@ from contextlib import contextmanager
 from typing import Protocol, cast
 from uuid import UUID
 
-from sqlalchemy import Connection, Engine, func, select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError
 
 from meufinanceiro_persistence.banking_connection_lock import (
@@ -255,7 +256,8 @@ class BankingConnectionDisconnectionStoreMixin:
                             connections.c.id == connection_id,
                             connections.c.installation_id == installation_id,
                             connections.c.residence_id == residence_id,
-                            connections.c.status != StoredConnectionStatus.DISCONNECTED.value,
+                            connections.c.status
+                            != StoredConnectionStatus.DISCONNECTED.value,
                         )
                         .values(
                             status=StoredConnectionStatus.DISCONNECTED.value,
