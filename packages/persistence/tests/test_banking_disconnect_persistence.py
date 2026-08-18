@@ -186,7 +186,7 @@ def test_disconnect_transaction_is_atomic_idempotent_and_preserves_history(
         residence_id=residence_id,
         connection_id=connection_id,
     )
-    assert reconciliation.processed_count == 1
+    assert reconciliation.observations_seen == 1
 
     with store.connection_disconnection_transaction(
         installation_id=installation_id,
