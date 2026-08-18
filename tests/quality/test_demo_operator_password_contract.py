@@ -29,6 +29,8 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert 'rm -rf "$STATE_DIR"' in unix
     assert "migrate_legacy_operator_password" in unix
     assert "grep -v '^DEMO_OPERATOR_PASSWORD='" in unix
+    assert 'if [ "$current_password" != "$legacy_password" ]; then' in unix
+    assert "nenhuma fonte foi alterada" in unix
     assert "meufinanceiro-demo-ci-only" not in unix
     assert "DEMO_OPERATOR_PASSWORD is obrigatória" not in unix
 
@@ -38,6 +40,8 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert 'Write-Host "Senha demo: $OperatorPassword"' in windows
     assert "Remove-Item $StateDir -Recurse -Force" in windows
     assert "^DEMO_OPERATOR_PASSWORD=" in windows
+    assert "$ExistingOperatorPassword -cne $LegacyPassword" in windows
+    assert "diverge do secret file existente" in windows
     assert "DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt" in windows
     assert 'GetEnvironmentVariable("DEMO_OPERATOR_PASSWORD")' not in windows
 
@@ -61,3 +65,5 @@ def test_demo_runbook_documents_generated_local_credential() -> None:
     assert "não precisa definir `DEMO_OPERATOR_PASSWORD`" in runbook
     assert "ambiente demo antigo" in runbook
     assert "remove a linha `DEMO_OPERATOR_PASSWORD=`" in runbook
+    assert "divergirem" in runbook
+    assert "falha fechado" in runbook
