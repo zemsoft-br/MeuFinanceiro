@@ -47,6 +47,26 @@ def _rls_state(engine: Engine) -> tuple[bool, bool]:
     return bool(row[0]), bool(row[1])
 
 
+def _definer_security(engine: Engine) -> tuple[bool, tuple[str, ...]]:
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                """
+                SELECT p.prosecdef, COALESCE(p.proconfig, ARRAY[]::text[])
+                  FROM pg_catalog.pg_proc p
+                  JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = 'finance'
+                   AND p.proname = 'append_financial_audit_event'
+                   AND pg_catalog.pg_get_function_identity_arguments(p.oid) =
+                       'p_installation_id uuid, p_residence_id uuid, '
+                       'p_actor_operator_id uuid, p_event_type character varying, '
+                       'p_subject_id uuid, p_related_subject_id uuid'
+                """
+            )
+        ).one()
+    return bool(row[0]), tuple(str(item) for item in row[1])
+
+
 def _public_execute_grants(engine: Engine) -> int:
     with engine.begin() as connection:
         value = connection.scalar(
@@ -116,6 +136,9 @@ def test_financial_audit_migrations_downgrade_and_reupgrade(
         assert not _table_privilege(engine, app_database_user, "DELETE")
         assert _function_privilege(engine, app_database_user)
         assert _public_execute_grants(engine) == 0
+        security_definer, function_config = _definer_security(engine)
+        assert security_definer is True
+        assert "search_path=pg_catalog, pg_temp" in function_config
 
         columns = {
             column["name"]
