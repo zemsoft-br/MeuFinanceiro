@@ -43,6 +43,14 @@ function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
     }
 }
 
+function Write-Utf8NoBom([string]$Path, [string]$Content) {
+    [System.IO.File]::WriteAllText(
+        $Path,
+        $Content,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
+
 function Invoke-DockerCompose([string[]]$Arguments) {
     $previousErrorActionPreference = $ErrorActionPreference
     try {
@@ -101,11 +109,7 @@ APP_DEMO_MODE=true
 APP_KEYRING_FILE_HOST=.demo/secrets/keyring.json
 DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt
 "@
-    [System.IO.File]::WriteAllText(
-        $EnvFile,
-        $envContent,
-        (New-Object System.Text.UTF8Encoding($false))
-    )
+    Write-Utf8NoBom -Path $EnvFile -Content $envContent
 }
 Set-PrivateAcl -Path $EnvFile -IsDirectory $false
 
@@ -116,18 +120,31 @@ if ($EnvContent -notcontains "APP_DEMO_MODE=true") {
 if ($EnvContent -notcontains "POSTGRES_DB=meufinanceiro_demo") {
     throw "A configuração demo existente usa um banco inesperado."
 }
-if (-not ($EnvContent | Where-Object { $_ -match '^DEMO_OPERATOR_PASSWORD_FILE_HOST=' })) {
-    Add-Content -Path $EnvFile -Value "DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt"
+
+$LegacyPasswordLine = @(
+    $EnvContent | Where-Object { $_ -match '^DEMO_OPERATOR_PASSWORD=' }
+) | Select-Object -First 1
+if ($null -ne $LegacyPasswordLine) {
+    $LegacyPassword = $LegacyPasswordLine.Substring("DEMO_OPERATOR_PASSWORD=".Length)
+    if (-not (Test-Path $OperatorPasswordFile) -and -not [string]::IsNullOrEmpty($LegacyPassword)) {
+        Write-Utf8NoBom -Path $OperatorPasswordFile -Content "$LegacyPassword`n"
+        Set-PrivateAcl -Path $OperatorPasswordFile -IsDirectory $false
+    }
+    $EnvContent = @(
+        $EnvContent | Where-Object { $_ -notmatch '^DEMO_OPERATOR_PASSWORD=' }
+    )
+    Write-Utf8NoBom -Path $EnvFile -Content (($EnvContent -join "`n") + "`n")
     Set-PrivateAcl -Path $EnvFile -IsDirectory $false
-    $EnvContent = @(Get-Content $EnvFile)
+}
+
+if (-not ($EnvContent | Where-Object { $_ -match '^DEMO_OPERATOR_PASSWORD_FILE_HOST=' })) {
+    $EnvContent += "DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt"
+    Write-Utf8NoBom -Path $EnvFile -Content (($EnvContent -join "`n") + "`n")
+    Set-PrivateAcl -Path $EnvFile -IsDirectory $false
 }
 
 if (-not (Test-Path $OperatorPasswordFile)) {
-    [System.IO.File]::WriteAllText(
-        $OperatorPasswordFile,
-        "$(New-RandomPassword)`n",
-        (New-Object System.Text.UTF8Encoding($false))
-    )
+    Write-Utf8NoBom -Path $OperatorPasswordFile -Content "$(New-RandomPassword)`n"
 }
 Set-PrivateAcl -Path $OperatorPasswordFile -IsDirectory $false
 $OperatorPassword = (Get-Content $OperatorPasswordFile -Raw).Trim()
@@ -141,11 +158,7 @@ if (-not (Test-Path $KeyringFile)) {
     $keys[$keyId] = ConvertTo-Base64Url (New-RandomBytes 32)
     $keyring = [ordered]@{ active_key_id = $keyId; keys = $keys; version = 1 }
     $json = $keyring | ConvertTo-Json -Compress -Depth 4
-    [System.IO.File]::WriteAllText(
-        $KeyringFile,
-        "$json`n",
-        (New-Object System.Text.UTF8Encoding($false))
-    )
+    Write-Utf8NoBom -Path $KeyringFile -Content "$json`n"
 }
 Set-PrivateAcl -Path $KeyringFile -IsDirectory $false
 
