@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Protocol, cast
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -44,6 +45,16 @@ _CONNECTION_COLUMNS = (
     connections.c.created_at,
     connections.c.updated_at,
 )
+
+
+class _ConnectionReader(Protocol):
+    def get_connection(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> BankingConnectionRecord: ...
 
 
 class BankingConnectionDisconnectionStoreMixin:
@@ -215,7 +226,8 @@ class BankingConnectionDisconnectionStoreMixin:
                 "banking connection could not be disconnected locally"
             ) from None
 
-        return self.get_connection(
+        reader = cast(_ConnectionReader, self)
+        return reader.get_connection(
             installation_id=installation_id,
             residence_id=residence_id,
             connection_id=connection_id,
