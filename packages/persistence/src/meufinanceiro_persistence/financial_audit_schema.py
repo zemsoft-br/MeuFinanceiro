@@ -94,9 +94,10 @@ financial_audit_events = Table(
         name="fk_finance_audit_events_actor_membership",
     ),
     UniqueConstraint(
+        "event_type",
         "subject_type",
         "subject_id",
-        name="uq_finance_audit_events_subject",
+        name="uq_finance_audit_events_event_subject",
     ),
     schema="finance",
 )
