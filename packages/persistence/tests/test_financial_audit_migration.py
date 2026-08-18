@@ -103,6 +103,18 @@ def _audit_trigger_names(engine: Engine) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
+def _audit_unique_constraints(engine: Engine) -> dict[str, tuple[str, ...]]:
+    constraints = inspect(engine).get_unique_constraints(
+        "audit_events",
+        schema="finance",
+    )
+    return {
+        str(item["name"]): tuple(str(column) for column in item["column_names"])
+        for item in constraints
+        if item.get("name") is not None
+    }
+
+
 def test_financial_audit_migrations_downgrade_and_reupgrade(
     database_url: str,
     app_database_user: str,
@@ -170,6 +182,13 @@ def test_financial_audit_migrations_downgrade_and_reupgrade(
                 "after_snapshot",
             }
         )
+        assert _audit_unique_constraints(engine) == {
+            "uq_finance_audit_events_event_subject": (
+                "event_type",
+                "subject_type",
+                "subject_id",
+            )
+        }
 
         assert _audit_trigger_names(engine) == {
             "trg_finance_accounts_audit_required",
