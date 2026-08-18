@@ -98,6 +98,8 @@ Você **não precisa definir `DEMO_OPERATOR_PASSWORD`** para usar `demo-up.sh` o
 
 A mesma senha é reutilizada enquanto o diretório `.demo` existir. O comando `purge` remove o arquivo junto com todo o estado demo; uma preparação futura gera outra credencial.
 
+Se existir um **ambiente demo antigo** cuja `.demo/.env` ainda contenha `DEMO_OPERATOR_PASSWORD=<valor>`, os scripts preservam essa credencial no primeiro uso do fluxo novo: movem o valor para `.demo/secrets/operator_password.txt`, aplicam as permissões privadas e **remove a linha `DEMO_OPERATOR_PASSWORD=`** do `.env`. Isso evita invalidar o hash Argon2id já materializado no banco e elimina o segredo legado do arquivo de configuração.
+
 Na primeira carga, a senha é armazenada no banco apenas como hash Argon2id. Cargas seguintes verificam a mesma credencial sem reescrever o operador.
 
 Após `up`, o script mostra localmente no terminal:
@@ -215,6 +217,7 @@ A suíte da #175 e os contratos de qualidade do modo demo devem validar:
 - preservação da fila normal;
 - contrato HTTP v2 somente leitura;
 - scripts Linux/PowerShell gerando e reutilizando credencial privada local, sem segredo manual;
+- migração transparente de `DEMO_OPERATOR_PASSWORD` legado para o secret file privado;
 - montagem da senha como Docker secret somente leitura;
 - fallback de `DEMO_OPERATOR_PASSWORD` restrito ao CLI de compatibilidade/testes;
 - `purge` removendo a credencial gerada;
