@@ -57,9 +57,43 @@ class BankingConnectionDisconnectionStoreMixin:
         connection_id: UUID,
     ) -> Iterator[None]:
         """Serialize provider-side disconnect I/O without holding a DB transaction."""
+        _require_uuid(operator_id, "operator_id")
+        with self._hold_connection_operation_lock(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+            operator_id=operator_id,
+        ):
+            yield
+
+    @contextmanager
+    def hold_connection_sync_start_lock(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> Iterator[None]:
+        """Serialize creation of a sync run against an explicit disconnect."""
+        with self._hold_connection_operation_lock(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+            operator_id=None,
+        ):
+            yield
+
+    @contextmanager
+    def _hold_connection_operation_lock(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+        operator_id: UUID | None,
+    ) -> Iterator[None]:
         _require_uuid(installation_id, "installation_id")
         _require_uuid(residence_id, "residence_id")
-        _require_uuid(operator_id, "operator_id")
         _require_uuid(connection_id, "connection_id")
         lock_key = connection_operation_lock_key(connection_id)
         connection = self._engine.connect()
@@ -73,12 +107,13 @@ class BankingConnectionDisconnectionStoreMixin:
                         residence_id=residence_id,
                         operator_id=operator_id,
                     )
-                    _require_active_member(
-                        connection,
-                        installation_id=installation_id,
-                        residence_id=residence_id,
-                        operator_id=operator_id,
-                    )
+                    if operator_id is not None:
+                        _require_active_member(
+                            connection,
+                            installation_id=installation_id,
+                            residence_id=residence_id,
+                            operator_id=operator_id,
+                        )
                     _require_visible_connection(
                         connection,
                         installation_id=installation_id,
@@ -255,15 +290,17 @@ def _set_context(
     *,
     installation_id: UUID,
     residence_id: UUID,
-    operator_id: UUID,
+    operator_id: UUID | None,
 ) -> None:
-    connection.execute(
-        select(
-            func.set_config("app.current_installation_id", str(installation_id), True),
-            func.set_config("app.current_residence_id", str(residence_id), True),
-            func.set_config("app.current_operator_id", str(operator_id), True),
+    settings = [
+        func.set_config("app.current_installation_id", str(installation_id), True),
+        func.set_config("app.current_residence_id", str(residence_id), True),
+    ]
+    if operator_id is not None:
+        settings.append(
+            func.set_config("app.current_operator_id", str(operator_id), True)
         )
-    )
+    connection.execute(select(*settings))
 
 
 def _require_active_member(
