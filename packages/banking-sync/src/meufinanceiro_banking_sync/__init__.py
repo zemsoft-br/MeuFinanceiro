@@ -1,5 +1,12 @@
 """Provider-neutral bounded manual banking synchronization."""
 
+from .disconnect import (
+    BankingConnectionDisconnectionService,
+    BankingDisconnectErrorCode,
+    BankingDisconnectExecutionError,
+    BankingDisconnectResult,
+    ConnectionDisconnectionStore,
+)
 from .models import (
     ManualSyncExecutionError,
     ManualSyncLimits,
@@ -21,6 +28,11 @@ from .service import (
 )
 
 __all__ = [
+    "BankingConnectionDisconnectionService",
+    "BankingDisconnectErrorCode",
+    "BankingDisconnectExecutionError",
+    "BankingDisconnectResult",
+    "ConnectionDisconnectionStore",
     "ContextualBankingReadService",
     "ManualBankingSyncReconciliationService",
     "ManualBankingSyncService",
