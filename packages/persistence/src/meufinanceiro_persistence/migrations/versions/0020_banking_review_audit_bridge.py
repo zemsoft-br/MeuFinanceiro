@@ -67,6 +67,9 @@ def upgrade() -> None:
         "AFTER INSERT ON integrations.reconciled_transaction_ledger_links "
         "FOR EACH ROW EXECUTE FUNCTION finance.audit_banking_ledger_import()"
     )
+    op.execute(
+        "REVOKE ALL ON FUNCTION finance.audit_banking_ledger_import() FROM PUBLIC"
+    )
 
 
 def downgrade() -> None:
