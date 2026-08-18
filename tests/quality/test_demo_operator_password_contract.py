@@ -18,7 +18,7 @@ def test_compose_mounts_demo_operator_password_as_private_secret() -> None:
     assert "DEMO_OPERATOR_PASSWORD: ${" not in compose
 
 
-def test_demo_scripts_generate_reuse_and_purge_operator_password() -> None:
+def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> None:
     unix = UNIX_SCRIPT.read_text(encoding="utf-8")
     windows = WINDOWS_SCRIPT.read_text(encoding="utf-8")
 
@@ -27,6 +27,8 @@ def test_demo_scripts_generate_reuse_and_purge_operator_password() -> None:
     assert 'chmod 600 "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'cat "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'rm -rf "$STATE_DIR"' in unix
+    assert "migrate_legacy_operator_password" in unix
+    assert "grep -v '^DEMO_OPERATOR_PASSWORD='" in unix
     assert "meufinanceiro-demo-ci-only" not in unix
     assert "DEMO_OPERATOR_PASSWORD is obrigatória" not in unix
 
@@ -35,6 +37,8 @@ def test_demo_scripts_generate_reuse_and_purge_operator_password() -> None:
     assert "Set-PrivateAcl -Path $OperatorPasswordFile" in windows
     assert 'Write-Host "Senha demo: $OperatorPassword"' in windows
     assert "Remove-Item $StateDir -Recurse -Force" in windows
+    assert "^DEMO_OPERATOR_PASSWORD=" in windows
+    assert "DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt" in windows
     assert 'GetEnvironmentVariable("DEMO_OPERATOR_PASSWORD")' not in windows
 
 
@@ -55,3 +59,5 @@ def test_demo_runbook_documents_generated_local_credential() -> None:
     assert "gerada automaticamente" in runbook
     assert "Docker secret" in runbook
     assert "não precisa definir `DEMO_OPERATOR_PASSWORD`" in runbook
+    assert "ambiente demo antigo" in runbook
+    assert "remove a linha `DEMO_OPERATOR_PASSWORD=`" in runbook
