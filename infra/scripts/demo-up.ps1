@@ -11,6 +11,7 @@ $StateDir = Join-Path $RootDir ".demo"
 $SecretsDir = Join-Path $StateDir "secrets"
 $EnvFile = Join-Path $StateDir ".env"
 $KeyringFile = Join-Path $SecretsDir "keyring.json"
+$OperatorPasswordFile = Join-Path $SecretsDir "operator_password.txt"
 $ProjectName = "meufinanceiro-demo"
 
 function New-RandomBytes([int]$Length) {
@@ -83,9 +84,6 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
 }
 Invoke-DockerCompose @("version") | Out-Null
-if ([string]::IsNullOrWhiteSpace($env:DEMO_OPERATOR_PASSWORD)) {
-    throw "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo."
-}
 
 New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
 Set-PrivateAcl -Path $StateDir -IsDirectory $true
@@ -101,6 +99,7 @@ APP_DATABASE_PASSWORD=$(New-RandomPassword)
 APP_HTTP_PORT=8081
 APP_DEMO_MODE=true
 APP_KEYRING_FILE_HOST=.demo/secrets/keyring.json
+DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt
 "@
     [System.IO.File]::WriteAllText(
         $EnvFile,
@@ -110,12 +109,30 @@ APP_KEYRING_FILE_HOST=.demo/secrets/keyring.json
 }
 Set-PrivateAcl -Path $EnvFile -IsDirectory $false
 
-$EnvContent = Get-Content $EnvFile
+$EnvContent = @(Get-Content $EnvFile)
 if ($EnvContent -notcontains "APP_DEMO_MODE=true") {
     throw "A configuração demo existente não possui APP_DEMO_MODE=true."
 }
 if ($EnvContent -notcontains "POSTGRES_DB=meufinanceiro_demo") {
     throw "A configuração demo existente usa um banco inesperado."
+}
+if (-not ($EnvContent | Where-Object { $_ -match '^DEMO_OPERATOR_PASSWORD_FILE_HOST=' })) {
+    Add-Content -Path $EnvFile -Value "DEMO_OPERATOR_PASSWORD_FILE_HOST=.demo/secrets/operator_password.txt"
+    Set-PrivateAcl -Path $EnvFile -IsDirectory $false
+    $EnvContent = @(Get-Content $EnvFile)
+}
+
+if (-not (Test-Path $OperatorPasswordFile)) {
+    [System.IO.File]::WriteAllText(
+        $OperatorPasswordFile,
+        "$(New-RandomPassword)`n",
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
+Set-PrivateAcl -Path $OperatorPasswordFile -IsDirectory $false
+$OperatorPassword = (Get-Content $OperatorPasswordFile -Raw).Trim()
+if ([string]::IsNullOrWhiteSpace($OperatorPassword)) {
+    throw "A credencial privada do operador demo está vazia."
 }
 
 if (-not (Test-Path $KeyringFile)) {
@@ -159,6 +176,7 @@ try {
             }
             Write-Host "MeuFinanceiro demo disponível em http://127.0.0.1:$port"
             Write-Host "Login demo: demo"
+            Write-Host "Senha demo: $OperatorPassword"
         }
         { $_ -in @("load", "status", "reset") } {
             Invoke-FixtureCommand $Action
