@@ -47,7 +47,12 @@ def _rls_state(engine: Engine) -> tuple[bool, bool]:
     return bool(row[0]), bool(row[1])
 
 
-def _definer_security(engine: Engine) -> tuple[bool, tuple[str, ...]]:
+def _function_security(
+    engine: Engine,
+    *,
+    function_name: str,
+    argument_count: int,
+) -> tuple[bool, tuple[str, ...]]:
     with engine.begin() as connection:
         row = connection.execute(
             text(
@@ -56,15 +61,19 @@ def _definer_security(engine: Engine) -> tuple[bool, tuple[str, ...]]:
                   FROM pg_catalog.pg_proc p
                   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
                  WHERE n.nspname = 'finance'
-                   AND p.proname = 'append_financial_audit_event'
-                   AND p.pronargs = 6
+                   AND p.proname = :function_name
+                   AND p.pronargs = :argument_count
                 """
-            )
+            ),
+            {
+                "function_name": function_name,
+                "argument_count": argument_count,
+            },
         ).one()
     return bool(row[0]), tuple(str(item) for item in row[1])
 
 
-def _public_execute_grants(engine: Engine) -> int:
+def _public_execute_grants(engine: Engine, routine_name: str) -> int:
     with engine.begin() as connection:
         value = connection.scalar(
             text(
@@ -72,11 +81,12 @@ def _public_execute_grants(engine: Engine) -> int:
                 SELECT count(*)
                   FROM information_schema.routine_privileges
                  WHERE routine_schema = 'finance'
-                   AND routine_name = 'append_financial_audit_event'
+                   AND routine_name = :routine_name
                    AND grantee = 'PUBLIC'
                    AND privilege_type = 'EXECUTE'
                 """
-            )
+            ),
+            {"routine_name": routine_name},
         )
     assert isinstance(value, int)
     return value
@@ -144,10 +154,37 @@ def test_financial_audit_migrations_downgrade_and_reupgrade(
         assert not _table_privilege(engine, app_database_user, "UPDATE")
         assert not _table_privilege(engine, app_database_user, "DELETE")
         assert _function_privilege(engine, app_database_user)
-        assert _public_execute_grants(engine) == 0
-        security_definer, function_config = _definer_security(engine)
-        assert security_definer is True
-        assert "search_path=pg_catalog, pg_temp" in function_config
+
+        for routine_name in (
+            "append_financial_audit_event",
+            "require_financial_audit_event",
+            "audit_banking_ledger_import",
+        ):
+            assert _public_execute_grants(engine, routine_name) == 0
+
+        append_definer, append_config = _function_security(
+            engine,
+            function_name="append_financial_audit_event",
+            argument_count=6,
+        )
+        assert append_definer is True
+        assert "search_path=pg_catalog, pg_temp" in append_config
+
+        enforcement_definer, enforcement_config = _function_security(
+            engine,
+            function_name="require_financial_audit_event",
+            argument_count=0,
+        )
+        assert enforcement_definer is False
+        assert "search_path=pg_catalog, pg_temp" in enforcement_config
+
+        banking_definer, banking_config = _function_security(
+            engine,
+            function_name="audit_banking_ledger_import",
+            argument_count=0,
+        )
+        assert banking_definer is False
+        assert "search_path=pg_catalog, pg_temp" in banking_config
 
         columns = {
             column["name"]
