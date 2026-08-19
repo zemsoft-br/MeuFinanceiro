@@ -22,6 +22,10 @@ def evaluator(*, now: datetime = NOW) -> ConsentLifecycleEvaluator:
     [
         (StoredConnectionStatus.AVAILABLE, ConsentLifecycleState.NON_EXPIRING),
         (StoredConnectionStatus.PENDING_USER_ACTION, ConsentLifecycleState.UNKNOWN),
+        (
+            StoredConnectionStatus.REAUTHENTICATION_REQUIRED,
+            ConsentLifecycleState.UNKNOWN,
+        ),
         (StoredConnectionStatus.FAILED, ConsentLifecycleState.UNKNOWN),
     ],
 )

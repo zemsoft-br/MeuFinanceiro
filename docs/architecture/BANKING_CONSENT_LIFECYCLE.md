@@ -21,9 +21,7 @@ externa participa da classificação.
 
 ## Camada escolhida
 
-A classificação pertence a `meufinanceiro-banking-sync`.
-
-Responsabilidades permanecem separadas:
+A classificação pertence a `meufinanceiro-banking-sync`:
 
 ```text
 banking
@@ -64,21 +62,29 @@ provider-derived próprio.
 `consent_expires_at = null` não significa automaticamente consentimento permanente.
 
 Sem timestamp de expiração, `NON_EXPIRING` exige uma conexão local cujo estado já
-demonstre que a conexão chegou a um estágio operacional estabelecido:
+demonstre um estágio operacional estabelecido:
 
 ```text
 SYNC_REQUESTED
 SYNCING
 AVAILABLE
 PARTIAL
-REAUTHENTICATION_REQUIRED
 TEMPORARILY_UNAVAILABLE
 RATE_LIMITED
 DISCONNECTED
 ```
 
-Estados ambíguos, como `PENDING_USER_ACTION` e `FAILED`, produzem `UNKNOWN` quando
-não existe `consent_expires_at`.
+Estados ambíguos produzem `UNKNOWN` sem timestamp de expiração. Isso inclui:
+
+```text
+PENDING_USER_ACTION
+REAUTHENTICATION_REQUIRED
+FAILED
+```
+
+Em particular, `REAUTHENTICATION_REQUIRED` não é tratado como evidência de
+consentimento sem expiração. Ele pode representar credencial, MFA ou consentimento
+exigindo nova ação e não deve colapsar `REAUTHENTICATION` em `CONSENT_RENEWAL`.
 
 Se existe `consent_expires_at`, o próprio timestamp é evidência suficiente para a
 classificação temporal, independentemente do estado operacional atual.
@@ -106,42 +112,36 @@ expires_at > now + warning_window
   -> VALID
 ```
 
-A implementação calcula a diferença temporal em UTC, evitando overflow por soma de
-datas extremas.
-
-Uma janela igual a zero é válida e desabilita, na prática, o período antecipado de
-`EXPIRING`. Janela negativa é inválida.
+A implementação compara a diferença temporal em UTC. Janela igual a zero é válida;
+janela negativa é rejeitada.
 
 ## UTC e relógio determinístico
 
 O relógio é injetado como `ConsentClock`.
 
 Tanto o resultado do relógio quanto `consent_expires_at` precisam ser
-timezone-aware. Valores naive falham fechado. Antes da comparação, os timestamps são
-normalizados para UTC.
+timezone-aware. Valores naive falham fechado e os timestamps são normalizados para
+UTC antes da comparação.
 
 O classificador não chama `datetime.now()` nem `datetime.utcnow()`.
 
 ## `DISCONNECTED`
 
 `DISCONNECTED` é um estado operacional terminal e ortogonal ao estado temporal do
-consentimento.
-
-Por isso o resultado expõe:
+consentimento. O resultado expõe:
 
 ```text
 connection_terminal=true
 ```
 
-A classificação temporal ainda pode ser preservada para histórico, mas:
+A classificação temporal pode ser preservada para histórico, mas:
 
 ```text
 connection_terminal=true
 -> renewal_required=false
 ```
 
-O sistema não deve pedir renovação de consentimento para uma conexão que já foi
-desconectada explicitamente.
+O sistema não pede renovação de consentimento para uma conexão já desconectada.
 
 ## Sinal de renovação
 
@@ -152,33 +152,19 @@ state in {EXPIRING, EXPIRED}
 AND connection_terminal=false
 ```
 
-Esse sinal significa necessidade local percebida. Ele não afirma que o provider
-suporta uma operação específica de renewal e não executa nenhuma ação.
-
-A capability `CONSENT_RENEWAL` permanece um fato separado de disponibilidade do
-provider/conexão.
+Esse sinal significa necessidade local percebida. Não afirma que o provider suporta
+uma operação específica de renewal e não executa nenhuma ação. A capability
+`CONSENT_RENEWAL` permanece um fato separado.
 
 ## Segurança e minimização
 
-`ConsentLifecycleResult` não contém:
-
-- Item ID / external connection ID;
-- UUID da conexão local;
-- provider name;
-- reason code;
-- payload;
-- token;
-- credencial;
-- URL.
-
-Seu `repr` contém apenas estado temporal, `renewal_required` e
-`connection_terminal`.
+`ConsentLifecycleResult` não contém Item ID, external connection ID, UUID local,
+provider, reason code, payload, token, credencial ou URL. Seu `repr` contém apenas
+estado temporal, `renewal_required` e `connection_terminal`.
 
 ## Persistência
 
-Nenhuma coluna nova é necessária.
-
-O schema atual já contém `consent_expires_at` e o estado local da conexão. Portanto:
+O schema atual já contém `consent_expires_at` e o estado local da conexão:
 
 ```text
 MIGRATION=NO
@@ -193,8 +179,7 @@ MIGRATION=NO
 - reautenticação Pluggy;
 - FastAPI;
 - Flutter;
-- webhooks;
-- sync automática;
+- webhooks/sync automática;
 - cartões/faturas;
 - desconexão;
 - deploy/HML/PROD.

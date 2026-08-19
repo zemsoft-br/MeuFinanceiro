@@ -18,7 +18,6 @@ _ESTABLISHED_CONSENT_STATUSES = frozenset(
         StoredConnectionStatus.SYNCING,
         StoredConnectionStatus.AVAILABLE,
         StoredConnectionStatus.PARTIAL,
-        StoredConnectionStatus.REAUTHENTICATION_REQUIRED,
         StoredConnectionStatus.TEMPORARILY_UNAVAILABLE,
         StoredConnectionStatus.RATE_LIMITED,
         StoredConnectionStatus.DISCONNECTED,
@@ -129,14 +128,10 @@ class ConsentLifecycleEvaluator:
             else:
                 state = ConsentLifecycleState.VALID
 
-        renewal_required = (
-            not connection_terminal
-            and state
-            in {
-                ConsentLifecycleState.EXPIRING,
-                ConsentLifecycleState.EXPIRED,
-            }
-        )
+        renewal_required = not connection_terminal and state in {
+            ConsentLifecycleState.EXPIRING,
+            ConsentLifecycleState.EXPIRED,
+        }
         return ConsentLifecycleResult(
             state=state,
             renewal_required=renewal_required,
