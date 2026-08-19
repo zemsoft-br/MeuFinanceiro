@@ -1,5 +1,12 @@
 """Provider-neutral bounded manual banking synchronization."""
 
+from .consent_lifecycle import (
+    ConsentClock,
+    ConsentLifecycleEvaluator,
+    ConsentLifecyclePolicy,
+    ConsentLifecycleResult,
+    ConsentLifecycleState,
+)
 from .models import (
     ManualSyncExecutionError,
     ManualSyncLimits,
@@ -21,6 +28,11 @@ from .service import (
 )
 
 __all__ = [
+    "ConsentClock",
+    "ConsentLifecycleEvaluator",
+    "ConsentLifecyclePolicy",
+    "ConsentLifecycleResult",
+    "ConsentLifecycleState",
     "ContextualBankingReadService",
     "ManualBankingSyncReconciliationService",
     "ManualBankingSyncService",
