@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 from decimal import Decimal
 
 import pytest
@@ -53,8 +53,6 @@ def test_bill_snapshot_rejects_invalid_economic_shape() -> None:
 
 
 def test_bill_snapshot_rejects_datetime_where_date_is_required() -> None:
-    from datetime import UTC, datetime
-
     with pytest.raises(TypeError, match="due_date must be date"):
         PluggyCreditCardBillSnapshot(
             bill_id="bill-1",
