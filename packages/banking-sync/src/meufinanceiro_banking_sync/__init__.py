@@ -8,11 +8,13 @@ from .consent_lifecycle import (
     ConsentLifecycleState,
 )
 from .local_consent import (
+    ConsentConnectionFactStore,
     ConsentConnectionNotFoundError,
     ConsentConnectionReader,
     ConsentConnectionSnapshot,
     LocalConsentLifecycleError,
     LocalConsentLifecycleService,
+    PersistenceConsentConnectionReader,
 )
 from .models import (
     ManualSyncExecutionError,
@@ -36,6 +38,7 @@ from .service import (
 
 __all__ = [
     "ConsentClock",
+    "ConsentConnectionFactStore",
     "ConsentConnectionNotFoundError",
     "ConsentConnectionReader",
     "ConsentConnectionSnapshot",
@@ -56,6 +59,7 @@ __all__ = [
     "ManualSyncRunner",
     "ManualSyncStopReason",
     "ManualSyncStore",
+    "PersistenceConsentConnectionReader",
     "SyncFairnessStore",
     "TransactionReconciliationStore",
 ]
