@@ -1,6 +1,16 @@
 """Read-only Pluggy adapter contracts for MeuFinanceiro."""
 
 from .adapter import PluggyBankingProvider
+from .bills import (
+    PluggyCreditCardBillSnapshot,
+    PluggyCreditCardBillsGateway,
+    PluggyCreditCardBillState,
+)
+from .bills_http_gateway import (
+    PluggyBillsGatewayHttpTransport,
+    PluggyBillsHttpReadOnlyGateway,
+    PluggyBillsPayloadTransport,
+)
 from .connect_token import PluggyConnectTokenHttpTransport
 from .connected_item import parse_connected_item
 from .gateway import (
@@ -26,12 +36,18 @@ __all__ = [
     "PluggyAccountKind",
     "PluggyAccountSnapshot",
     "PluggyBankingProvider",
+    "PluggyBillsGatewayHttpTransport",
+    "PluggyBillsHttpReadOnlyGateway",
+    "PluggyBillsPayloadTransport",
     "PluggyCapability",
     "PluggyCapabilityAvailability",
     "PluggyCapabilityEvidence",
     "PluggyCapabilitySnapshot",
     "PluggyConnectTokenHttpTransport",
     "PluggyConnectionPhase",
+    "PluggyCreditCardBillSnapshot",
+    "PluggyCreditCardBillsGateway",
+    "PluggyCreditCardBillState",
     "PluggyGatewayError",
     "PluggyGatewayErrorCategory",
     "PluggyGatewayHttpTransport",
