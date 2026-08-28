@@ -16,6 +16,7 @@ from meufinanceiro_banking import (
     ConnectionIntent,
     ConnectionState,
     ConnectionStatus,
+    CreditCardBillStatus,
     ExternalAccount,
     ExternalCreditCardBill,
     ExternalInvestment,
@@ -28,6 +29,11 @@ from meufinanceiro_banking import (
     TransactionStatus,
 )
 
+from .bills import (
+    PluggyCreditCardBillSnapshot,
+    PluggyCreditCardBillsGateway,
+    PluggyCreditCardBillState,
+)
 from .gateway import (
     PluggyAccountKind,
     PluggyAccountSnapshot,
@@ -97,6 +103,14 @@ _ACCOUNT_KIND_TO_TYPE = {
 _TRANSACTION_STATE_TO_STATUS = {
     PluggyTransactionState.POSTED: TransactionStatus.CONFIRMED,
     PluggyTransactionState.PENDING: TransactionStatus.PENDING,
+}
+
+_BILL_STATE_TO_STATUS = {
+    PluggyCreditCardBillState.OPEN: CreditCardBillStatus.OPEN,
+    PluggyCreditCardBillState.CLOSED: CreditCardBillStatus.CLOSED,
+    PluggyCreditCardBillState.PAID: CreditCardBillStatus.PAID,
+    PluggyCreditCardBillState.OVERDUE: CreditCardBillStatus.OVERDUE,
+    PluggyCreditCardBillState.UNKNOWN: CreditCardBillStatus.UNKNOWN,
 }
 
 _GATEWAY_ERROR_TO_PROVIDER = {
@@ -191,8 +205,16 @@ class PluggyBankingProvider:
         self,
         external_account_id: str,
     ) -> tuple[ExternalCreditCardBill, ...]:
-        del external_account_id
-        self._unsupported()
+        account_id = self._clean_identifier(external_account_id, "external_account_id")
+        gateway = self._gateway
+        if not isinstance(gateway, PluggyCreditCardBillsGateway):
+            self._unsupported()
+        snapshots = self._call_gateway(
+            lambda: gateway.list_credit_card_bills(account_id)
+        )
+        return self._normalize(
+            lambda: self._validate_and_map_credit_card_bills(account_id, snapshots)
+        )
 
     def list_investments(
         self,
@@ -276,6 +298,24 @@ class PluggyBankingProvider:
         return PluggyBankingProvider._map_transaction_page(value)
 
     @staticmethod
+    def _validate_and_map_credit_card_bills(
+        account_id: str,
+        value: object,
+    ) -> tuple[ExternalCreditCardBill, ...]:
+        if not isinstance(value, tuple):
+            PluggyBankingProvider._invalid_snapshot()
+        mapped: list[ExternalCreditCardBill] = []
+        bill_ids: set[str] = set()
+        for snapshot in value:
+            if not isinstance(snapshot, PluggyCreditCardBillSnapshot):
+                PluggyBankingProvider._invalid_snapshot()
+            if snapshot.account_id != account_id or snapshot.bill_id in bill_ids:
+                PluggyBankingProvider._invalid_snapshot()
+            bill_ids.add(snapshot.bill_id)
+            mapped.append(PluggyBankingProvider._map_credit_card_bill(snapshot))
+        return tuple(mapped)
+
+    @staticmethod
     def _map_item(item: PluggyItemSnapshot) -> ConnectionState:
         status = _PHASE_TO_STATUS[item.phase]
         return ConnectionState(
@@ -356,6 +396,21 @@ class PluggyBankingProvider:
                 if installment is not None
                 else None
             ),
+        )
+
+    @staticmethod
+    def _map_credit_card_bill(
+        snapshot: PluggyCreditCardBillSnapshot,
+    ) -> ExternalCreditCardBill:
+        return ExternalCreditCardBill(
+            external_bill_id=snapshot.bill_id,
+            external_account_id=snapshot.account_id,
+            status=_BILL_STATE_TO_STATUS[snapshot.state],
+            due_date=snapshot.due_date,
+            total_amount=snapshot.total_amount,
+            currency=snapshot.currency,
+            close_date=snapshot.close_date,
+            minimum_payment=snapshot.minimum_payment,
         )
 
     @staticmethod
