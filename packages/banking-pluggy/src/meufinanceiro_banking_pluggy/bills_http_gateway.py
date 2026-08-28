@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date
 from typing import Protocol, runtime_checkable
 
-from .bills import (
-    PluggyCreditCardBillSnapshot,
-    PluggyCreditCardBillsGateway,
-    PluggyCreditCardBillState,
-)
+from .bills import PluggyCreditCardBillSnapshot, PluggyCreditCardBillState
+from .gateway import PluggyGatewayError, PluggyGatewayErrorCategory
 from .http_gateway import (
     PluggyGatewayHttpTransport,
     PluggyHttpReadOnlyGateway,
@@ -26,7 +24,6 @@ from .http_gateway import (
     _transport_text,
 )
 from .transport import JsonObject, PluggyTransportError
-from .gateway import PluggyGatewayError, PluggyGatewayErrorCategory
 
 _MAX_IDENTIFIER_LENGTH = 512
 
@@ -60,7 +57,7 @@ def _bill_state(value: object) -> PluggyCreditCardBillState:
         return PluggyCreditCardBillState.UNKNOWN
 
 
-def _optional_effective_date(value: object, reason_code: str):
+def _optional_effective_date(value: object, reason_code: str) -> date | None:
     if value is None:
         return None
     return _effective_date(value, reason_code)
@@ -118,10 +115,7 @@ def _parse_bills(
         raise _PayloadError("INVALID_BILLS_PAYLOAD") from None
 
 
-class PluggyBillsHttpReadOnlyGateway(
-    PluggyHttpReadOnlyGateway,
-    PluggyCreditCardBillsGateway,
-):
+class PluggyBillsHttpReadOnlyGateway(PluggyHttpReadOnlyGateway):
     """Read-only gateway that adds strict credit-card bill normalization."""
 
     def __init__(self, transport: PluggyBillsPayloadTransport) -> None:
