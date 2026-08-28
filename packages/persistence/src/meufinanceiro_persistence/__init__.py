@@ -48,6 +48,10 @@ from meufinanceiro_persistence.banking import (
     TransactionReconciliationResult,
     credential_aad,
 )
+from meufinanceiro_persistence.banking_consent_store import (
+    BankingConsentConnectionSnapshot,
+    BankingConsentConnectionStore,
+)
 from meufinanceiro_persistence.banking_ledger_review_models import (
     BankingLedgerReviewAccessError,
     BankingLedgerReviewCandidate,
@@ -142,6 +146,8 @@ __all__ = [
     "BankingConnectionQueryError",
     "BankingConnectionQueryStore",
     "BankingConnectionRecord",
+    "BankingConsentConnectionSnapshot",
+    "BankingConsentConnectionStore",
     "BankingIntegrationStore",
     "BankingLedgerReviewAccessError",
     "BankingLedgerReviewCandidate",
