@@ -9,6 +9,7 @@ from meufinanceiro_persistence import StoredConnectionStatus
 from meufinanceiro_banking_sync.consent_lifecycle import (
     ConsentLifecycleEvaluator,
     ConsentLifecyclePolicy,
+    ConsentLifecycleResult,
     ConsentLifecycleState,
 )
 from meufinanceiro_banking_sync.local_consent import (
@@ -55,7 +56,7 @@ def subject(
 
 def evaluate(
     service: LocalConsentLifecycleService,
-) -> tuple[object, tuple[UUID, UUID, UUID, UUID]]:
+) -> tuple[ConsentLifecycleResult, tuple[UUID, UUID, UUID, UUID]]:
     scope = (uuid4(), uuid4(), uuid4(), uuid4())
     result = service.evaluate_connection(
         installation_id=scope[0],
