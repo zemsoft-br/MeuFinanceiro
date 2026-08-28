@@ -7,7 +7,12 @@ from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
-from meufinanceiro_persistence import StoredConnectionStatus
+from meufinanceiro_persistence import (
+    BankingConsentConnectionSnapshot,
+    BankingPersistenceError,
+    ConnectionNotFoundError,
+    StoredConnectionStatus,
+)
 
 from .consent_lifecycle import ConsentLifecycleEvaluator, ConsentLifecycleResult
 
@@ -55,6 +60,62 @@ class ConsentConnectionReader(Protocol):
     ) -> ConsentConnectionSnapshot:
         """Return only consent facts after proving actor/residence access."""
         ...
+
+
+@runtime_checkable
+class ConsentConnectionFactStore(Protocol):
+    """Persistence boundary that exposes no provider or external identifier material."""
+
+    def get_consent_connection_snapshot(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        connection_id: UUID,
+    ) -> BankingConsentConnectionSnapshot:
+        """Return the minimal persisted consent facts for an authorized actor."""
+        ...
+
+
+class PersistenceConsentConnectionReader:
+    """Translate sanitized persistence facts into the application reader contract."""
+
+    def __init__(self, store: ConsentConnectionFactStore) -> None:
+        if not isinstance(store, ConsentConnectionFactStore):
+            raise TypeError("store must satisfy ConsentConnectionFactStore")
+        self._store = store
+
+    def read_consent_connection(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        connection_id: UUID,
+    ) -> ConsentConnectionSnapshot:
+        try:
+            persisted = self._store.get_consent_connection_snapshot(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                connection_id=connection_id,
+            )
+        except ConnectionNotFoundError:
+            raise ConsentConnectionNotFoundError(
+                "local banking connection was not found"
+            ) from None
+        except BankingPersistenceError:
+            raise LocalConsentLifecycleError(
+                "local banking consent facts could not be read"
+            ) from None
+
+        if not isinstance(persisted, BankingConsentConnectionSnapshot):
+            raise TypeError("store returned invalid banking consent facts")
+        return ConsentConnectionSnapshot(
+            status=persisted.status,
+            consent_expires_at=persisted.consent_expires_at,
+        )
 
 
 class LocalConsentLifecycleService:
@@ -107,9 +168,11 @@ def _require_uuid4(value: UUID, field_name: str) -> None:
 
 
 __all__ = [
+    "ConsentConnectionFactStore",
     "ConsentConnectionNotFoundError",
     "ConsentConnectionReader",
     "ConsentConnectionSnapshot",
     "LocalConsentLifecycleError",
     "LocalConsentLifecycleService",
+    "PersistenceConsentConnectionReader",
 ]
