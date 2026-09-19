@@ -28,6 +28,7 @@ from meufinanceiro_banking import (
     TransactionStatus,
 )
 
+from .investments import PluggyInvestmentSnapshot, PluggyInvestmentsGateway
 from .gateway import (
     PluggyAccountKind,
     PluggyAccountSnapshot,
@@ -198,8 +199,17 @@ class PluggyBankingProvider:
         self,
         external_connection_id: str,
     ) -> tuple[ExternalInvestment, ...]:
-        del external_connection_id
-        self._unsupported()
+        item_id = self._clean_identifier(
+            external_connection_id,
+            "external_connection_id",
+        )
+        gateway = self._gateway
+        if not isinstance(gateway, PluggyInvestmentsGateway):
+            self._unsupported()
+        snapshots = self._call_gateway(lambda: gateway.list_investments(item_id))
+        return self._normalize(
+            lambda: self._validate_and_map_investments(item_id, snapshots)
+        )
 
     def list_loans(
         self,
@@ -274,6 +284,27 @@ class PluggyBankingProvider:
             ):
                 PluggyBankingProvider._invalid_snapshot()
         return PluggyBankingProvider._map_transaction_page(value)
+
+    @staticmethod
+    def _validate_and_map_investments(
+        item_id: str,
+        value: object,
+    ) -> tuple[ExternalInvestment, ...]:
+        if not isinstance(value, tuple):
+            PluggyBankingProvider._invalid_snapshot()
+        mapped: list[ExternalInvestment] = []
+        investment_ids: set[str] = set()
+        for snapshot in value:
+            if not isinstance(snapshot, PluggyInvestmentSnapshot):
+                PluggyBankingProvider._invalid_snapshot()
+            if (
+                snapshot.item_id != item_id
+                or snapshot.investment_id in investment_ids
+            ):
+                PluggyBankingProvider._invalid_snapshot()
+            investment_ids.add(snapshot.investment_id)
+            mapped.append(PluggyBankingProvider._map_investment(snapshot))
+        return tuple(mapped)
 
     @staticmethod
     def _map_item(item: PluggyItemSnapshot) -> ConnectionState:
@@ -356,6 +387,21 @@ class PluggyBankingProvider:
                 if installment is not None
                 else None
             ),
+        )
+
+    @staticmethod
+    def _map_investment(
+        snapshot: PluggyInvestmentSnapshot,
+    ) -> ExternalInvestment:
+        return ExternalInvestment(
+            external_investment_id=snapshot.investment_id,
+            external_connection_id=snapshot.item_id,
+            name=snapshot.name,
+            kind=snapshot.kind,
+            balance=snapshot.balance,
+            currency=snapshot.currency,
+            as_of=snapshot.as_of,
+            external_account_id=None,
         )
 
     @staticmethod
