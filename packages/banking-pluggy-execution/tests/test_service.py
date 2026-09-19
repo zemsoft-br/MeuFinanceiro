@@ -474,6 +474,7 @@ def test_connection_record_helper_can_change_status_without_item_exposure() -> N
     assert record.id == CONNECTION_ID
     assert ITEM_ID not in repr(PluggyReadOnlyExecutionService)
 
+
 def test_credit_card_bills_validate_account_and_close_transport() -> None:
     executor, store, transport, _ = service()
 
