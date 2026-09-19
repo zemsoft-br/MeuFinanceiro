@@ -21,6 +21,12 @@ from .gateway import (
     PluggyTransactionState,
 )
 from .http_gateway import PluggyGatewayHttpTransport, PluggyHttpReadOnlyGateway
+from .loans import PluggyLoanSnapshot, PluggyLoansGateway
+from .loans_http_gateway import (
+    PluggyLoansGatewayHttpTransport,
+    PluggyLoansHttpReadOnlyGateway,
+    PluggyLoansPayloadTransport,
+)
 
 __all__ = [
     "PluggyAccountKind",
@@ -38,6 +44,11 @@ __all__ = [
     "PluggyHttpReadOnlyGateway",
     "PluggyInstallmentSnapshot",
     "PluggyItemSnapshot",
+    "PluggyLoanSnapshot",
+    "PluggyLoansGateway",
+    "PluggyLoansGatewayHttpTransport",
+    "PluggyLoansHttpReadOnlyGateway",
+    "PluggyLoansPayloadTransport",
     "PluggyReadOnlyGateway",
     "PluggyTransactionPageSnapshot",
     "PluggyTransactionSnapshot",
