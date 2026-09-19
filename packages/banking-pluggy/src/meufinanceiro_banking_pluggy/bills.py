@@ -33,7 +33,12 @@ def _clean_currency(value: str) -> str:
     return currency
 
 
-def _require_date(value: date | None, field_name: str, *, optional: bool) -> date | None:
+def _require_date(
+    value: date | None,
+    field_name: str,
+    *,
+    optional: bool,
+) -> date | None:
     if value is None:
         if optional:
             return None
