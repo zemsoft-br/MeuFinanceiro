@@ -13,14 +13,17 @@ from meufinanceiro_banking import (
     ConnectionCapability,
     ConnectionState,
     ExternalAccount,
+    ExternalInvestment,
     ExternalPage,
     ExternalTransaction,
     ProviderErrorCategory,
 )
 from meufinanceiro_banking_pluggy import (
     PluggyBankingProvider,
-    PluggyGatewayHttpTransport,
     PluggyHttpReadOnlyGateway,
+    PluggyInvestmentsGatewayHttpTransport,
+    PluggyInvestmentsHttpReadOnlyGateway,
+    PluggyInvestmentsPayloadTransport,
 )
 from meufinanceiro_banking_pluggy.http_gateway import PluggyPayloadTransport
 from meufinanceiro_banking_pluggy.transport import (
@@ -79,6 +82,19 @@ class PluggyExecutionTransport(Protocol):
     def close(self) -> None: ...
 
 
+@runtime_checkable
+class PluggyInvestmentsExecutionTransport(PluggyExecutionTransport, Protocol):
+    """Optional executor transport capability for paged investments."""
+
+    def get_investments_page(
+        self,
+        item_id: str,
+        *,
+        page: int,
+        page_size: int,
+    ) -> JsonObject: ...
+
+
 TransportFactory: TypeAlias = Callable[
     [PluggyApplicationCredentials],
     PluggyExecutionTransport,
@@ -88,7 +104,7 @@ TransportFactory: TypeAlias = Callable[
 def _default_transport_factory(
     credentials: PluggyApplicationCredentials,
 ) -> PluggyExecutionTransport:
-    return PluggyGatewayHttpTransport(credentials)
+    return PluggyInvestmentsGatewayHttpTransport(credentials)
 
 
 def _clean_identifier(value: str, field_name: str) -> str:
@@ -234,6 +250,26 @@ class PluggyReadOnlyExecutionService:
             operation=read_transactions,
         )
 
+    def list_investments(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> tuple[ExternalInvestment, ...]:
+        connection = self._load_connection(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+        )
+        return self._execute(
+            installation_id=installation_id,
+            connection=connection,
+            operation=lambda provider: provider.list_investments(
+                connection.external_connection_id
+            ),
+        )
+
     def _load_connection(
         self,
         *,
@@ -284,9 +320,15 @@ class PluggyReadOnlyExecutionService:
                 transport = self._transport_factory(application_credentials)
                 if not isinstance(transport, PluggyExecutionTransport):
                     raise TypeError("transport factory returned an invalid object")
-                gateway = PluggyHttpReadOnlyGateway(
-                    cast(PluggyPayloadTransport, transport)
-                )
+                gateway: PluggyHttpReadOnlyGateway
+                if isinstance(transport, PluggyInvestmentsExecutionTransport):
+                    gateway = PluggyInvestmentsHttpReadOnlyGateway(
+                        cast(PluggyInvestmentsPayloadTransport, transport)
+                    )
+                else:
+                    gateway = PluggyHttpReadOnlyGateway(
+                        cast(PluggyPayloadTransport, transport)
+                    )
                 provider: BankingProvider = PluggyBankingProvider(gateway)
                 return operation(provider)
             except BankingProviderError as error:
