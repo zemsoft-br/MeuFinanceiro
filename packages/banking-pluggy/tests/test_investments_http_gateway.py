@@ -154,7 +154,7 @@ def test_investment_gateway_protocol_and_allowlisted_mapping() -> None:
 def test_empty_investment_collection_is_valid() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(page=0, total=0, total_pages=0, results=[]),
+            1: _page_payload(page=0, total=0, total_pages=0, results=[]),
         }
     )
 
@@ -217,8 +217,8 @@ def test_duplicate_investment_id_across_pages_fails_closed() -> None:
                 total_pages=2,
                 results=[_investment_record("investment-1")],
             ),
-            1: _page_payload(
-                page=1,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_investment_record("investment-1")],
@@ -285,7 +285,7 @@ def test_invalid_investment_payload_fails_closed(
 )
 def test_inconsistent_pagination_fails_closed(payload: JsonObject) -> None:
     with pytest.raises(PluggyGatewayError) as raised:
-        _gateway(FakeInvestmentsTransport(pages={0: payload})).list_investments(
+        _gateway(FakeInvestmentsTransport(pages={1: payload})).list_investments(
             ITEM_ID
         )
 
