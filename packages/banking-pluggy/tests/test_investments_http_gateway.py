@@ -292,6 +292,48 @@ def test_inconsistent_pagination_fails_closed(payload: JsonObject) -> None:
     assert raised.value.category is PluggyGatewayErrorCategory.INTERNAL
 
 
+def test_pagination_metadata_cannot_change_between_pages() -> None:
+    transport = FakeInvestmentsTransport(
+        pages={
+            0: _page_payload(
+                page=0,
+                total=2,
+                total_pages=2,
+                results=[_investment_record("investment-1")],
+            ),
+            1: _page_payload(
+                page=1,
+                total=3,
+                total_pages=2,
+                results=[_investment_record("investment-2")],
+            ),
+        }
+    )
+
+    with pytest.raises(PluggyGatewayError) as raised:
+        _gateway(transport).list_investments(ITEM_ID)
+
+    assert raised.value.provider_reason_code == "INCONSISTENT_INVESTMENT_PAGINATION"
+
+
+def test_final_collection_must_match_reported_total() -> None:
+    transport = FakeInvestmentsTransport(
+        pages={
+            0: _page_payload(
+                page=0,
+                total=2,
+                total_pages=1,
+                results=[_investment_record("investment-1")],
+            )
+        }
+    )
+
+    with pytest.raises(PluggyGatewayError) as raised:
+        _gateway(transport).list_investments(ITEM_ID)
+
+    assert raised.value.provider_reason_code == "INCOMPLETE_INVESTMENT_COLLECTION"
+
+
 def test_pagination_limits_fail_closed_before_unbounded_reads() -> None:
     transport = FakeInvestmentsTransport(
         pages={
