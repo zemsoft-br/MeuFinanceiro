@@ -167,9 +167,9 @@ def _parse_page(
         records = _sequence(payload.get("results"), "INVALID_LOANS_COLLECTION")
         parsed = tuple(_parse_loan(record, expected_item_id) for record in records)
         if total_pages == 0:
-            if page != 0 or total != 0 or parsed:
+            if page not in {0, 1} or total != 0 or parsed:
                 raise _PayloadError("INCONSISTENT_LOAN_PAGINATION")
-        elif page >= total_pages:
+        elif page < 1 or page > total_pages:
             raise _PayloadError("INCONSISTENT_LOAN_PAGINATION")
         return page, total, total_pages, parsed
     except _PayloadError:
@@ -209,14 +209,14 @@ class PluggyLoansHttpReadOnlyGateway(PluggyHttpReadOnlyGateway):
 
     def list_loans(self, item_id: str) -> tuple[PluggyLoanSnapshot, ...]:
         try:
-            page_index = 0
+            page_index = 1
             expected_total: int | None = None
             expected_total_pages: int | None = None
             records: list[PluggyLoanSnapshot] = []
             identifiers: set[str] = set()
 
             while True:
-                if page_index >= self._max_pages:
+                if page_index > self._max_pages:
                     raise _PayloadError("LOAN_PAGE_LIMIT_EXCEEDED")
                 payload = self._loans_transport.get_loans_page(
                     item_id,
