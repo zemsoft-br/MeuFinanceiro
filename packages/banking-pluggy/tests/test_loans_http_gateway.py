@@ -173,8 +173,8 @@ def test_empty_loan_collection_is_valid() -> None:
 def test_multiple_pages_are_joined_in_order() -> None:
     transport = FakeLoansTransport(
         pages={
-            2: _page_payload(
-                page=2,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
@@ -258,8 +258,8 @@ def test_item_association_mismatch_fails_closed() -> None:
 def test_duplicate_loan_id_across_pages_fails_closed() -> None:
     transport = FakeLoansTransport(
         pages={
-            2: _page_payload(
-                page=2,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
@@ -342,8 +342,8 @@ def test_optional_contract_dates_may_be_absent() -> None:
 def test_pagination_metadata_cannot_change_between_pages() -> None:
     transport = FakeLoansTransport(
         pages={
-            2: _page_payload(
-                page=2,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
