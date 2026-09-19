@@ -149,7 +149,9 @@ def _parse_page(
             payload.get("results"),
             "INVALID_INVESTMENTS_COLLECTION",
         )
-        parsed = tuple(_parse_investment(record, expected_item_id) for record in records)
+        parsed = tuple(
+            _parse_investment(record, expected_item_id) for record in records
+        )
         if total_pages == 0:
             if page != 0 or total != 0 or parsed:
                 raise _PayloadError("INCONSISTENT_INVESTMENT_PAGINATION")
@@ -174,7 +176,11 @@ class PluggyInvestmentsHttpReadOnlyGateway(PluggyHttpReadOnlyGateway):
     ) -> None:
         if not isinstance(transport, PluggyInvestmentsPayloadTransport):
             raise TypeError("transport must satisfy PluggyInvestmentsPayloadTransport")
-        if isinstance(max_pages, bool) or not isinstance(max_pages, int) or max_pages < 1:
+        if (
+            isinstance(max_pages, bool)
+            or not isinstance(max_pages, int)
+            or max_pages < 1
+        ):
             raise ValueError("max_pages must be a positive integer")
         if (
             isinstance(max_records, bool)
