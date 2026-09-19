@@ -68,6 +68,16 @@ def _parse_bill(
     expected_account_id: str,
 ) -> PluggyCreditCardBillSnapshot:
     record: Mapping[str, object] = _mapping(value, "INVALID_BILL_RECORD")
+    raw_account_id = record.get("accountId")
+    if raw_account_id is not None:
+        account_id = _required_text(
+            record,
+            "accountId",
+            "INVALID_BILL_ACCOUNT_ID",
+            max_length=_MAX_IDENTIFIER_LENGTH,
+        )
+        if account_id != expected_account_id:
+            raise _PayloadError("BILL_ASSOCIATION_MISMATCH")
     minimum_value = record.get("minimumPaymentAmount")
     return PluggyCreditCardBillSnapshot(
         bill_id=_required_text(
