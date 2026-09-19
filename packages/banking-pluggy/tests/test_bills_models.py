@@ -30,7 +30,10 @@ def test_bill_snapshot_normalizes_currency_and_redacts_repr() -> None:
 
 
 def test_bill_snapshot_rejects_invalid_economic_shape() -> None:
-    with pytest.raises(ValueError, match="minimum_payment must not exceed total_amount"):
+    with pytest.raises(
+        ValueError,
+        match="minimum_payment must not exceed total_amount",
+    ):
         PluggyCreditCardBillSnapshot(
             bill_id="bill-1",
             account_id="account-card",
