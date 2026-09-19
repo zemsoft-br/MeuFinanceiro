@@ -30,6 +30,7 @@ from .registration import (
 from .service import (
     ContextualBankingStore,
     PluggyExecutionTransport,
+    PluggyLoansExecutionTransport,
     PluggyReadOnlyExecutionService,
     TransportFactory,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "PluggyConnectTokenErrorCode",
     "PluggyConnectTokenService",
     "PluggyExecutionTransport",
+    "PluggyLoansExecutionTransport",
     "PluggyReadOnlyExecutionService",
     "PluggyReauthenticationError",
     "PluggyReauthenticationErrorCode",
