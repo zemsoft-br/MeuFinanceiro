@@ -71,7 +71,9 @@ def _enabled_credentials(
 @dataclass
 class FakeStore:
     connection: BankingConnectionRecord = field(default_factory=_connection_record)
-    credentials: EnabledProviderCredentials = field(default_factory=_enabled_credentials)
+    credentials: EnabledProviderCredentials = field(
+        default_factory=_enabled_credentials
+    )
     allow_residence: bool = True
     connection_calls: list[tuple[UUID, UUID, UUID]] = field(default_factory=list)
     credential_calls: list[tuple[UUID, str]] = field(default_factory=list)
@@ -221,7 +223,8 @@ def test_structural_investment_protocol_is_satisfied() -> None:
     assert isinstance(FakeTransport(), PluggyInvestmentsExecutionTransport)
 
 
-def test_contextual_investment_read_uses_local_connection_and_closes_transport() -> None:
+def test_contextual_investment_read_uses_local_connection_and_closes_transport(
+) -> None:
     executor, store, transport, factory = _service()
 
     investments = executor.list_investments(**_context())
