@@ -333,6 +333,7 @@ class PluggyReadOnlyExecutionService:
                 transport = self._transport_factory(application_credentials)
                 if not isinstance(transport, PluggyExecutionTransport):
                     raise TypeError("transport factory returned an invalid object")
+                gateway: PluggyHttpReadOnlyGateway
                 if isinstance(transport, PluggyBillsExecutionTransport):
                     gateway = PluggyBillsHttpReadOnlyGateway(
                         cast(PluggyBillsPayloadTransport, transport)
