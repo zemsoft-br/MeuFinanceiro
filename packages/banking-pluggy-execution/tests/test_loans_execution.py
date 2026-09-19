@@ -137,13 +137,13 @@ class FakeTransport:
         self.calls.append((item_id, page, page_size))
         if self.invalid_loan:
             return {
-                "page": 0,
+                "page": 1,
                 "total": 1,
                 "totalPages": 1,
                 "results": [{"id": "broken"}],
             }
         return {
-            "page": 0,
+            "page": 1,
             "total": 1,
             "totalPages": 1,
             "results": [
@@ -217,7 +217,7 @@ def test_contextual_loan_read_closes_transport() -> None:
 
     assert len(loans) == 1
     assert loans[0].external_connection_id == ITEM_ID
-    assert transport.calls == [(ITEM_ID, 0, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500)]
     assert transport.closed is True
     assert store.credential_calls == [(INSTALLATION_ID, "pluggy")]
     assert factory.credential_pairs == [("synthetic-client", "synthetic-secret")]
