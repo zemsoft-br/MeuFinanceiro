@@ -28,6 +28,7 @@ from meufinanceiro_banking import (
     TransactionStatus,
 )
 
+from .loans import PluggyLoanSnapshot, PluggyLoansGateway
 from .gateway import (
     PluggyAccountKind,
     PluggyAccountSnapshot,
@@ -205,8 +206,15 @@ class PluggyBankingProvider:
         self,
         external_connection_id: str,
     ) -> tuple[ExternalLoan, ...]:
-        del external_connection_id
-        self._unsupported()
+        item_id = self._clean_identifier(
+            external_connection_id,
+            "external_connection_id",
+        )
+        gateway = self._gateway
+        if not isinstance(gateway, PluggyLoansGateway):
+            self._unsupported()
+        snapshots = self._call_gateway(lambda: gateway.list_loans(item_id))
+        return self._normalize(lambda: self._validate_and_map_loans(item_id, snapshots))
 
     def request_refresh(
         self,
@@ -274,6 +282,24 @@ class PluggyBankingProvider:
             ):
                 PluggyBankingProvider._invalid_snapshot()
         return PluggyBankingProvider._map_transaction_page(value)
+
+    @staticmethod
+    def _validate_and_map_loans(
+        item_id: str,
+        value: object,
+    ) -> tuple[ExternalLoan, ...]:
+        if not isinstance(value, tuple):
+            PluggyBankingProvider._invalid_snapshot()
+        mapped: list[ExternalLoan] = []
+        loan_ids: set[str] = set()
+        for snapshot in value:
+            if not isinstance(snapshot, PluggyLoanSnapshot):
+                PluggyBankingProvider._invalid_snapshot()
+            if snapshot.item_id != item_id or snapshot.loan_id in loan_ids:
+                PluggyBankingProvider._invalid_snapshot()
+            loan_ids.add(snapshot.loan_id)
+            mapped.append(PluggyBankingProvider._map_loan(snapshot))
+        return tuple(mapped)
 
     @staticmethod
     def _map_item(item: PluggyItemSnapshot) -> ConnectionState:
@@ -356,6 +382,19 @@ class PluggyBankingProvider:
                 if installment is not None
                 else None
             ),
+        )
+
+    @staticmethod
+    def _map_loan(snapshot: PluggyLoanSnapshot) -> ExternalLoan:
+        return ExternalLoan(
+            external_loan_id=snapshot.loan_id,
+            external_connection_id=snapshot.item_id,
+            kind=snapshot.kind,
+            outstanding_balance=snapshot.outstanding_balance,
+            currency=snapshot.currency,
+            as_of=snapshot.as_of,
+            contracted_at=snapshot.contracted_at,
+            due_date=snapshot.due_date,
         )
 
     @staticmethod
