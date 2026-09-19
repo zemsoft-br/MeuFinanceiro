@@ -86,6 +86,36 @@ def test_adapter_maps_bill_snapshot_to_neutral_model() -> None:
     assert bill.currency == "BRL"
 
 
+@pytest.mark.parametrize(
+    ("provider_state", "neutral_status"),
+    [
+        (PluggyCreditCardBillState.OPEN, CreditCardBillStatus.OPEN),
+        (PluggyCreditCardBillState.CLOSED, CreditCardBillStatus.CLOSED),
+        (PluggyCreditCardBillState.PAID, CreditCardBillStatus.PAID),
+        (PluggyCreditCardBillState.OVERDUE, CreditCardBillStatus.OVERDUE),
+    ],
+)
+def test_adapter_maps_known_bill_states(
+    provider_state: PluggyCreditCardBillState,
+    neutral_status: CreditCardBillStatus,
+) -> None:
+    gateway = BillsGatewayStub()
+    gateway.bills = (
+        PluggyCreditCardBillSnapshot(
+            bill_id="bill-state",
+            account_id="account-card",
+            state=provider_state,
+            due_date=date(2026, 9, 10),
+            total_amount=Decimal("10"),
+            currency="BRL",
+        ),
+    )
+
+    bill = PluggyBankingProvider(gateway).list_credit_card_bills("account-card")[0]
+
+    assert bill.status is neutral_status
+
+
 def test_adapter_maps_provider_unknown_status_without_inference() -> None:
     gateway = BillsGatewayStub()
     gateway.bills = (
