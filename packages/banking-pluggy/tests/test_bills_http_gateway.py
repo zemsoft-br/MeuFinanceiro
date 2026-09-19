@@ -123,9 +123,12 @@ def test_bill_gateway_protocols_and_allowlisted_mapping() -> None:
 
 
 def test_empty_bill_collection_is_valid() -> None:
-    assert gateway(FakeBillsTransport(bills={"results": []})).list_credit_card_bills(
-        "account-card"
-    ) == ()
+    assert (
+        gateway(FakeBillsTransport(bills={"results": []})).list_credit_card_bills(
+            "account-card"
+        )
+        == ()
+    )
 
 
 def test_unknown_provider_status_is_neutral_unknown() -> None:
