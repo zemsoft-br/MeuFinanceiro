@@ -163,7 +163,9 @@ def test_invalid_bill_payload_fails_closed(field: str, value: object) -> None:
     first[field] = value
 
     with pytest.raises(PluggyGatewayError) as raised:
-        gateway(FakeBillsTransport(bills=payload)).list_credit_card_bills("account-card")
+        gateway(FakeBillsTransport(bills=payload)).list_credit_card_bills(
+            "account-card"
+        )
 
     assert raised.value.category is PluggyGatewayErrorCategory.INTERNAL
     assert raised.value.retryable is False
@@ -180,7 +182,9 @@ def test_bill_association_mismatch_fails_closed() -> None:
     first["accountId"] = "another-account"
 
     with pytest.raises(PluggyGatewayError) as raised:
-        gateway(FakeBillsTransport(bills=payload)).list_credit_card_bills("account-card")
+        gateway(FakeBillsTransport(bills=payload)).list_credit_card_bills(
+            "account-card"
+        )
 
     assert raised.value.category is PluggyGatewayErrorCategory.INTERNAL
     assert raised.value.provider_reason_code == "BILL_ASSOCIATION_MISMATCH"
@@ -196,7 +200,9 @@ def test_duplicate_bill_id_fails_closed() -> None:
     second["id"] = "bill-open"
 
     with pytest.raises(PluggyGatewayError) as raised:
-        gateway(FakeBillsTransport(bills=payload)).list_credit_card_bills("account-card")
+        gateway(FakeBillsTransport(bills=payload)).list_credit_card_bills(
+            "account-card"
+        )
 
     assert raised.value.category is PluggyGatewayErrorCategory.INTERNAL
     assert raised.value.provider_reason_code == "DUPLICATE_BILL_ID"
