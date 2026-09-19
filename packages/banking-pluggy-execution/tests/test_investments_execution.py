@@ -145,13 +145,13 @@ class FakeTransport:
         self.investment_calls.append((item_id, page, page_size))
         if self.invalid_investment:
             return {
-                "page": 0,
+                "page": 1,
                 "total": 1,
                 "totalPages": 1,
                 "results": [{"id": "broken"}],
             }
         return {
-            "page": 0,
+            "page": 1,
             "total": 1,
             "totalPages": 1,
             "results": [
@@ -230,7 +230,7 @@ def test_contextual_investment_read_closes_transport() -> None:
 
     assert len(investments) == 1
     assert investments[0].external_connection_id == ITEM_ID
-    assert transport.investment_calls == [(ITEM_ID, 0, 500)]
+    assert transport.investment_calls == [(ITEM_ID, 1, 500)]
     assert transport.closed is True
     assert store.connection_calls == [(INSTALLATION_ID, RESIDENCE_ID, CONNECTION_ID)]
     assert store.credential_calls == [(INSTALLATION_ID, "pluggy")]
