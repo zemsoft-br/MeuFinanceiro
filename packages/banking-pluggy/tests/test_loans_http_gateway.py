@@ -76,8 +76,8 @@ def _page_payload(
 class FakeLoansTransport:
     pages: dict[int, JsonObject] = field(
         default_factory=lambda: {
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[_loan_record("loan-1")],
@@ -146,7 +146,7 @@ def test_loan_gateway_protocol_and_allowlisted_mapping() -> None:
 
     loans = instance.list_loans(ITEM_ID)
 
-    assert transport.calls == [(ITEM_ID, 0, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500)]
     assert len(loans) == 1
     value = loans[0]
     assert value.loan_id == "loan-1"
@@ -164,7 +164,7 @@ def test_loan_gateway_protocol_and_allowlisted_mapping() -> None:
 
 def test_empty_loan_collection_is_valid() -> None:
     transport = FakeLoansTransport(
-        pages={0: _page_payload(page=0, total=0, total_pages=0, results=[])}
+        pages={1: _page_payload(page=0, total=0, total_pages=0, results=[])}
     )
 
     assert _gateway(transport).list_loans(ITEM_ID) == ()
@@ -173,14 +173,14 @@ def test_empty_loan_collection_is_valid() -> None:
 def test_multiple_pages_are_joined_in_order() -> None:
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
             ),
-            1: _page_payload(
-                page=1,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-2", kind="FINANCING")],
@@ -191,7 +191,7 @@ def test_multiple_pages_are_joined_in_order() -> None:
     loans = _gateway(transport).list_loans(ITEM_ID)
 
     assert [value.loan_id for value in loans] == ["loan-1", "loan-2"]
-    assert transport.calls == [(ITEM_ID, 0, 500), (ITEM_ID, 1, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500), (ITEM_ID, 2, 500)]
 
 
 def test_contract_amount_is_never_outstanding_balance_fallback() -> None:
@@ -200,8 +200,8 @@ def test_contract_amount_is_never_outstanding_balance_fallback() -> None:
     record["contractAmount"] = 999999
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[record],
@@ -221,8 +221,8 @@ def test_missing_payments_fails_closed() -> None:
     record.pop("payments")
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[record],
@@ -239,8 +239,8 @@ def test_missing_payments_fails_closed() -> None:
 def test_item_association_mismatch_fails_closed() -> None:
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[_loan_record("loan-1", item_id="another-item")],
@@ -258,14 +258,14 @@ def test_item_association_mismatch_fails_closed() -> None:
 def test_duplicate_loan_id_across_pages_fails_closed() -> None:
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
             ),
-            1: _page_payload(
-                page=1,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
@@ -302,8 +302,8 @@ def test_invalid_loan_payload_fails_closed(target: str, value: object) -> None:
 
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[record],
@@ -324,8 +324,8 @@ def test_optional_contract_dates_may_be_absent() -> None:
     record["dueDate"] = None
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[record],
@@ -342,14 +342,14 @@ def test_optional_contract_dates_may_be_absent() -> None:
 def test_pagination_metadata_cannot_change_between_pages() -> None:
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
             ),
-            1: _page_payload(
-                page=1,
+            2: _page_payload(
+                page=2,
                 total=3,
                 total_pages=2,
                 results=[_loan_record("loan-2")],
@@ -366,8 +366,8 @@ def test_pagination_metadata_cannot_change_between_pages() -> None:
 def test_final_collection_must_match_reported_total() -> None:
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=1,
                 results=[_loan_record("loan-1")],
@@ -384,8 +384,8 @@ def test_final_collection_must_match_reported_total() -> None:
 def test_pagination_limit_fails_closed() -> None:
     transport = FakeLoansTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
@@ -397,7 +397,7 @@ def test_pagination_limit_fails_closed() -> None:
         _gateway(transport, max_pages=1).list_loans(ITEM_ID)
 
     assert raised.value.provider_reason_code == "LOAN_PAGE_LIMIT_EXCEEDED"
-    assert transport.calls == [(ITEM_ID, 0, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500)]
 
 
 def test_transport_error_is_mapped_without_external_material() -> None:
@@ -430,7 +430,7 @@ def test_http_transport_uses_bounded_item_scoped_endpoint() -> None:
             )
         if request.url.path == "/loans":
             assert request.url.params.get("itemId") == ITEM_ID
-            assert request.url.params.get("page") == "0"
+            assert request.url.params.get("page") == "1"
             assert request.url.params.get("pageSize") == "500"
             return httpx.Response(
                 200,
@@ -449,7 +449,7 @@ def test_http_transport_uses_bounded_item_scoped_endpoint() -> None:
     try:
         assert transport.get_loans_page(
             ITEM_ID,
-            page=0,
+            page=1,
             page_size=500,
         ) == {"page": 0, "total": 0, "totalPages": 0, "results": []}
     finally:
