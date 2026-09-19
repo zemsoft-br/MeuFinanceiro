@@ -524,4 +524,3 @@ def test_credit_card_bill_failure_still_closes_transport() -> None:
     assert raised.value.category is ProviderErrorCategory.INTERNAL
     assert transport.bill_calls == [CREDIT_ACCOUNT_ID]
     assert transport.closed is True
-
