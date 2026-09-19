@@ -297,10 +297,7 @@ class PluggyBankingProvider:
         for snapshot in value:
             if not isinstance(snapshot, PluggyInvestmentSnapshot):
                 PluggyBankingProvider._invalid_snapshot()
-            if (
-                snapshot.item_id != item_id
-                or snapshot.investment_id in investment_ids
-            ):
+            if snapshot.item_id != item_id or snapshot.investment_id in investment_ids:
                 PluggyBankingProvider._invalid_snapshot()
             investment_ids.add(snapshot.investment_id)
             mapped.append(PluggyBankingProvider._map_investment(snapshot))
