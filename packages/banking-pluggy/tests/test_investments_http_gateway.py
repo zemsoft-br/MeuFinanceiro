@@ -285,9 +285,7 @@ def test_invalid_investment_payload_fails_closed(
 )
 def test_inconsistent_pagination_fails_closed(payload: JsonObject) -> None:
     with pytest.raises(PluggyGatewayError) as raised:
-        _gateway(FakeInvestmentsTransport(pages={1: payload})).list_investments(
-            ITEM_ID
-        )
+        _gateway(FakeInvestmentsTransport(pages={1: payload})).list_investments(ITEM_ID)
 
     assert raised.value.category is PluggyGatewayErrorCategory.INTERNAL
 
