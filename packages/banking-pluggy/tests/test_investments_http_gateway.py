@@ -68,8 +68,8 @@ def _page_payload(
 class FakeInvestmentsTransport:
     pages: dict[int, JsonObject] = field(
         default_factory=lambda: {
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[_investment_record("investment-1")],
@@ -138,7 +138,7 @@ def test_investment_gateway_protocol_and_allowlisted_mapping() -> None:
 
     investments = instance.list_investments(ITEM_ID)
 
-    assert transport.calls == [(ITEM_ID, 0, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500)]
     assert len(investments) == 1
     value = investments[0]
     assert value.investment_id == "investment-1"
@@ -164,14 +164,14 @@ def test_empty_investment_collection_is_valid() -> None:
 def test_multiple_pages_are_joined_in_order() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_investment_record("investment-1")],
             ),
-            1: _page_payload(
-                page=1,
+            2: _page_payload(
+                page=2,
                 total=2,
                 total_pages=2,
                 results=[_investment_record("investment-2", kind="ETF")],
@@ -185,14 +185,14 @@ def test_multiple_pages_are_joined_in_order() -> None:
         "investment-1",
         "investment-2",
     ]
-    assert transport.calls == [(ITEM_ID, 0, 500), (ITEM_ID, 1, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500), (ITEM_ID, 2, 500)]
 
 
 def test_item_association_mismatch_fails_closed() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[_investment_record("investment-1", item_id="another-item")],
@@ -211,8 +211,8 @@ def test_item_association_mismatch_fails_closed() -> None:
 def test_duplicate_investment_id_across_pages_fails_closed() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_investment_record("investment-1")],
@@ -250,8 +250,8 @@ def test_invalid_investment_payload_fails_closed(
     record[field] = value
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=1,
                 total_pages=1,
                 results=[record],
@@ -270,7 +270,7 @@ def test_invalid_investment_payload_fails_closed(
     "payload",
     [
         _page_payload(
-            page=1,
+            page=2,
             total=1,
             total_pages=2,
             results=[_investment_record("investment-1")],
@@ -295,14 +295,14 @@ def test_inconsistent_pagination_fails_closed(payload: JsonObject) -> None:
 def test_pagination_metadata_cannot_change_between_pages() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_investment_record("investment-1")],
             ),
-            1: _page_payload(
-                page=1,
+            2: _page_payload(
+                page=2,
                 total=3,
                 total_pages=2,
                 results=[_investment_record("investment-2")],
@@ -319,8 +319,8 @@ def test_pagination_metadata_cannot_change_between_pages() -> None:
 def test_final_collection_must_match_reported_total() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=1,
                 results=[_investment_record("investment-1")],
@@ -337,8 +337,8 @@ def test_final_collection_must_match_reported_total() -> None:
 def test_pagination_limits_fail_closed_before_unbounded_reads() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_investment_record("investment-1")],
@@ -350,14 +350,14 @@ def test_pagination_limits_fail_closed_before_unbounded_reads() -> None:
         _gateway(transport, max_pages=1).list_investments(ITEM_ID)
 
     assert raised.value.provider_reason_code == "INVESTMENT_PAGE_LIMIT_EXCEEDED"
-    assert transport.calls == [(ITEM_ID, 0, 500)]
+    assert transport.calls == [(ITEM_ID, 1, 500)]
 
 
 def test_record_limit_fails_closed_before_pagination() -> None:
     transport = FakeInvestmentsTransport(
         pages={
-            0: _page_payload(
-                page=0,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=1,
                 results=[
@@ -404,7 +404,7 @@ def test_http_transport_uses_bounded_item_scoped_endpoint() -> None:
             )
         if request.url.path == "/investments":
             assert request.url.params.get("itemId") == ITEM_ID
-            assert request.url.params.get("page") == "0"
+            assert request.url.params.get("page") == "1"
             assert request.url.params.get("pageSize") == "500"
             return httpx.Response(
                 200,
@@ -423,7 +423,7 @@ def test_http_transport_uses_bounded_item_scoped_endpoint() -> None:
     try:
         assert transport.get_investments_page(
             ITEM_ID,
-            page=0,
+            page=1,
             page_size=500,
         ) == {"page": 0, "total": 0, "totalPages": 0, "results": []}
     finally:
