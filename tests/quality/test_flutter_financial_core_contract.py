@@ -191,4 +191,3 @@ def test_financial_mutation_dialogs_use_safe_ledger_date_policy() -> None:
     assert "required this.initialDate" in DETAIL_SCREEN
     assert "text: widget.initialDate" in DETAIL_SCREEN
     assert "targetMovementDate: movement.effectiveDate" in DETAIL_SCREEN
-
