@@ -24,7 +24,9 @@ const _reversalDestinationMovementId =
 const _idempotencyKey = '90000000-0000-4000-8000-000000000009';
 
 void main() {
-  test('loads transfer relations and reverses aggregate instead of a leg', () async {
+  test(
+    'loads transfer relations and reverses aggregate instead of a leg',
+    () async {
     var reversed = false;
     final transport = FakeAuthTransport((
       uri,
@@ -107,7 +109,8 @@ void main() {
           .length,
       1,
     );
-  });
+    },
+  );
 }
 
 ProviderContainer _container(FakeAuthTransport transport) {
