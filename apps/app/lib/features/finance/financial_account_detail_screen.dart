@@ -119,10 +119,8 @@ class _FinancialAccountDetailScreenState
   ) async {
     final result = await showDialog<FinancialTransferCreateInput>(
       context: context,
-      builder: (context) => _TransferDialog(
-        account: account,
-        destinations: destinations,
-      ),
+      builder: (context) =>
+          _TransferDialog(account: account, destinations: destinations),
     );
     if (result == null || !mounted) return;
     final created = await ref
@@ -309,8 +307,7 @@ class _FinancialAccountDetailScreenState
                 allowReversal:
                     account.status == FinancialAccountStatus.active &&
                     !state.operationMutationInFlight,
-                onReverse: (movement) =>
-                    unawaited(_reverseMovement(movement)),
+                onReverse: (movement) => unawaited(_reverseMovement(movement)),
               ),
             ],
           ],
@@ -439,10 +436,7 @@ class _BalanceCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Saldo atual',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('Saldo atual', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppTokens.space16),
             Wrap(
               spacing: AppTokens.space24,
@@ -587,25 +581,21 @@ class _StatementCard extends StatelessWidget {
             if (statement.entries.isEmpty)
               const Text('Nenhuma movimentação registrada nesta conta.')
             else
-              ...statement.entries.map(
-                (entry) {
-                  final movement = entry.movement;
-                  final reversible =
-                      allowReversal &&
-                      movement.role == FinancialMovementRole.standard &&
-                      movement.resultEffect != FinancialResultEffect.neutral &&
-                      !reversedMovementIds.contains(movement.movementId);
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: AppTokens.space12),
-                    child: _StatementRow(
-                      entry: entry,
-                      onReverse: reversible
-                          ? () => onReverse(movement)
-                          : null,
-                    ),
-                  );
-                },
-              ),
+              ...statement.entries.map((entry) {
+                final movement = entry.movement;
+                final reversible =
+                    allowReversal &&
+                    movement.role == FinancialMovementRole.standard &&
+                    movement.resultEffect != FinancialResultEffect.neutral &&
+                    !reversedMovementIds.contains(movement.movementId);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppTokens.space12),
+                  child: _StatementRow(
+                    entry: entry,
+                    onReverse: reversible ? () => onReverse(movement) : null,
+                  ),
+                );
+              }),
           ],
         ),
       ),
@@ -907,10 +897,7 @@ class _ManualEntryDialogState extends State<_ManualEntryDialog> {
 }
 
 class _TransferDialog extends StatefulWidget {
-  const _TransferDialog({
-    required this.account,
-    required this.destinations,
-  });
+  const _TransferDialog({required this.account, required this.destinations});
 
   final FinancialAccount account;
   final List<FinancialAccount> destinations;
@@ -1143,7 +1130,10 @@ class _MovementReversalDialogState extends State<_MovementReversalDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Cancelar'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Confirmar reversão')),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Confirmar reversão'),
+        ),
       ],
     );
   }
@@ -1316,6 +1306,7 @@ String? _validateDate(String? value) {
             '${parsed.day.toString().padLeft(2, '0')}';
   return canonical == source ? null : 'Informe uma data válida.';
 }
+
 String _moneyLabel(FinancialMoneyWire money) =>
     '${money.currency} ${money.amount.replaceFirst('.', ',')}';
 
