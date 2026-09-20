@@ -19,13 +19,13 @@ class DemoStatus {
   });
 
   static const canonicalFixtureId = 'residencia-ipe-v1';
-  static const canonicalFixtureVersion = 1;
+  static const canonicalFixtureVersion = 2;
   static const canonicalReferenceDate = '2026-11-01';
   static const canonicalTimezone = 'America/Sao_Paulo';
   static const canonicalCurrency = 'BRL';
-  static const canonicalScope = 'foundation_only';
+  static const canonicalScope = 'finance_phase1';
   static const canonicalContractChecksum =
-      '34a7628233ff6c4f5eac6469b8e80fdedd5d65d80f825b4ecf72a069235a21a1';
+      'a819b4913e35cabff3f20617b3e7837a6042b0c9243031a65b3f53fa7086d091';
 
   final bool enabled;
   final bool loaded;
