@@ -4,23 +4,35 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import Protocol, TypeAlias, TypeVar, cast, runtime_checkable
+from typing import Literal, Protocol, TypeAlias, TypeVar, cast, runtime_checkable
 from uuid import UUID
 
 from meufinanceiro_banking import (
+    AccountType,
     BankingProvider,
     BankingProviderError,
     ConnectionCapability,
     ConnectionState,
     ExternalAccount,
+    ExternalCreditCardBill,
+    ExternalInvestment,
+    ExternalLoan,
     ExternalPage,
     ExternalTransaction,
     ProviderErrorCategory,
 )
 from meufinanceiro_banking_pluggy import (
     PluggyBankingProvider,
-    PluggyGatewayHttpTransport,
+    PluggyBillsGatewayHttpTransport,
+    PluggyBillsHttpReadOnlyGateway,
+    PluggyBillsPayloadTransport,
     PluggyHttpReadOnlyGateway,
+    PluggyInvestmentsGatewayHttpTransport,
+    PluggyInvestmentsHttpReadOnlyGateway,
+    PluggyInvestmentsPayloadTransport,
+    PluggyLoansGatewayHttpTransport,
+    PluggyLoansHttpReadOnlyGateway,
+    PluggyLoansPayloadTransport,
 )
 from meufinanceiro_banking_pluggy.http_gateway import PluggyPayloadTransport
 from meufinanceiro_banking_pluggy.transport import (
@@ -79,6 +91,47 @@ class PluggyExecutionTransport(Protocol):
     def close(self) -> None: ...
 
 
+@runtime_checkable
+class PluggyBillsExecutionTransport(PluggyExecutionTransport, Protocol):
+    """Optional executor transport capability for account-scoped bills."""
+
+    def get_bills(self, account_id: str) -> JsonObject: ...
+
+
+@runtime_checkable
+class PluggyInvestmentsExecutionTransport(PluggyExecutionTransport, Protocol):
+    """Optional executor transport capability for paged investments."""
+
+    def get_investments_page(
+        self,
+        item_id: str,
+        *,
+        page: int,
+        page_size: int,
+    ) -> JsonObject: ...
+
+
+@runtime_checkable
+class PluggyLoansExecutionTransport(PluggyExecutionTransport, Protocol):
+    """Optional executor transport capability for paged loans."""
+
+    def get_loans_page(
+        self,
+        item_id: str,
+        *,
+        page: int,
+        page_size: int,
+    ) -> JsonObject: ...
+
+
+class _PluggyFinancialGatewayHttpTransport(
+    PluggyBillsGatewayHttpTransport,
+    PluggyInvestmentsGatewayHttpTransport,
+    PluggyLoansGatewayHttpTransport,
+):
+    """Default transport for the approved Pluggy financial read-only surface."""
+
+
 TransportFactory: TypeAlias = Callable[
     [PluggyApplicationCredentials],
     PluggyExecutionTransport,
@@ -88,7 +141,7 @@ TransportFactory: TypeAlias = Callable[
 def _default_transport_factory(
     credentials: PluggyApplicationCredentials,
 ) -> PluggyExecutionTransport:
-    return PluggyGatewayHttpTransport(credentials)
+    return _PluggyFinancialGatewayHttpTransport(credentials)
 
 
 def _clean_identifier(value: str, field_name: str) -> str:
@@ -234,6 +287,87 @@ class PluggyReadOnlyExecutionService:
             operation=read_transactions,
         )
 
+    def list_credit_card_bills(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+        external_account_id: str,
+    ) -> tuple[ExternalCreditCardBill, ...]:
+        account_id = _clean_identifier(external_account_id, "external_account_id")
+        connection = self._load_connection(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+        )
+
+        def read_bills(
+            provider: BankingProvider,
+        ) -> tuple[ExternalCreditCardBill, ...]:
+            accounts = provider.list_accounts(connection.external_connection_id)
+            if not any(
+                account.external_account_id == account_id
+                and account.external_connection_id == connection.external_connection_id
+                and account.account_type is AccountType.CREDIT
+                for account in accounts
+            ):
+                raise BankingProviderError(
+                    ProviderErrorCategory.NOT_FOUND,
+                    retryable=False,
+                    provider_reason_code="CREDIT_ACCOUNT_NOT_IN_CONNECTION",
+                )
+            return provider.list_credit_card_bills(account_id)
+
+        return self._execute(
+            installation_id=installation_id,
+            connection=connection,
+            operation=read_bills,
+            gateway_kind="bills",
+        )
+
+    def list_investments(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> tuple[ExternalInvestment, ...]:
+        connection = self._load_connection(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+        )
+        return self._execute(
+            installation_id=installation_id,
+            connection=connection,
+            operation=lambda provider: provider.list_investments(
+                connection.external_connection_id
+            ),
+            gateway_kind="investments",
+        )
+
+    def list_loans(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> tuple[ExternalLoan, ...]:
+        connection = self._load_connection(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            connection_id=connection_id,
+        )
+        return self._execute(
+            installation_id=installation_id,
+            connection=connection,
+            operation=lambda provider: provider.list_loans(
+                connection.external_connection_id
+            ),
+            gateway_kind="loans",
+        )
+
     def _load_connection(
         self,
         *,
@@ -266,6 +400,7 @@ class PluggyReadOnlyExecutionService:
         installation_id: UUID,
         connection: BankingConnectionRecord,
         operation: ProviderOperation[_Result],
+        gateway_kind: Literal["base", "bills", "investments", "loans"] = "base",
     ) -> _Result:
         def with_credentials(credentials: EnabledProviderCredentials) -> _Result:
             if credentials.provider != connection.provider:
@@ -284,9 +419,29 @@ class PluggyReadOnlyExecutionService:
                 transport = self._transport_factory(application_credentials)
                 if not isinstance(transport, PluggyExecutionTransport):
                     raise TypeError("transport factory returned an invalid object")
-                gateway = PluggyHttpReadOnlyGateway(
-                    cast(PluggyPayloadTransport, transport)
-                )
+                gateway: PluggyHttpReadOnlyGateway
+                if gateway_kind == "bills":
+                    if not isinstance(transport, PluggyBillsExecutionTransport):
+                        raise TypeError("transport does not support bills")
+                    gateway = PluggyBillsHttpReadOnlyGateway(
+                        cast(PluggyBillsPayloadTransport, transport)
+                    )
+                elif gateway_kind == "investments":
+                    if not isinstance(transport, PluggyInvestmentsExecutionTransport):
+                        raise TypeError("transport does not support investments")
+                    gateway = PluggyInvestmentsHttpReadOnlyGateway(
+                        cast(PluggyInvestmentsPayloadTransport, transport)
+                    )
+                elif gateway_kind == "loans":
+                    if not isinstance(transport, PluggyLoansExecutionTransport):
+                        raise TypeError("transport does not support loans")
+                    gateway = PluggyLoansHttpReadOnlyGateway(
+                        cast(PluggyLoansPayloadTransport, transport)
+                    )
+                else:
+                    gateway = PluggyHttpReadOnlyGateway(
+                        cast(PluggyPayloadTransport, transport)
+                    )
                 provider: BankingProvider = PluggyBankingProvider(gateway)
                 return operation(provider)
             except BankingProviderError as error:

@@ -463,7 +463,7 @@ class PluggyHttpTransport:
             )
         if (
             method == "GET"
-            and path not in {"accounts", "v2/transactions"}
+            and path not in {"accounts", "bills", "investments", "loans", "v2/transactions"}
             and not path.startswith("items/")
         ):
             raise PluggyTransportError(
