@@ -38,7 +38,9 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert "meufinanceiro-demo-ci-only" not in unix
     assert "DEMO_OPERATOR_PASSWORD is obrigatória" not in unix
 
-    assert '$OperatorPasswordFile = Join-Path $SecretsDir "operator_password.txt"' in windows
+    assert (
+        '$OperatorPasswordFile = Join-Path $SecretsDir "operator_password.txt"' in windows
+    )
     assert '"$(New-RandomPassword)`n"' in windows
     assert "Set-PrivateAcl -Path $OperatorPasswordFile" in windows
     assert 'Write-Host "Senha demo: $OperatorPassword"' in windows
