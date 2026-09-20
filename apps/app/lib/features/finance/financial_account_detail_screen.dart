@@ -788,6 +788,367 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
   }
 }
 
+class _ManualEntryDialog extends StatefulWidget {
+  const _ManualEntryDialog({required this.account, required this.kind});
+
+  final FinancialAccount account;
+  final FinancialManualEntryKind kind;
+
+  @override
+  State<_ManualEntryDialog> createState() => _ManualEntryDialogState();
+}
+
+class _ManualEntryDialogState extends State<_ManualEntryDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = _todayDateText();
+    _effectiveDateController = TextEditingController(text: today);
+    _competenceDateController = TextEditingController(text: today);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _descriptionController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialManualEntryCreateInput(
+          amount: _amountController.text,
+          currency: widget.account.currency,
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          description: _descriptionController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados informados.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final income = widget.kind == FinancialManualEntryKind.income;
+    return AlertDialog(
+      title: Text(income ? 'Nova receita' : 'Nova despesa'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _amountController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Valor em ${widget.account.currency}',
+                    helperText: 'Informe um valor positivo, ex.: 125.50',
+                  ),
+                  validator: _validatePositiveMoney,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Descrição'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(income ? 'Registrar receita' : 'Registrar despesa'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TransferDialog extends StatefulWidget {
+  const _TransferDialog({
+    required this.account,
+    required this.destinations,
+  });
+
+  final FinancialAccount account;
+  final List<FinancialAccount> destinations;
+
+  @override
+  State<_TransferDialog> createState() => _TransferDialogState();
+}
+
+class _TransferDialogState extends State<_TransferDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+  late String _destinationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _destinationId = widget.destinations.first.accountId;
+    final today = _todayDateText();
+    _effectiveDateController = TextEditingController(text: today);
+    _competenceDateController = TextEditingController(text: today);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _descriptionController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialTransferCreateInput(
+          sourceAccountId: widget.account.accountId,
+          destinationAccountId: _destinationId,
+          amount: _amountController.text,
+          currency: widget.account.currency,
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          description: _descriptionController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados da transferência.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Transferir entre contas'),
+      content: SizedBox(
+        width: 500,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _destinationId,
+                  decoration: const InputDecoration(labelText: 'Conta destino'),
+                  items: widget.destinations
+                      .map(
+                        (account) => DropdownMenuItem(
+                          value: account.accountId,
+                          child: Text(account.name),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _destinationId = value);
+                  },
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _amountController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Valor em ${widget.account.currency}',
+                    helperText: 'Informe um valor positivo, ex.: 125.50',
+                  ),
+                  validator: _validatePositiveMoney,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Descrição'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Transferir')),
+      ],
+    );
+  }
+}
+
+class _MovementReversalDialog extends StatefulWidget {
+  const _MovementReversalDialog({required this.movement});
+
+  final FinancialMovement movement;
+
+  @override
+  State<_MovementReversalDialog> createState() =>
+      _MovementReversalDialogState();
+}
+
+class _MovementReversalDialogState extends State<_MovementReversalDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _reasonController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = _todayDateText();
+    _effectiveDateController = TextEditingController(text: today);
+    _competenceDateController = TextEditingController(text: today);
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialMovementReversalInput(
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          reason: _reasonController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados da reversão.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reverter lançamento'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.movement.description ?? 'Lançamento selecionado',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _reasonController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Motivo'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva da reversão',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Confirmar reversão')),
+      ],
+    );
+  }
+}
+
 class _Metadata extends StatelessWidget {
   const _Metadata({required this.label, required this.value});
   final String label;
@@ -911,6 +1272,133 @@ class _FailureOrLoading extends StatelessWidget {
       ),
     );
   }
+}
+
+String _todayDateText() {
+  final now = DateTime.now();
+  return '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
+
+String? _validatePositiveMoney(String? value) {
+  final source = value ?? '';
+  final valid = RegExp(
+    r'^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?
+
+String _dateLabel(String value) {
+  final parts = value.split('-');
+  return parts.length == 3 ? '${parts[2]}/${parts[1]}/${parts[0]}' : value;
+}
+
+String _typeLabel(FinancialAccountType type) => switch (type) {
+  FinancialAccountType.checking => 'Conta corrente',
+  FinancialAccountType.savings => 'Poupança',
+  FinancialAccountType.cash => 'Dinheiro',
+  FinancialAccountType.digitalWallet => 'Carteira digital',
+  FinancialAccountType.investment => 'Investimento',
+  FinancialAccountType.benefit => 'Benefício',
+  FinancialAccountType.custom => 'Personalizada',
+};
+
+String _visibilityLabel(FinancialVisibilityScope scope) => switch (scope) {
+  FinancialVisibilityScope.personal => 'Pessoal',
+  FinancialVisibilityScope.shared => 'Compartilhada',
+  FinancialVisibilityScope.household => 'Residência',
+};
+
+String _effectLabel(FinancialResultEffect effect) => switch (effect) {
+  FinancialResultEffect.income => 'Receita',
+  FinancialResultEffect.expense => 'Despesa',
+  FinancialResultEffect.neutral => 'Neutro',
+};
+,
+  ).hasMatch(source);
+  if (!valid || RegExp(r'^0(?:\.0{1,8})?
+
+String _dateLabel(String value) {
+  final parts = value.split('-');
+  return parts.length == 3 ? '${parts[2]}/${parts[1]}/${parts[0]}' : value;
+}
+
+String _typeLabel(FinancialAccountType type) => switch (type) {
+  FinancialAccountType.checking => 'Conta corrente',
+  FinancialAccountType.savings => 'Poupança',
+  FinancialAccountType.cash => 'Dinheiro',
+  FinancialAccountType.digitalWallet => 'Carteira digital',
+  FinancialAccountType.investment => 'Investimento',
+  FinancialAccountType.benefit => 'Benefício',
+  FinancialAccountType.custom => 'Personalizada',
+};
+
+String _visibilityLabel(FinancialVisibilityScope scope) => switch (scope) {
+  FinancialVisibilityScope.personal => 'Pessoal',
+  FinancialVisibilityScope.shared => 'Compartilhada',
+  FinancialVisibilityScope.household => 'Residência',
+};
+
+String _effectLabel(FinancialResultEffect effect) => switch (effect) {
+  FinancialResultEffect.income => 'Receita',
+  FinancialResultEffect.expense => 'Despesa',
+  FinancialResultEffect.neutral => 'Neutro',
+};
+).hasMatch(source)) {
+    return 'Informe um valor positivo válido.';
+  }
+  return null;
+}
+
+String? _validateDescription(String? value) {
+  final source = value ?? '';
+  if (source.isEmpty ||
+      source.length > 256 ||
+      source != source.trim() ||
+      source.codeUnits.any((unit) => unit < 32 || unit == 127)) {
+    return 'Informe um texto válido de até 256 caracteres.';
+  }
+  return null;
+}
+
+String? _validateDate(String? value) {
+  final source = value ?? '';
+  if (!RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}
+
+String _dateLabel(String value) {
+  final parts = value.split('-');
+  return parts.length == 3 ? '${parts[2]}/${parts[1]}/${parts[0]}' : value;
+}
+
+String _typeLabel(FinancialAccountType type) => switch (type) {
+  FinancialAccountType.checking => 'Conta corrente',
+  FinancialAccountType.savings => 'Poupança',
+  FinancialAccountType.cash => 'Dinheiro',
+  FinancialAccountType.digitalWallet => 'Carteira digital',
+  FinancialAccountType.investment => 'Investimento',
+  FinancialAccountType.benefit => 'Benefício',
+  FinancialAccountType.custom => 'Personalizada',
+};
+
+String _visibilityLabel(FinancialVisibilityScope scope) => switch (scope) {
+  FinancialVisibilityScope.personal => 'Pessoal',
+  FinancialVisibilityScope.shared => 'Compartilhada',
+  FinancialVisibilityScope.household => 'Residência',
+};
+
+String _effectLabel(FinancialResultEffect effect) => switch (effect) {
+  FinancialResultEffect.income => 'Receita',
+  FinancialResultEffect.expense => 'Despesa',
+  FinancialResultEffect.neutral => 'Neutro',
+};
+).hasMatch(source)) {
+    return 'Informe a data no formato AAAA-MM-DD.';
+  }
+  final parsed = DateTime.tryParse('${source}T00:00:00Z');
+  final canonical = parsed == null
+      ? null
+      : '${parsed.year.toString().padLeft(4, '0')}-'
+            '${parsed.month.toString().padLeft(2, '0')}-'
+            '${parsed.day.toString().padLeft(2, '0')}';
+  return canonical == source ? null : 'Informe uma data válida.';
 }
 
 String _moneyLabel(FinancialMoneyWire money) =>
