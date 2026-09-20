@@ -10,14 +10,25 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from meufinanceiro_finance import (
+    FinancialAccountBalanceSnapshot,
     FinancialAccountDraft,
     FinancialAccountRecord,
+    FinancialAccountStatement,
     FinancialAccountType,
+    FinancialLedgerStateError,
+    FinancialManualEntryDraft,
+    FinancialManualEntryType,
     FinancialMovementRecord,
+    FinancialMovementReversalDraft,
     FinancialOpeningBalanceDraft,
     FinancialOpeningBalanceRecord,
+    FinancialStatementEntry,
+    FinancialTransferDraft,
+    FinancialTransferRecord,
+    FinancialTransferReversalDraft,
     FinancialVisibilityScope,
     Money,
+    validate_financial_idempotency_key,
     validate_financial_resource_id,
 )
 from meufinanceiro_persistence.financial_account_store import (
@@ -28,6 +39,9 @@ from meufinanceiro_persistence.financial_account_store import (
 from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementAccessError,
     FinancialMovementAccountNotFoundError,
+    FinancialMovementAlreadyReversedError,
+    FinancialMovementBeforeOpeningBalanceError,
+    FinancialMovementIdempotencyConflictError,
     FinancialMovementNotFoundError,
     FinancialMovementPersistenceError,
 )
@@ -37,6 +51,15 @@ from meufinanceiro_persistence.financial_opening_balance_store import (
     FinancialOpeningBalanceAlreadyExistsError,
     FinancialOpeningBalanceCurrencyMismatchError,
     FinancialOpeningBalancePersistenceError,
+)
+from meufinanceiro_persistence.financial_transfer_store import (
+    FinancialTransferAccessError,
+    FinancialTransferAccountNotFoundError,
+    FinancialTransferAlreadyReversedError,
+    FinancialTransferBeforeOpeningBalanceError,
+    FinancialTransferIdempotencyConflictError,
+    FinancialTransferNotFoundError,
+    FinancialTransferPersistenceError,
 )
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -147,6 +170,112 @@ class FinancialMovementsResponse(BaseModel):
     movements: tuple[FinancialMovementResponse, ...]
 
 
+class FinancialManualEntryCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    amount: str = Field(strict=True, min_length=1, max_length=32)
+    currency: str = Field(strict=True, min_length=3, max_length=3)
+    effective_date: str = Field(
+        alias="effectiveDate", strict=True, min_length=10, max_length=10
+    )
+    competence_date: str = Field(
+        alias="competenceDate", strict=True, min_length=10, max_length=10
+    )
+    description: str = Field(strict=True, min_length=1, max_length=256)
+
+
+class FinancialMovementReversalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    effective_date: str = Field(
+        alias="effectiveDate", strict=True, min_length=10, max_length=10
+    )
+    competence_date: str = Field(
+        alias="competenceDate", strict=True, min_length=10, max_length=10
+    )
+    reason: str = Field(strict=True, min_length=1, max_length=256)
+
+
+class FinancialTransferCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    source_account_id: UUID = Field(alias="sourceAccountId")
+    destination_account_id: UUID = Field(alias="destinationAccountId")
+    amount: str = Field(strict=True, min_length=1, max_length=32)
+    currency: str = Field(strict=True, min_length=3, max_length=3)
+    effective_date: str = Field(
+        alias="effectiveDate", strict=True, min_length=10, max_length=10
+    )
+    competence_date: str = Field(
+        alias="competenceDate", strict=True, min_length=10, max_length=10
+    )
+    description: str = Field(strict=True, min_length=1, max_length=256)
+
+
+class FinancialTransferReversalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    effective_date: str = Field(
+        alias="effectiveDate", strict=True, min_length=10, max_length=10
+    )
+    competence_date: str = Field(
+        alias="competenceDate", strict=True, min_length=10, max_length=10
+    )
+    reason: str = Field(strict=True, min_length=1, max_length=256)
+
+
+class FinancialTransferResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    transfer_id: UUID = Field(serialization_alias="transferId")
+    source_account_id: UUID = Field(serialization_alias="sourceAccountId")
+    destination_account_id: UUID = Field(serialization_alias="destinationAccountId")
+    currency: str
+    source_movement_id: UUID = Field(serialization_alias="sourceMovementId")
+    destination_movement_id: UUID = Field(serialization_alias="destinationMovementId")
+    role: str
+    reversal_of_id: UUID | None = Field(serialization_alias="reversalOfId")
+    created_at: datetime = Field(serialization_alias="createdAt")
+
+
+class FinancialBalanceResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: UUID = Field(serialization_alias="accountId")
+    currency: str
+    opening_balance: FinancialMoneyResponse | None = Field(
+        serialization_alias="openingBalance"
+    )
+    movement_net: FinancialMoneyResponse = Field(serialization_alias="movementNet")
+    current_balance: FinancialMoneyResponse = Field(serialization_alias="currentBalance")
+    movement_count: int = Field(serialization_alias="movementCount")
+    calculated_at: datetime = Field(serialization_alias="calculatedAt")
+
+
+class FinancialStatementEntryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    movement: FinancialMovementResponse
+    balance_after: FinancialMoneyResponse = Field(serialization_alias="balanceAfter")
+
+
+class FinancialStatementResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: UUID = Field(serialization_alias="accountId")
+    currency: str
+    opening_balance: FinancialMoneyResponse | None = Field(
+        serialization_alias="openingBalance"
+    )
+    entries: tuple[FinancialStatementEntryResponse, ...]
+    closing_balance: FinancialMoneyResponse = Field(serialization_alias="closingBalance")
+    calculated_at: datetime = Field(serialization_alias="calculatedAt")
+
+
 def _service(request: Request) -> FinancialCoreService:
     service = getattr(request.app.state, "financial_core", None)
     if service is None:
@@ -226,6 +355,127 @@ def _opening_balance_draft(
         ) from None
 
 
+def _idempotency_key(value: UUID) -> UUID:
+    try:
+        return validate_financial_idempotency_key(value)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _positive_money(amount: str, currency: str) -> Money:
+    if not _DECIMAL_PATTERN.fullmatch(amount):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        )
+    try:
+        parsed = Decimal(amount)
+        if not parsed.is_finite() or parsed <= 0:
+            raise InvalidOperation
+        return Money(parsed, currency)
+    except (InvalidOperation, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _plain_date(value: str) -> date:
+    if not _DATE_PATTERN.fullmatch(value):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        )
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _manual_entry_draft(
+    account_id: UUID,
+    payload: FinancialManualEntryCreateRequest,
+    entry_type: FinancialManualEntryType,
+) -> FinancialManualEntryDraft:
+    try:
+        return FinancialManualEntryDraft(
+            account_id=account_id,
+            magnitude=_positive_money(payload.amount, payload.currency),
+            entry_type=entry_type,
+            effective_date=_plain_date(payload.effective_date),
+            competence_date=_plain_date(payload.competence_date),
+            description=payload.description,
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _movement_reversal_draft(
+    movement_id: UUID,
+    payload: FinancialMovementReversalRequest,
+) -> FinancialMovementReversalDraft:
+    try:
+        return FinancialMovementReversalDraft(
+            movement_id=movement_id,
+            effective_date=_plain_date(payload.effective_date),
+            competence_date=_plain_date(payload.competence_date),
+            reason=payload.reason,
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _transfer_draft(payload: FinancialTransferCreateRequest) -> FinancialTransferDraft:
+    try:
+        return FinancialTransferDraft(
+            source_account_id=_validated_resource_id(payload.source_account_id),
+            destination_account_id=_validated_resource_id(
+                payload.destination_account_id
+            ),
+            magnitude=_positive_money(payload.amount, payload.currency),
+            effective_date=_plain_date(payload.effective_date),
+            competence_date=_plain_date(payload.competence_date),
+            description=payload.description,
+        )
+    except HTTPException:
+        raise
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _transfer_reversal_draft(
+    transfer_id: UUID,
+    payload: FinancialTransferReversalRequest,
+) -> FinancialTransferReversalDraft:
+    try:
+        return FinancialTransferReversalDraft(
+            transfer_id=transfer_id,
+            effective_date=_plain_date(payload.effective_date),
+            competence_date=_plain_date(payload.competence_date),
+            reason=payload.reason,
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
 def _validated_resource_id(value: UUID) -> UUID:
     try:
         return validate_financial_resource_id(value)
@@ -284,6 +534,64 @@ def _movement_response(record: FinancialMovementRecord) -> FinancialMovementResp
         reversal_of_id=record.reversal_of_id,
         reversal_reason=record.reversal_reason,
         created_at=record.created_at,
+    )
+
+
+def _transfer_response(record: FinancialTransferRecord) -> FinancialTransferResponse:
+    return FinancialTransferResponse(
+        transfer_id=record.id,
+        source_account_id=record.source_account_id,
+        destination_account_id=record.destination_account_id,
+        currency=record.currency,
+        source_movement_id=record.source_movement_id,
+        destination_movement_id=record.destination_movement_id,
+        role=record.role.value,
+        reversal_of_id=record.reversal_of_id,
+        created_at=record.created_at,
+    )
+
+
+def _balance_response(
+    snapshot: FinancialAccountBalanceSnapshot,
+) -> FinancialBalanceResponse:
+    return FinancialBalanceResponse(
+        account_id=snapshot.account_id,
+        currency=snapshot.currency,
+        opening_balance=(
+            None
+            if snapshot.opening_balance is None
+            else _money_response(snapshot.opening_balance)
+        ),
+        movement_net=_money_response(snapshot.movement_net),
+        current_balance=_money_response(snapshot.current_balance),
+        movement_count=snapshot.movement_count,
+        calculated_at=snapshot.calculated_at,
+    )
+
+
+def _statement_entry_response(
+    entry: FinancialStatementEntry,
+) -> FinancialStatementEntryResponse:
+    return FinancialStatementEntryResponse(
+        movement=_movement_response(entry.movement),
+        balance_after=_money_response(entry.balance_after),
+    )
+
+
+def _statement_response(
+    statement: FinancialAccountStatement,
+) -> FinancialStatementResponse:
+    return FinancialStatementResponse(
+        account_id=statement.account_id,
+        currency=statement.currency,
+        opening_balance=(
+            None
+            if statement.opening_balance is None
+            else _money_response(statement.opening_balance)
+        ),
+        entries=tuple(_statement_entry_response(item) for item in statement.entries),
+        closing_balance=_money_response(statement.closing_balance),
+        calculated_at=statement.calculated_at,
     )
 
 
@@ -346,6 +654,52 @@ def _raise_movement_error(error: FinancialMovementPersistenceError) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="financial access denied",
+        ) from None
+    if isinstance(
+        error,
+        (FinancialMovementAlreadyReversedError, FinancialMovementIdempotencyConflictError),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="financial operation conflicts with canonical state",
+        ) from None
+    if isinstance(error, FinancialMovementBeforeOpeningBalanceError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="financial operation precedes opening balance",
+        ) from None
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="financial service is unavailable",
+    ) from None
+
+
+def _raise_transfer_error(error: FinancialTransferPersistenceError) -> NoReturn:
+    if isinstance(
+        error,
+        (FinancialTransferNotFoundError, FinancialTransferAccountNotFoundError),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="financial resource was not found",
+        ) from None
+    if isinstance(error, FinancialTransferAccessError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="financial access denied",
+        ) from None
+    if isinstance(
+        error,
+        (FinancialTransferAlreadyReversedError, FinancialTransferIdempotencyConflictError),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="financial operation conflicts with canonical state",
+        ) from None
+    if isinstance(error, FinancialTransferBeforeOpeningBalanceError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="financial operation precedes opening balance",
         ) from None
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -539,6 +893,234 @@ def get_movement(
     except FinancialMovementPersistenceError as error:
         _raise_movement_error(error)
     return _movement_response(record)
+
+
+@router.post(
+    "/accounts/{account_id}/income",
+    response_model=FinancialMovementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_income(
+    account_id: UUID,
+    payload: FinancialManualEntryCreateRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementResponse:
+    _reject_query_params(request)
+    account_id = _validated_resource_id(account_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).record_manual_entry(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_manual_entry_draft(
+                account_id,
+                payload,
+                FinancialManualEntryType.INCOME,
+            ),
+        )
+    except FinancialMovementPersistenceError as error:
+        _raise_movement_error(error)
+    return _movement_response(record)
+
+
+@router.post(
+    "/accounts/{account_id}/expense",
+    response_model=FinancialMovementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_expense(
+    account_id: UUID,
+    payload: FinancialManualEntryCreateRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementResponse:
+    _reject_query_params(request)
+    account_id = _validated_resource_id(account_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).record_manual_entry(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_manual_entry_draft(
+                account_id,
+                payload,
+                FinancialManualEntryType.EXPENSE,
+            ),
+        )
+    except FinancialMovementPersistenceError as error:
+        _raise_movement_error(error)
+    return _movement_response(record)
+
+
+@router.post(
+    "/movements/{movement_id}/reversal",
+    response_model=FinancialMovementResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def reverse_movement(
+    movement_id: UUID,
+    payload: FinancialMovementReversalRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementResponse:
+    _reject_query_params(request)
+    movement_id = _validated_resource_id(movement_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).reverse_movement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_movement_reversal_draft(movement_id, payload),
+        )
+    except FinancialMovementPersistenceError as error:
+        _raise_movement_error(error)
+    return _movement_response(record)
+
+
+@router.post(
+    "/transfers",
+    response_model=FinancialTransferResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_transfer(
+    payload: FinancialTransferCreateRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialTransferResponse:
+    _reject_query_params(request)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).create_transfer(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_transfer_draft(payload),
+        )
+    except FinancialTransferPersistenceError as error:
+        _raise_transfer_error(error)
+    return _transfer_response(record)
+
+
+@router.post(
+    "/transfers/{transfer_id}/reversal",
+    response_model=FinancialTransferResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def reverse_transfer(
+    transfer_id: UUID,
+    payload: FinancialTransferReversalRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialTransferResponse:
+    _reject_query_params(request)
+    transfer_id = _validated_resource_id(transfer_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).reverse_transfer(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_transfer_reversal_draft(transfer_id, payload),
+        )
+    except FinancialTransferPersistenceError as error:
+        _raise_transfer_error(error)
+    return _transfer_response(record)
+
+
+@router.get(
+    "/accounts/{account_id}/balance",
+    response_model=FinancialBalanceResponse,
+)
+def get_balance(
+    account_id: UUID,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialBalanceResponse:
+    _reject_query_params(request)
+    account_id = _validated_resource_id(account_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        snapshot = _service(request).get_balance_snapshot(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+    except FinancialAccountPersistenceError as error:
+        _raise_account_error(error)
+    except FinancialOpeningBalancePersistenceError as error:
+        _raise_opening_balance_error(error)
+    except FinancialMovementPersistenceError as error:
+        _raise_movement_error(error)
+    except FinancialLedgerStateError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="financial service is unavailable",
+        ) from None
+    return _balance_response(snapshot)
+
+
+@router.get(
+    "/accounts/{account_id}/statement",
+    response_model=FinancialStatementResponse,
+)
+def get_statement(
+    account_id: UUID,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialStatementResponse:
+    _reject_query_params(request)
+    account_id = _validated_resource_id(account_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        statement = _service(request).get_statement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+    except FinancialAccountPersistenceError as error:
+        _raise_account_error(error)
+    except FinancialOpeningBalancePersistenceError as error:
+        _raise_opening_balance_error(error)
+    except FinancialMovementPersistenceError as error:
+        _raise_movement_error(error)
+    except FinancialLedgerStateError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="financial service is unavailable",
+        ) from None
+    return _statement_response(statement)
 
 
 __all__ = ["router"]
