@@ -6,11 +6,20 @@ from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from meufinanceiro_finance import (
+    FinancialAccountBalanceSnapshot,
     FinancialAccountDraft,
     FinancialAccountRecord,
+    FinancialAccountStatement,
+    FinancialManualEntryDraft,
+    FinancialManualEntryService,
+    FinancialMovementDraft,
     FinancialMovementRecord,
+    FinancialMovementReversalDraft,
     FinancialOpeningBalanceDraft,
     FinancialOpeningBalanceRecord,
+    FinancialTransferDraft,
+    FinancialTransferRecord,
+    FinancialTransferReversalDraft,
 )
 
 
@@ -67,6 +76,26 @@ class FinancialOpeningBalanceStoreBoundary(Protocol):
 
 @runtime_checkable
 class FinancialMovementStoreBoundary(Protocol):
+    def create_movement(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementDraft,
+    ) -> FinancialMovementRecord: ...
+
+    def reverse_movement(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementReversalDraft,
+    ) -> FinancialMovementRecord: ...
+
     def get_movement(
         self,
         *,
@@ -86,14 +115,60 @@ class FinancialMovementStoreBoundary(Protocol):
     ) -> tuple[FinancialMovementRecord, ...]: ...
 
 
+@runtime_checkable
+class FinancialTransferStoreBoundary(Protocol):
+    def create_transfer(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialTransferDraft,
+    ) -> FinancialTransferRecord: ...
+
+    def reverse_transfer(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialTransferReversalDraft,
+    ) -> FinancialTransferRecord: ...
+
+
+@runtime_checkable
+class FinancialBalanceQueryBoundary(Protocol):
+    def get_balance_snapshot(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> FinancialAccountBalanceSnapshot: ...
+
+    def get_statement(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> FinancialAccountStatement: ...
+
+
 class FinancialCoreService:
-    """Delegate financial API operations to canonical persistence boundaries."""
+    """Delegate financial API operations to canonical domain/persistence boundaries."""
 
     def __init__(
         self,
         account_store: FinancialAccountStoreBoundary,
         opening_balance_store: FinancialOpeningBalanceStoreBoundary,
         movement_store: FinancialMovementStoreBoundary,
+        transfer_store: FinancialTransferStoreBoundary,
+        balance_query: FinancialBalanceQueryBoundary,
     ) -> None:
         if not isinstance(account_store, FinancialAccountStoreBoundary):
             raise TypeError("account_store must satisfy FinancialAccountStoreBoundary")
@@ -105,9 +180,18 @@ class FinancialCoreService:
             raise TypeError(
                 "movement_store must satisfy FinancialMovementStoreBoundary"
             )
+        if not isinstance(transfer_store, FinancialTransferStoreBoundary):
+            raise TypeError(
+                "transfer_store must satisfy FinancialTransferStoreBoundary"
+            )
+        if not isinstance(balance_query, FinancialBalanceQueryBoundary):
+            raise TypeError("balance_query must satisfy FinancialBalanceQueryBoundary")
         self._accounts = account_store
         self._opening_balances = opening_balance_store
         self._movements = movement_store
+        self._manual_entries = FinancialManualEntryService(movement_store)
+        self._transfers = transfer_store
+        self._balance_query = balance_query
 
     def create_account(
         self,
@@ -177,8 +261,6 @@ class FinancialCoreService:
         operator_id: UUID,
         account_id: UUID,
     ) -> FinancialOpeningBalanceRecord | None:
-        # Resolve the account first so a missing/invisible account remains a 404
-        # instead of being conflated with a visible account that has no anchor.
         self._accounts.get_account(
             installation_id=installation_id,
             residence_id=residence_id,
@@ -190,6 +272,40 @@ class FinancialCoreService:
             residence_id=residence_id,
             operator_id=operator_id,
             account_id=account_id,
+        )
+
+    def record_manual_entry(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialManualEntryDraft,
+    ) -> FinancialMovementRecord:
+        return self._manual_entries.record(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
+        )
+
+    def reverse_movement(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementReversalDraft,
+    ) -> FinancialMovementRecord:
+        return self._movements.reverse_movement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
         )
 
     def get_movement(
@@ -222,10 +338,76 @@ class FinancialCoreService:
             account_id=account_id,
         )
 
+    def create_transfer(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialTransferDraft,
+    ) -> FinancialTransferRecord:
+        return self._transfers.create_transfer(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
+        )
+
+    def reverse_transfer(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialTransferReversalDraft,
+    ) -> FinancialTransferRecord:
+        return self._transfers.reverse_transfer(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
+        )
+
+    def get_balance_snapshot(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> FinancialAccountBalanceSnapshot:
+        return self._balance_query.get_balance_snapshot(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+
+    def get_statement(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> FinancialAccountStatement:
+        return self._balance_query.get_statement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+
 
 __all__ = [
     "FinancialAccountStoreBoundary",
+    "FinancialBalanceQueryBoundary",
     "FinancialCoreService",
     "FinancialMovementStoreBoundary",
     "FinancialOpeningBalanceStoreBoundary",
+    "FinancialTransferStoreBoundary",
 ]

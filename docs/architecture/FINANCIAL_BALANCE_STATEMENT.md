@@ -47,6 +47,15 @@ Não introduzir nesta camada:
 - nova tabela/migration;
 - mutação de ledger.
 
-## Evolução
+## Exposição no Alpha
 
-API e Flutter poderão expor snapshot e extrato em recorte separado. Paginação/range temporal exige contrato próprio para preservar o running balance correto da página.
+A #191 expõe snapshot e extrato pela API autenticada:
+
+```text
+GET /finance/accounts/{account_id}/balance
+GET /finance/accounts/{account_id}/statement
+```
+
+A API apenas serializa `FinancialBalanceQueryService`; não materializa saldo nem reimplementa a soma. A UI Flutter permanece em recorte posterior.
+
+Paginação/range temporal exige contrato próprio para preservar o running balance correto da página.

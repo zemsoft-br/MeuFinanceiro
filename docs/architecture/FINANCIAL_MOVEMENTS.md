@@ -199,16 +199,16 @@ A fronteira de persistência é um `Protocol` mínimo. O módulo de entrada manu
 
 Correções continuam sendo novos eventos de reversão. Categoria permanece opcional e fora desse caso de uso.
 
-## Transferência futura
+## Transferência interna
 
-Transferência será uma operação atômica externa ao Movement básico:
+A transferência canônica é uma operação atômica externa ao Movement básico:
 
 ```text
 origem  -> NEUTRAL negativo
 destino -> NEUTRAL positivo
 ```
 
-Os dois eventos serão ligados por um `transfer_id` distinto dos `movement_id` e das idempotency keys.
+Os dois eventos são ligados por um `transfer_id` distinto dos `movement_id` e das idempotency keys. A relação de transferência não duplica valor monetário e a reversão ocorre atomicamente nas duas pernas.
 
 ## Saldo
 
@@ -246,16 +246,27 @@ delete_movement
 upsert destrutivo
 ```
 
-## Fora do escopo
+## Superfície HTTP semântica
 
-- saldo materializado/query de saldo;
+A #191 expõe a camada autenticada sem criar um writer genérico de Movement:
+
+```text
+POST /finance/accounts/{account_id}/income
+POST /finance/accounts/{account_id}/expense
+POST /finance/movements/{movement_id}/reversal
+POST /finance/transfers
+POST /finance/transfers/{transfer_id}/reversal
+GET  /finance/accounts/{account_id}/balance
+GET  /finance/accounts/{account_id}/statement
+```
+
+O escopo de instalação/residência/operador continua derivado da sessão. Idempotência é explícita, dinheiro usa decimal em string e saldo/extrato continuam derivados do ledger.
+
+## Fora do escopo atual
+
 - category link;
-- transferências;
-- rateios;
+- rateios na superfície HTTP do Alpha;
 - partial refund/correction;
-- API/FastAPI;
-- Flutter;
-- Pluggy/importadores;
-- cartões/faturas;
-- empréstimos;
+- UI Flutter para os novos comandos;
+- Pluggy/importadores como escritores automáticos;
 - deploy/HML/produção.

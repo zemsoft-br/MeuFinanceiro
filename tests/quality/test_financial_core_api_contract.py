@@ -10,12 +10,16 @@ AUTH = (ROOT / "apps/api/app/api/auth.py").read_text(encoding="utf-8")
 MAIN = (ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
 
 
-def test_financial_api_does_not_expose_generic_movement_creation() -> None:
+def test_financial_api_exposes_only_semantic_financial_writers() -> None:
     assert '@router.post("/movements"' not in ROUTE
-    assert "FinancialMovementDraft" not in ROUTE
-    assert "FinancialMovementDraft" not in SERVICE
     assert "manual-entries" not in ROUTE
-    assert "transfers" not in ROUTE
+    assert '"/accounts/{account_id}/income"' in ROUTE
+    assert '"/accounts/{account_id}/expense"' in ROUTE
+    assert '"/movements/{movement_id}/reversal"' in ROUTE
+    assert '"/transfers"' in ROUTE
+    assert '"/transfers/{transfer_id}/reversal"' in ROUTE
+    assert "FinancialManualEntryDraft" in ROUTE
+    assert "FinancialManualEntryService" in SERVICE
 
 
 def test_financial_api_derives_scope_from_authenticated_primary_residence() -> None:
@@ -55,6 +59,9 @@ def test_financial_service_is_store_protocol_orchestration_only() -> None:
     assert "class FinancialAccountStoreBoundary(Protocol)" in SERVICE
     assert "class FinancialOpeningBalanceStoreBoundary(Protocol)" in SERVICE
     assert "class FinancialMovementStoreBoundary(Protocol)" in SERVICE
+    assert "class FinancialTransferStoreBoundary(Protocol)" in SERVICE
+    assert "class FinancialBalanceQueryBoundary(Protocol)" in SERVICE
+    assert "FinancialManualEntryService" in SERVICE
     assert "sqlalchemy" not in SERVICE.lower()
     assert "pluggy" not in SERVICE.lower()
     assert "fastapi" not in SERVICE.lower()
@@ -70,3 +77,20 @@ def test_financial_route_is_provider_neutral() -> None:
         "clientuser",
     ):
         assert forbidden not in lowered
+
+
+def test_financial_api_exposes_derived_balance_and_statement_without_mutable_balance() -> (
+    None
+):
+    assert '"/accounts/{account_id}/balance"' in ROUTE
+    assert '"/accounts/{account_id}/statement"' in ROUTE
+    assert "FinancialBalanceQueryService" in MAIN
+    assert "current_balance" in ROUTE
+    assert "closing_balance" in ROUTE
+    assert "UPDATE " not in ROUTE.upper()
+
+
+def test_semantic_financial_operations_require_explicit_idempotency() -> None:
+    assert 'alias="idempotencyKey"' in ROUTE
+    assert "validate_financial_idempotency_key" in ROUTE
+    assert "idempotency_key=_idempotency_key(payload.idempotency_key)" in ROUTE

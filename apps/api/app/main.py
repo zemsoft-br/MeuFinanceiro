@@ -19,10 +19,14 @@ from meufinanceiro_persistence import (
     OperatorIdentityStore,
 )
 from meufinanceiro_persistence.financial_account_store import FinancialAccountStore
+from meufinanceiro_persistence.financial_balance_query import (
+    FinancialBalanceQueryService,
+)
 from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
 from meufinanceiro_persistence.financial_opening_balance_store import (
     FinancialOpeningBalanceStore,
 )
+from meufinanceiro_persistence.financial_transfer_store import FinancialTransferStore
 from meufinanceiro_security.envelope import SecretCipher
 from meufinanceiro_security.keyring import load_keyring
 from meufinanceiro_security.redaction import install_log_redaction
@@ -73,6 +77,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         financial_account_store = FinancialAccountStore(database.engine)
         financial_opening_balance_store = FinancialOpeningBalanceStore(database.engine)
         financial_movement_store = FinancialMovementStore(database.engine)
+        financial_transfer_store = FinancialTransferStore(database.engine)
+        financial_balance_query = FinancialBalanceQueryService(
+            financial_account_store,
+            financial_opening_balance_store,
+            financial_movement_store,
+        )
         available_providers = (
             ("pluggy",) if resolved_settings.app_banking_pluggy_enabled else ()
         )
@@ -119,6 +129,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             financial_account_store,
             financial_opening_balance_store,
             financial_movement_store,
+            financial_transfer_store,
+            financial_balance_query,
         )
         app.state.banking_administration = BankingAdministrationService(
             banking_store,
