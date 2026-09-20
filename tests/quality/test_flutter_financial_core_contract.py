@@ -21,13 +21,22 @@ DETAIL_SCREEN = (
 MONEY_INPUT = (FLUTTER / "features/finance/financial_money_input.dart").read_text(
     encoding="utf-8"
 )
+TRANSFER_REVERSAL_POLICY = (
+    FLUTTER / "features/finance/financial_transfer_reversal_policy.dart"
+).read_text(encoding="utf-8")
 ROUTES = (FLUTTER / "routing/app_routes.dart").read_text(encoding="utf-8")
 ROUTER = (FLUTTER / "routing/app_router.dart").read_text(encoding="utf-8")
 
 
 def test_financial_flutter_money_contract_never_uses_double() -> None:
     combined = (
-        API + CONTROLLER + LIST_SCREEN + CREATE_SCREEN + DETAIL_SCREEN + MONEY_INPUT
+        API
+        + CONTROLLER
+        + LIST_SCREEN
+        + CREATE_SCREEN
+        + DETAIL_SCREEN
+        + MONEY_INPUT
+        + TRANSFER_REVERSAL_POLICY
     )
     assert "double.parse" not in combined
     assert "double.tryParse" not in combined
@@ -96,6 +105,8 @@ def test_financial_flutter_exposes_semantic_commands_without_generic_writer() ->
     assert "createManualEntry" in API
     assert "reverseMovement" in API
     assert "createTransfer" in API
+    assert "listTransfers" in API
+    assert "reverseTransfer" in API
     assert "createManualEntry" in CONTROLLER
     assert "reverseMovement" in CONTROLLER
     assert "createTransfer" in CONTROLLER
@@ -104,10 +115,13 @@ def test_financial_flutter_exposes_semantic_commands_without_generic_writer() ->
         "Nova despesa",
         "Transferir",
         "Reverter lançamento",
+        "Reverter transferência",
     ):
         assert required in DETAIL_SCREEN
     assert "finance/movements/$id/reversal" in API
     assert "finance/transfers" in API
+    assert "finance/accounts/$id/transfers" in API
+    assert "finance/transfers/$id/reversal" in API
     assert "POST /finance/movements" not in API
 
 
@@ -131,8 +145,15 @@ def test_financial_flutter_uses_backend_derived_balance_and_statement() -> None:
 
 def test_financial_flutter_preserves_transfer_atomicity_in_reversal_ui() -> None:
     assert "movement.resultEffect != FinancialResultEffect.neutral" in DETAIL_SCREEN
-    assert "reverseTransfer" not in DETAIL_SCREEN
-    assert "reverseTransfer" not in CONTROLLER
+    assert "listTransfers" in API
+    assert "reverseTransfer" in API
+    assert "reverseTransfer" in CONTROLLER
+    assert "await api.listTransfers(accountId)" in CONTROLLER
+    assert "Reverter transferência" in DETAIL_SCREEN
+    assert "reversibleTransferForMovement" in DETAIL_SCREEN
+    assert "FinancialTransferRole.reversal" in TRANSFER_REVERSAL_POLICY
+    assert "reversedTransferIds.contains(transfer.transferId)" in TRANSFER_REVERSAL_POLICY
+    assert "movement maps to multiple reversible transfers" in TRANSFER_REVERSAL_POLICY
     assert "perna" not in DETAIL_SCREEN.lower()
 
 
