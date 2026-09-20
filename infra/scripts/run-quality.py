@@ -18,6 +18,7 @@ SUPPORTED_PYTHON_MIN = (3, 13)
 SUPPORTED_PYTHON_MAX = (3, 14)
 TEST_DATABASE_ENV_VARS = ("TEST_DATABASE_URL", "TEST_APP_DATABASE_USER")
 REQUIRED_COMMANDS = ("node", "flutter", "dart")
+PIP_REQUIREMENT = "pip==26.2"
 TOOLS = (
     "mypy==2.3.0",
     "pip-audit==2.10.1",
@@ -144,6 +145,17 @@ def ensure_python_environment(recreate: bool) -> Path:
         venv.EnvBuilder(with_pip=True, clear=False).create(VENV_DIR)
 
     python = venv_python()
+    run(
+        [
+            str(python),
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--upgrade",
+            PIP_REQUIREMENT,
+        ]
+    )
     run(
         [
             str(python),
