@@ -60,6 +60,18 @@ void main() {
     );
   });
 
+  test('rejects stale fixture version and checksum', () async {
+    for (final body in [
+      _payload(fixtureVersion: 1),
+      _payload(contractChecksum: '0' * 64),
+    ]) {
+      await expectLater(
+        service(FakeHealthTransport.response(statusCode: 200, body: body)).check(),
+        throwsA(isA<FormatException>()),
+      );
+    }
+  });
+
   test('rejects an inconsistent loaded state', () async {
     final transport = FakeHealthTransport.response(
       statusCode: 200,
@@ -93,7 +105,10 @@ void main() {
 String _payload({
   bool enabled = true,
   bool loaded = true,
-  String scope = 'foundation_only',
+  int fixtureVersion = 2,
+  String scope = 'finance_phase1',
+  String contractChecksum =
+      'a819b4913e35cabff3f20617b3e7837a6042b0c9243031a65b3f53fa7086d091',
 }) {
   final loadedAt = loaded ? '"2026-11-01T12:00:00Z"' : 'null';
   return '''
@@ -101,12 +116,12 @@ String _payload({
   "enabled": $enabled,
   "loaded": $loaded,
   "fixture_id": "residencia-ipe-v1",
-  "fixture_version": 1,
+  "fixture_version": $fixtureVersion,
   "reference_date": "2026-11-01",
   "timezone": "America/Sao_Paulo",
   "currency": "BRL",
   "scope": "$scope",
-  "contract_checksum": "34a7628233ff6c4f5eac6469b8e80fdedd5d65d80f825b4ecf72a069235a21a1",
+  "contract_checksum": "$contractChecksum",
   "loaded_at": $loadedAt
 }
 ''';
