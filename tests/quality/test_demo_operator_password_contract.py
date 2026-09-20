@@ -29,6 +29,11 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert 'cat "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'rm -rf "$STATE_DIR"' in unix
     assert "migrate_legacy_operator_password" in unix
+    assert "read_operator_password()" in unix
+    assert 'raw.endswith("\\r\\n")' in unix
+    assert 'raw.endswith(("\\n", "\\r"))' in unix
+    assert '"\\r" in value or "\\n" in value' in unix
+    assert 'tr -d \'\\r\\n\'' not in unix
     assert "grep -c '^DEMO_OPERATOR_PASSWORD='" in unix
     assert 'if [ "$legacy_count" -ne 1 ]; then' in unix
     assert "múltiplas credenciais legadas" in unix
