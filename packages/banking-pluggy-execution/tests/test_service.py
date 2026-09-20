@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+import meufinanceiro_banking_pluggy_execution.service as execution_service
 from meufinanceiro_banking import (
     BankingProviderError,
     ConnectionStatus,
@@ -21,6 +22,8 @@ from meufinanceiro_banking_pluggy_execution import (
     ContextualBankingStore,
     PluggyBillsExecutionTransport,
     PluggyExecutionTransport,
+    PluggyInvestmentsExecutionTransport,
+    PluggyLoansExecutionTransport,
     PluggyReadOnlyExecutionService,
 )
 from meufinanceiro_persistence import (
@@ -524,3 +527,19 @@ def test_credit_card_bill_failure_still_closes_transport() -> None:
     assert raised.value.category is ProviderErrorCategory.INTERNAL
     assert transport.bill_calls == [CREDIT_ACCOUNT_ID]
     assert transport.closed is True
+
+
+def test_default_transport_factory_supports_all_financial_read_capabilities() -> None:
+    transport = execution_service._default_transport_factory(
+        PluggyApplicationCredentials(
+            "synthetic-client-id",
+            "synthetic-client-secret",
+        )
+    )
+    try:
+        assert isinstance(transport, PluggyExecutionTransport)
+        assert isinstance(transport, PluggyBillsExecutionTransport)
+        assert isinstance(transport, PluggyInvestmentsExecutionTransport)
+        assert isinstance(transport, PluggyLoansExecutionTransport)
+    finally:
+        transport.close()
