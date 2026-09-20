@@ -27,88 +27,88 @@ void main() {
   test(
     'loads transfer relations and reverses aggregate instead of a leg',
     () async {
-    var reversed = false;
-    final transport = FakeAuthTransport((
-      uri,
-      method,
-      timeout,
-      headers,
-      body,
-    ) async {
-      final path = uri.path;
-      if (method == AuthHttpMethod.post &&
-          path == '/api/v1/finance/transfers/$_transferId/reversal') {
-        final payload = jsonDecode(body!) as Map<String, dynamic>;
-        expect(payload, isNot(contains('amount')));
-        expect(payload['idempotencyKey'], _idempotencyKey);
-        reversed = true;
-        return const AuthHttpResponse(
-          statusCode: 201,
-          body: _reversalTransferObject,
-        );
-      }
-      if (method != AuthHttpMethod.get) {
-        return const AuthHttpResponse(statusCode: 405, body: '{}');
-      }
-      return switch (path) {
-        '/api/v1/finance/accounts/$_accountId' =>
-          const AuthHttpResponse(statusCode: 200, body: _accountObject),
-        '/api/v1/finance/accounts/$_accountId/opening-balance' =>
-          const AuthHttpResponse(
-            statusCode: 200,
-            body: '{"openingBalance":null}',
-          ),
-        '/api/v1/finance/accounts/$_accountId/balance' =>
-          AuthHttpResponse(statusCode: 200, body: _balanceObject(reversed)),
-        '/api/v1/finance/accounts/$_accountId/statement' =>
-          AuthHttpResponse(statusCode: 200, body: _statementObject(reversed)),
-        '/api/v1/finance/accounts/$_accountId/transfers' =>
-          AuthHttpResponse(statusCode: 200, body: _transfersObject(reversed)),
-        '/api/v1/finance/accounts' =>
-          const AuthHttpResponse(statusCode: 200, body: _accountsObject),
-        _ => const AuthHttpResponse(statusCode: 404, body: '{}'),
-      };
-    });
-    final container = _container(transport);
-    addTearDown(container.dispose);
-    final provider = financialAccountDetailControllerProvider(_accountId);
-    container.listen(provider, (previous, next) {}, fireImmediately: true);
-    final controller = container.read(provider.notifier);
+      var reversed = false;
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        final path = uri.path;
+        if (method == AuthHttpMethod.post &&
+            path == '/api/v1/finance/transfers/$_transferId/reversal') {
+          final payload = jsonDecode(body!) as Map<String, dynamic>;
+          expect(payload, isNot(contains('amount')));
+          expect(payload['idempotencyKey'], _idempotencyKey);
+          reversed = true;
+          return const AuthHttpResponse(
+            statusCode: 201,
+            body: _reversalTransferObject,
+          );
+        }
+        if (method != AuthHttpMethod.get) {
+          return const AuthHttpResponse(statusCode: 405, body: '{}');
+        }
+        return switch (path) {
+          '/api/v1/finance/accounts/$_accountId' =>
+            const AuthHttpResponse(statusCode: 200, body: _accountObject),
+          '/api/v1/finance/accounts/$_accountId/opening-balance' =>
+            const AuthHttpResponse(
+              statusCode: 200,
+              body: '{"openingBalance":null}',
+            ),
+          '/api/v1/finance/accounts/$_accountId/balance' =>
+            AuthHttpResponse(statusCode: 200, body: _balanceObject(reversed)),
+          '/api/v1/finance/accounts/$_accountId/statement' =>
+            AuthHttpResponse(statusCode: 200, body: _statementObject(reversed)),
+          '/api/v1/finance/accounts/$_accountId/transfers' =>
+            AuthHttpResponse(statusCode: 200, body: _transfersObject(reversed)),
+          '/api/v1/finance/accounts' =>
+            const AuthHttpResponse(statusCode: 200, body: _accountsObject),
+          _ => const AuthHttpResponse(statusCode: 404, body: '{}'),
+        };
+      });
+      final container = _container(transport);
+      addTearDown(container.dispose);
+      final provider = financialAccountDetailControllerProvider(_accountId);
+      container.listen(provider, (previous, next) {}, fireImmediately: true);
+      final controller = container.read(provider.notifier);
 
-    await controller.load();
+      await controller.load();
 
-    var state = container.read(provider);
-    expect(state.phase, FinancialLoadPhase.loaded);
-    expect(state.transfers, hasLength(1));
-    expect(state.transfers.single.transferId, _transferId);
+      var state = container.read(provider);
+      expect(state.phase, FinancialLoadPhase.loaded);
+      expect(state.transfers, hasLength(1));
+      expect(state.transfers.single.transferId, _transferId);
 
-    final didReverse = await controller.reverseTransfer(
-      _transferId,
-      FinancialTransferReversalInput(
-        idempotencyKey: _idempotencyKey,
-        effectiveDate: '2026-11-06',
-        competenceDate: '2026-11-06',
-        reason: 'Correção',
-      ),
-    );
+      final didReverse = await controller.reverseTransfer(
+        _transferId,
+        FinancialTransferReversalInput(
+          idempotencyKey: _idempotencyKey,
+          effectiveDate: '2026-11-06',
+          competenceDate: '2026-11-06',
+          reason: 'Correção',
+        ),
+      );
 
-    expect(didReverse, isTrue);
-    state = container.read(provider);
-    expect(state.phase, FinancialLoadPhase.loaded);
-    expect(state.transfers, hasLength(2));
-    expect(state.transfers.last.role, FinancialTransferRole.reversal);
-    expect(state.transfers.last.reversalOfId, _transferId);
-    expect(
-      transport.calls
-          .where(
-            (call) =>
-                call.method == AuthHttpMethod.post &&
-                call.uri.path ==
-                    '/api/v1/finance/transfers/$_transferId/reversal',
-          )
-          .length,
-      1,
-    );
+      expect(didReverse, isTrue);
+      state = container.read(provider);
+      expect(state.phase, FinancialLoadPhase.loaded);
+      expect(state.transfers, hasLength(2));
+      expect(state.transfers.last.role, FinancialTransferRole.reversal);
+      expect(state.transfers.last.reversalOfId, _transferId);
+      expect(
+        transport.calls
+            .where(
+              (call) =>
+                  call.method == AuthHttpMethod.post &&
+                  call.uri.path ==
+                      '/api/v1/finance/transfers/$_transferId/reversal',
+            )
+            .length,
+        1,
+      );
     },
   );
 }
