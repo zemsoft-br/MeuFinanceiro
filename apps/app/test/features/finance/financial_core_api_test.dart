@@ -304,7 +304,103 @@ void main() {
       generated,
       matches(
         RegExp(
-          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}}
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        ),
+      ),
+    );
+  });
+
+  test('movement reversal never sends caller-controlled amount', () async {
+    final transport = FakeAuthTransport.response(
+      statusCode: 201,
+      body: _reversalMovementObject,
+    );
+    final movement = await _api(transport).reverseMovement(
+      _movementId,
+      FinancialMovementReversalInput(
+        idempotencyKey: _idempotencyKey,
+        effectiveDate: '2026-09-20',
+        competenceDate: '2026-09-20',
+        reason: 'Correção',
+      ),
+    );
+
+    expect(
+      transport.calls.single.uri.path,
+      '/api/v1/finance/movements/$_movementId/reversal',
+    );
+    final body =
+        jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+    expect(body, isNot(contains('amount')));
+    expect(body.keys.toSet(), {
+      'idempotencyKey',
+      'effectiveDate',
+      'competenceDate',
+      'reason',
+    });
+    expect(movement.role, FinancialMovementRole.reversal);
+    expect(movement.reversalOfId, _movementId);
+  });
+
+  test(
+    'transfer uses semantic aggregate endpoint and preserves string money',
+    () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: _transferObject,
+      );
+      final transfer = await _api(transport).createTransfer(
+        FinancialTransferCreateInput(
+          idempotencyKey: _idempotencyKey,
+          sourceAccountId: _accountId,
+          destinationAccountId: _destinationAccountId,
+          amount: '80.25',
+          currency: 'BRL',
+          effectiveDate: '2026-09-20',
+          competenceDate: '2026-09-20',
+          description: 'Reserva',
+        ),
+      );
+
+      expect(transport.calls.single.uri.path, '/api/v1/finance/transfers');
+      final body =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(body['amount'], '80.25');
+      expect(body['amount'], isA<String>());
+      expect(transfer.transferId, _transferId);
+      expect(transfer.role, FinancialTransferRole.standard);
+    },
+  );
+
+  test('balance and statement are parsed as backend-derived values', () async {
+    final balance = await _api(
+      FakeAuthTransport.response(statusCode: 200, body: _balanceObject),
+    ).getBalance(_accountId);
+    expect(balance.currentBalance.amount, '1159.25');
+    expect(balance.movementCount, 1);
+
+    final statement = await _api(
+      FakeAuthTransport.response(statusCode: 200, body: _statementObject),
+    ).getStatement(_accountId);
+    expect(statement.entries, hasLength(1));
+    expect(statement.entries.single.movement.movementId, _movementId);
+    expect(statement.entries.single.balanceAfter.amount, '1159.25');
+    expect(statement.closingBalance.amount, '1159.25');
+  });
+
+  test('derived money parser rejects numeric JSON values', () async {
+    final numeric = _balanceObject.replaceFirst(
+      '"amount":"1159.25"',
+      '"amount":1159.25',
+    );
+    await expectLater(
+      _api(
+        FakeAuthTransport.response(statusCode: 200, body: numeric),
+      ).getBalance(_accountId),
+      throwsA(isA<FormatException>()),
+    );
+  });
+}
 
 FinancialCoreApi _api(FakeAuthTransport transport) {
   final vault = SessionTokenVault()..store(_token);
@@ -350,7 +446,6 @@ const _openingObject =
 ''';
 
 const _openingResponse = '''{"openingBalance":$_openingObject}''';
-
 
 const _incomeMovementObject =
     '''
@@ -442,180 +537,6 @@ const _statementObject =
   "calculatedAt":"2026-09-20T05:30:00Z"
 }
 ''';
-
-const _movementsResponse =
-    '''
-{
-  "movements":[
-    {
-      "movementId":"$_movementId",
-      "accountId":"$_accountId",
-      "money":{"amount":"-75.25","currency":"BRL"},
-      "resultEffect":"EXPENSE",
-      "role":"STANDARD",
-      "effectiveDate":"2026-08-12",
-      "competenceDate":"2026-08-12",
-      "description":"Mercado",
-      "reversalOfId":null,
-      "reversalReason":null,
-      "createdAt":"2026-08-13T12:00:00Z"
-    },
-    {
-      "movementId":"$_reversalId",
-      "accountId":"$_accountId",
-      "money":{"amount":"75.25","currency":"BRL"},
-      "resultEffect":"EXPENSE",
-      "role":"REVERSAL",
-      "effectiveDate":"2026-08-13",
-      "competenceDate":"2026-08-13",
-      "description":null,
-      "reversalOfId":"$_movementId",
-      "reversalReason":"Lançamento incorreto",
-      "createdAt":"2026-08-13T12:00:00Z"
-    }
-  ]
-}
-''';
-,
-        ),
-      ),
-    );
-  });
-
-  test('movement reversal never sends caller-controlled amount', () async {
-    final transport = FakeAuthTransport.response(
-      statusCode: 201,
-      body: _reversalMovementObject,
-    );
-    final movement = await _api(transport).reverseMovement(
-      _movementId,
-      FinancialMovementReversalInput(
-        idempotencyKey: _idempotencyKey,
-        effectiveDate: '2026-09-20',
-        competenceDate: '2026-09-20',
-        reason: 'Correção',
-      ),
-    );
-
-    expect(
-      transport.calls.single.uri.path,
-      '/api/v1/finance/movements/$_movementId/reversal',
-    );
-    final body =
-        jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
-    expect(body, isNot(contains('amount')));
-    expect(body.keys.toSet(), {
-      'idempotencyKey',
-      'effectiveDate',
-      'competenceDate',
-      'reason',
-    });
-    expect(movement.role, FinancialMovementRole.reversal);
-    expect(movement.reversalOfId, _movementId);
-  });
-
-  test('transfer uses semantic aggregate endpoint and preserves string money', () async {
-    final transport = FakeAuthTransport.response(
-      statusCode: 201,
-      body: _transferObject,
-    );
-    final transfer = await _api(transport).createTransfer(
-      FinancialTransferCreateInput(
-        idempotencyKey: _idempotencyKey,
-        sourceAccountId: _accountId,
-        destinationAccountId: _destinationAccountId,
-        amount: '80.25',
-        currency: 'BRL',
-        effectiveDate: '2026-09-20',
-        competenceDate: '2026-09-20',
-        description: 'Reserva',
-      ),
-    );
-
-    expect(transport.calls.single.uri.path, '/api/v1/finance/transfers');
-    final body =
-        jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
-    expect(body['amount'], '80.25');
-    expect(body['amount'], isA<String>());
-    expect(transfer.transferId, _transferId);
-    expect(transfer.role, FinancialTransferRole.standard);
-  });
-
-  test('balance and statement are parsed as backend-derived values', () async {
-    final balance = await _api(
-      FakeAuthTransport.response(statusCode: 200, body: _balanceObject),
-    ).getBalance(_accountId);
-    expect(balance.currentBalance.amount, '1159.25');
-    expect(balance.movementCount, 1);
-
-    final statement = await _api(
-      FakeAuthTransport.response(statusCode: 200, body: _statementObject),
-    ).getStatement(_accountId);
-    expect(statement.entries, hasLength(1));
-    expect(statement.entries.single.movement.movementId, _movementId);
-    expect(statement.entries.single.balanceAfter.amount, '1159.25');
-    expect(statement.closingBalance.amount, '1159.25');
-  });
-
-  test('derived money parser rejects numeric JSON values', () async {
-    final numeric = _balanceObject.replaceFirst(
-      '"amount":"1159.25"',
-      '"amount":1159.25',
-    );
-    await expectLater(
-      _api(
-        FakeAuthTransport.response(statusCode: 200, body: numeric),
-      ).getBalance(_accountId),
-      throwsA(isA<FormatException>()),
-    );
-  });
-}
-
-FinancialCoreApi _api(FakeAuthTransport transport) {
-  final vault = SessionTokenVault()..store(_token);
-  return FinancialCoreApi(
-    AuthenticatedApiClient(
-      transport: transport,
-      tokenVault: vault,
-      apiBaseUri: Uri.parse('http://localhost/api/v1/'),
-      timeout: const Duration(seconds: 2),
-      onUnauthorized: () {},
-    ),
-  );
-}
-
-const _accountObject =
-    '''
-{
-  "accountId":"$_accountId",
-  "ownerOperatorId":"$_ownerId",
-  "visibilityScope":"PERSONAL",
-  "accountType":"CHECKING",
-  "customTypeName":null,
-  "name":"Conta principal",
-  "currency":"BRL",
-  "status":"ACTIVE",
-  "createdAt":"2026-08-13T12:00:00Z",
-  "updatedAt":"2026-08-13T12:00:00Z",
-  "archivedAt":null
-}
-''';
-
-const _accountsResponse = '''{"accounts":[$_accountObject]}''';
-
-const _openingObject =
-    '''
-{
-  "openingBalanceId":"$_openingId",
-  "accountId":"$_accountId",
-  "money":{"amount":"1234.50000000","currency":"BRL"},
-  "effectiveDate":"2026-08-01",
-  "createdAt":"2026-08-13T12:00:00Z"
-}
-''';
-
-const _openingResponse = '''{"openingBalance":$_openingObject}''';
-
 const _movementsResponse =
     '''
 {
