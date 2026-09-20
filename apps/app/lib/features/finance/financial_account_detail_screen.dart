@@ -161,10 +161,8 @@ class _FinancialAccountDetailScreenState
   ) async {
     final result = await showDialog<FinancialMovementReversalInput>(
       context: context,
-      builder: (context) => _MovementReversalDialog(
-        movement: movement,
-        initialDate: initialDate,
-      ),
+      builder: (context) =>
+          _MovementReversalDialog(movement: movement, initialDate: initialDate),
     );
     if (result == null || !mounted) return;
     final reversed = await ref
@@ -791,10 +789,8 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
                   labelText: 'Valor em ${widget.account.currency}',
                   helperText: 'Use vírgula ou ponto decimal, ex.: 1250,50',
                 ),
-                validator: (value) => validateFinancialMoneyInput(
-                  value,
-                  requirePositive: false,
-                ),
+                validator: (value) =>
+                    validateFinancialMoneyInput(value, requirePositive: false),
               ),
               const SizedBox(height: AppTokens.space16),
               TextFormField(
