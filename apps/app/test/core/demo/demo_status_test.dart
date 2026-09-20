@@ -63,7 +63,7 @@ void main() {
   test('rejects stale fixture version and checksum', () async {
     for (final body in [
       _payload(fixtureVersion: 1),
-      _payload(contractChecksum: '0' * 64),
+      _payload(contractChecksum: '0000000000000000000000000000000000000000000000000000000000000000'),
     ]) {
       await expectLater(
         service(FakeHealthTransport.response(statusCode: 200, body: body)).check(),
