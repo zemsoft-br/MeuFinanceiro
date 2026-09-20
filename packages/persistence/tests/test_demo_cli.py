@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr
 
-from meufinanceiro_persistence.demo_cli import DemoCliSettings, _resolve_operator_password
+from meufinanceiro_persistence.demo_cli import (
+    DemoCliSettings,
+    _resolve_operator_password,
+)
 
 _DATABASE_URL = "postgresql+psycopg://demo:demo@localhost/demo"
 
