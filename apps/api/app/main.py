@@ -19,7 +19,9 @@ from meufinanceiro_persistence import (
     OperatorIdentityStore,
 )
 from meufinanceiro_persistence.financial_account_store import FinancialAccountStore
-from meufinanceiro_persistence.financial_balance_query import FinancialBalanceQueryService
+from meufinanceiro_persistence.financial_balance_query import (
+    FinancialBalanceQueryService,
+)
 from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
 from meufinanceiro_persistence.financial_opening_balance_store import (
     FinancialOpeningBalanceStore,
