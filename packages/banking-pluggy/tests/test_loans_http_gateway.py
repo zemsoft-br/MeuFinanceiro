@@ -384,8 +384,8 @@ def test_final_collection_must_match_reported_total() -> None:
 def test_pagination_limit_fails_closed() -> None:
     transport = FakeLoansTransport(
         pages={
-            2: _page_payload(
-                page=2,
+            1: _page_payload(
+                page=1,
                 total=2,
                 total_pages=2,
                 results=[_loan_record("loan-1")],
