@@ -36,6 +36,36 @@ generate_password() {
   python3 -c 'import secrets; print(secrets.token_hex(24))'
 }
 
+read_operator_password() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+try:
+    raw = path.read_text(encoding="utf-8")
+except OSError:
+    print("A credencial privada do operador demo não pôde ser lida.", file=sys.stderr)
+    raise SystemExit(1)
+
+if raw.endswith("\r\n"):
+    value = raw[:-2]
+elif raw.endswith(("\n", "\r")):
+    value = raw[:-1]
+else:
+    value = raw
+
+if "\r" in value or "\n" in value:
+    print("A credencial privada do operador demo deve conter uma única linha.", file=sys.stderr)
+    raise SystemExit(1)
+if not value:
+    print("A credencial privada do operador demo está vazia.", file=sys.stderr)
+    raise SystemExit(1)
+
+sys.stdout.write(value)
+PY
+}
+
 migrate_legacy_operator_password() {
   legacy_count=$(grep -c '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE" || true)
   if [ "$legacy_count" -eq 0 ]; then
@@ -57,9 +87,7 @@ migrate_legacy_operator_password() {
   fi
 
   if [ -f "$OPERATOR_PASSWORD_FILE" ]; then
-    current_password=$(tr -d '\r\n' < "$OPERATOR_PASSWORD_FILE")
-    if [ -z "$current_password" ]; then
-      echo "A credencial privada do operador demo está vazia." >&2
+    if ! current_password=$(read_operator_password "$OPERATOR_PASSWORD_FILE"); then
       unset legacy_password current_password
       exit 1
     fi
@@ -116,8 +144,7 @@ ENV
   fi
   chmod 600 "$OPERATOR_PASSWORD_FILE"
 
-  if [ ! -s "$OPERATOR_PASSWORD_FILE" ]; then
-    echo "A credencial privada do operador demo está vazia." >&2
+  if ! read_operator_password "$OPERATOR_PASSWORD_FILE" >/dev/null; then
     exit 1
   fi
 
