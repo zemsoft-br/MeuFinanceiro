@@ -213,6 +213,8 @@ class PluggyInvestmentsHttpReadOnlyGateway(PluggyHttpReadOnlyGateway):
                     page_size=_PAGE_SIZE,
                 )
                 page, total, total_pages, page_records = _parse_page(payload, item_id)
+                if total_pages == 0:
+                    return ()
                 if page != page_index:
                     raise _PayloadError("INVESTMENT_PAGE_MISMATCH")
 
@@ -234,9 +236,7 @@ class PluggyInvestmentsHttpReadOnlyGateway(PluggyHttpReadOnlyGateway):
                     if len(records) > self._max_records:
                         raise _PayloadError("INVESTMENT_RECORD_LIMIT_EXCEEDED")
 
-                if total_pages == 0:
-                    return ()
-                if page_index + 1 >= total_pages:
+                if page_index >= total_pages:
                     if expected_total is None or len(records) != expected_total:
                         raise _PayloadError("INCOMPLETE_INVESTMENT_COLLECTION")
                     return tuple(records)
