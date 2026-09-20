@@ -268,27 +268,21 @@ class FinancialAccountDetailController
   Future<bool> createManualEntry(
     FinancialManualEntryKind kind,
     FinancialManualEntryCreateInput input,
-  ) => _runOperation(
-    (api) async {
-      await api.createManualEntry(accountId, kind, input);
-    },
-  );
+  ) => _runOperation((api) async {
+    await api.createManualEntry(accountId, kind, input);
+  });
 
   Future<bool> createTransfer(FinancialTransferCreateInput input) =>
-      _runOperation(
-        (api) async {
-          await api.createTransfer(input);
-        },
-      );
+      _runOperation((api) async {
+        await api.createTransfer(input);
+      });
 
   Future<bool> reverseMovement(
     String movementId,
     FinancialMovementReversalInput input,
-  ) => _runOperation(
-    (api) async {
-      await api.reverseMovement(movementId, input);
-    },
-  );
+  ) => _runOperation((api) async {
+    await api.reverseMovement(movementId, input);
+  });
 
   Future<bool> _runOperation(
     Future<void> Function(FinancialCoreApi api) operation,
