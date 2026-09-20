@@ -363,9 +363,7 @@ def test_semantic_entry_rejects_numeric_amount_and_non_v4_idempotency(
     test_client, service = client
     numeric = _entry_payload(IDEMPOTENCY_KEY)
     numeric["amount"] = 25.50
-    invalid_key = _entry_payload(
-        UUID("10000000-0000-1000-8000-000000000001")
-    )
+    invalid_key = _entry_payload(UUID("10000000-0000-1000-8000-000000000001"))
 
     numeric_response = test_client.post(
         f"/api/v1/finance/accounts/{ACCOUNT_ID}/income",
