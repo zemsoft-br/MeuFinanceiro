@@ -130,3 +130,34 @@ def test_explicit_database_environment_is_preserved() -> None:
     environment = module.build_python_test_environment(True, False, source)
 
     assert environment == source
+
+
+def test_quality_environment_bootstraps_pinned_pip_before_tools(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = load_module()
+    fake_python = tmp_path / "python.exe"
+    fake_python.touch()
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(module, "venv_python", lambda: fake_python)
+    monkeypatch.setattr(
+        module,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    result = module.ensure_python_environment(False)
+
+    assert result == fake_python
+    assert calls[0] == [
+        str(fake_python),
+        "-m",
+        "pip",
+        "install",
+        "--disable-pip-version-check",
+        "--upgrade",
+        "pip==26.2",
+    ]
+    assert "pip-audit==2.10.1" in calls[1]
