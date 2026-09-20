@@ -442,7 +442,10 @@ class FinancialTransferCreateInput {
     required String description,
     String? idempotencyKey,
   }) : idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
-       sourceAccountId = _financialResourceId(sourceAccountId, 'sourceAccountId'),
+       sourceAccountId = _financialResourceId(
+         sourceAccountId,
+         'sourceAccountId',
+       ),
        destinationAccountId = _financialResourceId(
          destinationAccountId,
          'destinationAccountId',
@@ -876,7 +879,8 @@ FinancialStatementEntry _parseStatementEntry(Object? raw, String currency) {
   );
   final movement = _parseMovement(values['movement']);
   final balanceAfter = _parseMoney(values['balanceAfter']);
-  if (movement.money.currency != currency || balanceAfter.currency != currency) {
+  if (movement.money.currency != currency ||
+      balanceAfter.currency != currency) {
     throw const FormatException('statement entry currency mismatch.');
   }
   return FinancialStatementEntry(
