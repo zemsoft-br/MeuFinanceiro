@@ -251,7 +251,9 @@ class FinancialBalanceResponse(BaseModel):
         serialization_alias="openingBalance"
     )
     movement_net: FinancialMoneyResponse = Field(serialization_alias="movementNet")
-    current_balance: FinancialMoneyResponse = Field(serialization_alias="currentBalance")
+    current_balance: FinancialMoneyResponse = Field(
+        serialization_alias="currentBalance"
+    )
     movement_count: int = Field(serialization_alias="movementCount")
     calculated_at: datetime = Field(serialization_alias="calculatedAt")
 
@@ -272,7 +274,9 @@ class FinancialStatementResponse(BaseModel):
         serialization_alias="openingBalance"
     )
     entries: tuple[FinancialStatementEntryResponse, ...]
-    closing_balance: FinancialMoneyResponse = Field(serialization_alias="closingBalance")
+    closing_balance: FinancialMoneyResponse = Field(
+        serialization_alias="closingBalance"
+    )
     calculated_at: datetime = Field(serialization_alias="calculatedAt")
 
 
@@ -657,7 +661,10 @@ def _raise_movement_error(error: FinancialMovementPersistenceError) -> NoReturn:
         ) from None
     if isinstance(
         error,
-        (FinancialMovementAlreadyReversedError, FinancialMovementIdempotencyConflictError),
+        (
+            FinancialMovementAlreadyReversedError,
+            FinancialMovementIdempotencyConflictError,
+        ),
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -690,7 +697,10 @@ def _raise_transfer_error(error: FinancialTransferPersistenceError) -> NoReturn:
         ) from None
     if isinstance(
         error,
-        (FinancialTransferAlreadyReversedError, FinancialTransferIdempotencyConflictError),
+        (
+            FinancialTransferAlreadyReversedError,
+            FinancialTransferIdempotencyConflictError,
+        ),
     ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
