@@ -39,7 +39,8 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert "DEMO_OPERATOR_PASSWORD is obrigatória" not in unix
 
     assert (
-        '$OperatorPasswordFile = Join-Path $SecretsDir "operator_password.txt"' in windows
+        '$OperatorPasswordFile = Join-Path $SecretsDir "operator_password.txt"'
+        in windows
     )
     assert '"$(New-RandomPassword)`n"' in windows
     assert "Set-PrivateAcl -Path $OperatorPasswordFile" in windows
