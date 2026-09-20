@@ -274,7 +274,6 @@ class _FinancialAccountDetailScreenState
               destinations: transferDestinations,
               enabled:
                   account.status == FinancialAccountStatus.active &&
-                  state.openingBalance != null &&
                   !state.operationMutationInFlight,
               mutationInFlight: state.operationMutationInFlight,
               onIncome: () => unawaited(
@@ -497,7 +496,7 @@ class _FinanceActionsCard extends StatelessWidget {
             Text(
               enabled
                   ? 'Registre lançamentos ou transfira valores sem editar o ledger diretamente.'
-                  : 'Informe o saldo inicial para liberar novas operações nesta conta.',
+                  : 'Operações indisponíveis enquanto esta conta não estiver ativa.',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
