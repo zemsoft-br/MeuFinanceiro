@@ -11,6 +11,7 @@ $StateDir = Join-Path $RootDir ".demo"
 $SecretsDir = Join-Path $StateDir "secrets"
 $EnvFile = Join-Path $StateDir ".env"
 $KeyringFile = Join-Path $SecretsDir "keyring.json"
+$OperatorPasswordFile = Join-Path $SecretsDir "operator_password.txt"
 $ProjectName = "meufinanceiro-demo"
 
 function New-RandomBytes([int]$Length) {
@@ -40,6 +41,34 @@ function Set-PrivateAcl([string]$Path, [bool]$IsDirectory) {
     if ($LASTEXITCODE -ne 0) {
         throw "Não foi possível restringir a ACL de $Path."
     }
+}
+
+function Write-Utf8NoBom([string]$Path, [string]$Content) {
+    [System.IO.File]::WriteAllText(
+        $Path,
+        $Content,
+        (New-Object System.Text.UTF8Encoding($false))
+    )
+}
+
+function Read-OperatorPasswordFile([string]$Path) {
+    $value = [System.IO.File]::ReadAllText(
+        $Path,
+        [System.Text.Encoding]::UTF8
+    )
+    if ($value.EndsWith("`r`n")) {
+        $value = $value.Substring(0, $value.Length - 2)
+    }
+    elseif ($value.EndsWith("`n") -or $value.EndsWith("`r")) {
+        $value = $value.Substring(0, $value.Length - 1)
+    }
+    if ($value.Contains("`r") -or $value.Contains("`n")) {
+        throw "A credencial privada do operador demo deve conter uma única linha."
+    }
+    if ($value.Length -eq 0) {
+        throw "A credencial privada do operador demo está vazia."
+    }
+    return $value
 }
 
 function Invoke-DockerCompose([string[]]$Arguments) {
@@ -83,9 +112,6 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw "Docker não encontrado."
 }
 Invoke-DockerCompose @("version") | Out-Null
-if ([string]::IsNullOrWhiteSpace($env:DEMO_OPERATOR_PASSWORD)) {
-    throw "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo."
-}
 
 New-Item -ItemType Directory -Path $SecretsDir -Force | Out-Null
 Set-PrivateAcl -Path $StateDir -IsDirectory $true
@@ -102,15 +128,11 @@ APP_HTTP_PORT=8081
 APP_DEMO_MODE=true
 APP_KEYRING_FILE_HOST=.demo/secrets/keyring.json
 "@
-    [System.IO.File]::WriteAllText(
-        $EnvFile,
-        $envContent,
-        (New-Object System.Text.UTF8Encoding($false))
-    )
+    Write-Utf8NoBom -Path $EnvFile -Content $envContent
 }
 Set-PrivateAcl -Path $EnvFile -IsDirectory $false
 
-$EnvContent = Get-Content $EnvFile
+$EnvContent = @(Get-Content $EnvFile)
 if ($EnvContent -notcontains "APP_DEMO_MODE=true") {
     throw "A configuração demo existente não possui APP_DEMO_MODE=true."
 }
@@ -118,17 +140,49 @@ if ($EnvContent -notcontains "POSTGRES_DB=meufinanceiro_demo") {
     throw "A configuração demo existente usa um banco inesperado."
 }
 
+$LegacyPasswordLines = @(
+    $EnvContent | Where-Object { $_ -match '^DEMO_OPERATOR_PASSWORD=' }
+)
+if ($LegacyPasswordLines.Count -gt 1) {
+    throw "A configuração demo contém múltiplas credenciais legadas; nenhuma fonte foi alterada."
+}
+if ($LegacyPasswordLines.Count -eq 1) {
+    $LegacyPassword = $LegacyPasswordLines[0].Substring("DEMO_OPERATOR_PASSWORD=".Length)
+    if ([string]::IsNullOrEmpty($LegacyPassword)) {
+        throw "A credencial demo legada está vazia e não pode ser migrada com segurança."
+    }
+
+    if (Test-Path $OperatorPasswordFile) {
+        $ExistingOperatorPassword = Read-OperatorPasswordFile -Path $OperatorPasswordFile
+        if ($ExistingOperatorPassword -cne $LegacyPassword) {
+            throw "A credencial demo legada diverge do secret file existente."
+        }
+    }
+    else {
+        Write-Utf8NoBom -Path $OperatorPasswordFile -Content "$LegacyPassword`n"
+        Set-PrivateAcl -Path $OperatorPasswordFile -IsDirectory $false
+    }
+
+    $EnvContent = @(
+        $EnvContent | Where-Object { $_ -notmatch '^DEMO_OPERATOR_PASSWORD=' }
+    )
+    Write-Utf8NoBom -Path $EnvFile -Content (($EnvContent -join "`n") + "`n")
+    Set-PrivateAcl -Path $EnvFile -IsDirectory $false
+}
+
+if (-not (Test-Path $OperatorPasswordFile)) {
+    Write-Utf8NoBom -Path $OperatorPasswordFile -Content "$(New-RandomPassword)`n"
+}
+Set-PrivateAcl -Path $OperatorPasswordFile -IsDirectory $false
+$OperatorPassword = Read-OperatorPasswordFile -Path $OperatorPasswordFile
+
 if (-not (Test-Path $KeyringFile)) {
     $keyId = "k_$(ConvertTo-Base64Url (New-RandomBytes 12))"
     $keys = [ordered]@{}
     $keys[$keyId] = ConvertTo-Base64Url (New-RandomBytes 32)
     $keyring = [ordered]@{ active_key_id = $keyId; keys = $keys; version = 1 }
     $json = $keyring | ConvertTo-Json -Compress -Depth 4
-    [System.IO.File]::WriteAllText(
-        $KeyringFile,
-        "$json`n",
-        (New-Object System.Text.UTF8Encoding($false))
-    )
+    Write-Utf8NoBom -Path $KeyringFile -Content "$json`n"
 }
 Set-PrivateAcl -Path $KeyringFile -IsDirectory $false
 
@@ -159,6 +213,7 @@ try {
             }
             Write-Host "MeuFinanceiro demo disponível em http://127.0.0.1:$port"
             Write-Host "Login demo: demo"
+            Write-Host "Senha demo: $OperatorPassword"
         }
         { $_ -in @("load", "status", "reset") } {
             Invoke-FixtureCommand $Action
