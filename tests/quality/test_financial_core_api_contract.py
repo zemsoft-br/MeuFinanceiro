@@ -17,6 +17,7 @@ def test_financial_api_exposes_only_semantic_financial_writers() -> None:
     assert '"/accounts/{account_id}/expense"' in ROUTE
     assert '"/movements/{movement_id}/reversal"' in ROUTE
     assert '"/transfers"' in ROUTE
+    assert '"/accounts/{account_id}/transfers"' in ROUTE
     assert '"/transfers/{transfer_id}/reversal"' in ROUTE
     assert "FinancialManualEntryDraft" in ROUTE
     assert "FinancialManualEntryService" in SERVICE
@@ -60,6 +61,8 @@ def test_financial_service_is_store_protocol_orchestration_only() -> None:
     assert "class FinancialOpeningBalanceStoreBoundary(Protocol)" in SERVICE
     assert "class FinancialMovementStoreBoundary(Protocol)" in SERVICE
     assert "class FinancialTransferStoreBoundary(Protocol)" in SERVICE
+    assert "def list_transfers(" in SERVICE
+    assert "self._transfers.list_transfers(" in SERVICE
     assert "class FinancialBalanceQueryBoundary(Protocol)" in SERVICE
     assert "FinancialManualEntryService" in SERVICE
     assert "sqlalchemy" not in SERVICE.lower()
@@ -94,3 +97,11 @@ def test_semantic_financial_operations_require_explicit_idempotency() -> None:
     assert 'alias="idempotencyKey"' in ROUTE
     assert "validate_financial_idempotency_key" in ROUTE
     assert "idempotency_key=_idempotency_key(payload.idempotency_key)" in ROUTE
+
+
+def test_financial_api_exposes_provider_neutral_transfer_read_model() -> None:
+    assert '"/accounts/{account_id}/transfers"' in ROUTE
+    assert "response_model=FinancialTransfersResponse" in ROUTE
+    assert "account_id=_validated_resource_id(account_id)" in ROUTE
+    assert "records = _service(request).list_transfers(" in ROUTE
+    assert "account_id=account_id" in ROUTE
