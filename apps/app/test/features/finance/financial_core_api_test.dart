@@ -398,35 +398,35 @@ void main() {
   test(
     'transfer reversal uses aggregate endpoint and sends no amount',
     () async {
-    final transport = FakeAuthTransport.response(
-      statusCode: 201,
-      body: _transferReversalObject,
-    );
-    final transfer = await _api(transport).reverseTransfer(
-      _transferId,
-      FinancialTransferReversalInput(
-        idempotencyKey: _idempotencyKey,
-        effectiveDate: '2026-09-21',
-        competenceDate: '2026-09-21',
-        reason: 'Correção da transferência',
-      ),
-    );
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: _transferReversalObject,
+      );
+      final transfer = await _api(transport).reverseTransfer(
+        _transferId,
+        FinancialTransferReversalInput(
+          idempotencyKey: _idempotencyKey,
+          effectiveDate: '2026-09-21',
+          competenceDate: '2026-09-21',
+          reason: 'Correção da transferência',
+        ),
+      );
 
-    expect(
-      transport.calls.single.uri.path,
-      '/api/v1/finance/transfers/$_transferId/reversal',
-    );
-    final body =
-        jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
-    expect(body, isNot(contains('amount')));
-    expect(body.keys.toSet(), {
-      'idempotencyKey',
-      'effectiveDate',
-      'competenceDate',
-      'reason',
-    });
-    expect(transfer.role, FinancialTransferRole.reversal);
-    expect(transfer.reversalOfId, _transferId);
+      expect(
+        transport.calls.single.uri.path,
+        '/api/v1/finance/transfers/$_transferId/reversal',
+      );
+      final body =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(body, isNot(contains('amount')));
+      expect(body.keys.toSet(), {
+        'idempotencyKey',
+        'effectiveDate',
+        'competenceDate',
+        'reason',
+      });
+      expect(transfer.role, FinancialTransferRole.reversal);
+      expect(transfer.reversalOfId, _transferId);
     },
   );
 
