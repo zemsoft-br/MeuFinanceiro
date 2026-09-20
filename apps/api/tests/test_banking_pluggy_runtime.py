@@ -126,7 +126,7 @@ def test_startup_with_both_flags_does_not_read_credentials_or_create_transport(
     )
     monkeypatch.setattr(
         execution_module,
-        "PluggyGatewayHttpTransport",
+        "_PluggyFinancialGatewayHttpTransport",
         unexpected_transport,
     )
     monkeypatch.setattr(
