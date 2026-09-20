@@ -6,9 +6,11 @@ from uuid import UUID
 
 import pytest
 
+import meufinanceiro_banking_pluggy_execution.service as execution_service
 from meufinanceiro_banking import (
     BankingProviderError,
     ConnectionStatus,
+    CreditCardBillStatus,
     ProviderErrorCategory,
     TransactionStatus,
 )
@@ -18,7 +20,10 @@ from meufinanceiro_banking_pluggy.transport import (
 )
 from meufinanceiro_banking_pluggy_execution import (
     ContextualBankingStore,
+    PluggyBillsExecutionTransport,
     PluggyExecutionTransport,
+    PluggyInvestmentsExecutionTransport,
+    PluggyLoansExecutionTransport,
     PluggyReadOnlyExecutionService,
 )
 from meufinanceiro_persistence import (
@@ -35,6 +40,7 @@ CONNECTION_ID = UUID("30000000-0000-4000-8000-000000000003")
 CONFIGURATION_ID = UUID("40000000-0000-4000-8000-000000000004")
 ITEM_ID = "item-secret-1"
 ACCOUNT_ID = "account-secret-1"
+CREDIT_ACCOUNT_ID = "account-credit-secret-1"
 
 
 def connection_record(
@@ -134,7 +140,16 @@ class FakeTransport:
                     "currencyCode": "BRL",
                     "name": "Conta",
                     "number": "1234",
-                }
+                },
+                {
+                    "id": CREDIT_ACCOUNT_ID,
+                    "itemId": ITEM_ID,
+                    "type": "CREDIT",
+                    "subtype": "CREDIT_CARD",
+                    "currencyCode": "BRL",
+                    "name": "Cartao",
+                    "number": "9876",
+                },
             ]
         }
     )
@@ -155,6 +170,22 @@ class FakeTransport:
             "next": None,
         }
     )
+    bills_payload: JsonObject = field(
+        default_factory=lambda: {
+            "results": [
+                {
+                    "id": "bill-secret-1",
+                    "accountId": CREDIT_ACCOUNT_ID,
+                    "status": "OPEN",
+                    "dueDate": "2026-09-10T00:00:00.000Z",
+                    "billClosingDate": "2026-09-03T00:00:00.000Z",
+                    "totalAmount": "120.50",
+                    "totalAmountCurrencyCode": "BRL",
+                    "minimumPaymentAmount": "12.05",
+                }
+            ]
+        }
+    )
     close_failure: bool = False
     closed: bool = False
     item_calls: list[str] = field(default_factory=list)
@@ -162,6 +193,7 @@ class FakeTransport:
     transaction_calls: list[tuple[str, str | None, datetime | None]] = field(
         default_factory=list
     )
+    bill_calls: list[str] = field(default_factory=list)
 
     def get_item(self, item_id: str) -> JsonObject:
         self.item_calls.append(item_id)
@@ -180,6 +212,10 @@ class FakeTransport:
     ) -> JsonObject:
         self.transaction_calls.append((account_id, after, created_at_from))
         return self.transactions_payload
+
+    def get_bills(self, account_id: str) -> JsonObject:
+        self.bill_calls.append(account_id)
+        return self.bills_payload
 
     def close(self) -> None:
         self.closed = True
@@ -239,6 +275,7 @@ def context() -> dict[str, UUID]:
 def test_structural_protocols_are_satisfied() -> None:
     assert isinstance(FakeStore(), ContextualBankingStore)
     assert isinstance(FakeTransport(), PluggyExecutionTransport)
+    assert isinstance(FakeTransport(), PluggyBillsExecutionTransport)
 
 
 def test_connection_state_uses_internal_context_and_closes_transport() -> None:
@@ -439,3 +476,70 @@ def test_connection_record_helper_can_change_status_without_item_exposure() -> N
     )
     assert record.id == CONNECTION_ID
     assert ITEM_ID not in repr(PluggyReadOnlyExecutionService)
+
+
+def test_credit_card_bills_validate_account_and_close_transport() -> None:
+    executor, store, transport, _ = service()
+
+    bills = executor.list_credit_card_bills(
+        **context(),
+        external_account_id=CREDIT_ACCOUNT_ID,
+    )
+
+    assert len(bills) == 1
+    assert bills[0].external_account_id == CREDIT_ACCOUNT_ID
+    assert bills[0].status is CreditCardBillStatus.OPEN
+    assert transport.account_calls == [ITEM_ID]
+    assert transport.bill_calls == [CREDIT_ACCOUNT_ID]
+    assert transport.closed is True
+    assert store.connection_calls == [(INSTALLATION_ID, RESIDENCE_ID, CONNECTION_ID)]
+
+
+@pytest.mark.parametrize("account_id", [ACCOUNT_ID, "unknown-credit-secret"])
+def test_credit_card_bills_reject_non_credit_or_foreign_account(
+    account_id: str,
+) -> None:
+    executor, _, transport, _ = service()
+
+    with pytest.raises(BankingProviderError) as raised:
+        executor.list_credit_card_bills(
+            **context(),
+            external_account_id=account_id,
+        )
+
+    assert raised.value.category is ProviderErrorCategory.NOT_FOUND
+    assert raised.value.provider_reason_code == "CREDIT_ACCOUNT_NOT_IN_CONNECTION"
+    assert account_id not in str(raised.value)
+    assert transport.bill_calls == []
+    assert transport.closed is True
+
+
+def test_credit_card_bill_failure_still_closes_transport() -> None:
+    transport = FakeTransport(bills_payload={"results": [{"id": "broken"}]})
+    executor, _, _, _ = service(transport=transport)
+
+    with pytest.raises(BankingProviderError) as raised:
+        executor.list_credit_card_bills(
+            **context(),
+            external_account_id=CREDIT_ACCOUNT_ID,
+        )
+
+    assert raised.value.category is ProviderErrorCategory.INTERNAL
+    assert transport.bill_calls == [CREDIT_ACCOUNT_ID]
+    assert transport.closed is True
+
+
+def test_default_transport_factory_supports_all_financial_read_capabilities() -> None:
+    transport = execution_service._default_transport_factory(
+        PluggyApplicationCredentials(
+            "synthetic-client-id",
+            "synthetic-client-secret",
+        )
+    )
+    try:
+        assert isinstance(transport, PluggyExecutionTransport)
+        assert isinstance(transport, PluggyBillsExecutionTransport)
+        assert isinstance(transport, PluggyInvestmentsExecutionTransport)
+        assert isinstance(transport, PluggyLoansExecutionTransport)
+    finally:
+        transport.close()
