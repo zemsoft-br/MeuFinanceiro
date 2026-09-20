@@ -79,9 +79,12 @@ def test_financial_flutter_uses_current_riverpod_notifier_family_shape() -> None
 
 def test_detail_controller_revalidates_currency_across_resources() -> None:
     assert "openingBalance.money.currency != account.currency" in CONTROLLER
-    assert "movement.money.currency != account.currency" in CONTROLLER
+    assert "balance.currency != account.currency" in CONTROLLER
+    assert "statement.currency != account.currency" in CONTROLLER
+    assert "entry.movement.money.currency != account.currency" in CONTROLLER
     assert "opening balance currency mismatch" in CONTROLLER
-    assert "movement currency mismatch" in CONTROLLER
+    assert "balance account mismatch" in CONTROLLER
+    assert "statement account mismatch" in CONTROLLER
 
 
 def test_financial_flutter_exposes_semantic_commands_without_generic_writer() -> None:
