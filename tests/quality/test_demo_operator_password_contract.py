@@ -78,6 +78,6 @@ def test_demo_runbook_documents_generated_local_credential() -> None:
     assert "Docker secret" in runbook
     assert "não precisa definir `DEMO_OPERATOR_PASSWORD`" in runbook
     assert "ambiente demo antigo" in runbook
-    assert "remove a linha `DEMO_OPERATOR_PASSWORD=`" in runbook
+    assert "removem a linha `DEMO_OPERATOR_PASSWORD=`" in runbook
     assert "divergirem" in runbook
     assert "falha fechado" in runbook
