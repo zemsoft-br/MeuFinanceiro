@@ -39,21 +39,24 @@ void main() {
     }
   });
 
-  test('positive validator accepts comma and dot but rejects zero or negative', () {
-    for (final value in ['1', '1,00', '1.00', '123,45']) {
-      expect(
-        validateFinancialMoneyInput(value, requirePositive: true),
-        isNull,
-      );
-    }
+  test(
+    'positive validator accepts comma and dot but rejects zero or negative',
+    () {
+      for (final value in ['1', '1,00', '1.00', '123,45']) {
+        expect(
+          validateFinancialMoneyInput(value, requirePositive: true),
+          isNull,
+        );
+      }
 
-    for (final value in ['0', '0,00', '0.00', '-1', '-1,00', '-1.00']) {
-      expect(
-        validateFinancialMoneyInput(value, requirePositive: true),
-        isNotNull,
-      );
-    }
-  });
+      for (final value in ['0', '0,00', '0.00', '-1', '-1,00', '-1.00']) {
+        expect(
+          validateFinancialMoneyInput(value, requirePositive: true),
+          isNotNull,
+        );
+      }
+    },
+  );
 
   test('signed validator accepts negative opening balance with comma', () {
     expect(
