@@ -5,8 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
+import 'package:meufinanceiro_app/features/finance/financial_operation_date_policy.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
+
+final financialOperationClockProvider = Provider<DateTime Function()>(
+  (ref) => DateTime.now,
+);
 
 class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
   const FinancialAccountDetailScreen({required this.accountId, super.key});
@@ -87,10 +92,15 @@ class _FinancialAccountDetailScreenState
   Future<void> _createManualEntry(
     FinancialAccount account,
     FinancialManualEntryKind kind,
+    String initialDate,
   ) async {
     final result = await showDialog<FinancialManualEntryCreateInput>(
       context: context,
-      builder: (context) => _ManualEntryDialog(account: account, kind: kind),
+      builder: (context) => _ManualEntryDialog(
+        account: account,
+        kind: kind,
+        initialDate: initialDate,
+      ),
     );
     if (result == null || !mounted) return;
     final created = await ref
@@ -116,11 +126,15 @@ class _FinancialAccountDetailScreenState
   Future<void> _createTransfer(
     FinancialAccount account,
     List<FinancialAccount> destinations,
+    String initialDate,
   ) async {
     final result = await showDialog<FinancialTransferCreateInput>(
       context: context,
-      builder: (context) =>
-          _TransferDialog(account: account, destinations: destinations),
+      builder: (context) => _TransferDialog(
+        account: account,
+        destinations: destinations,
+        initialDate: initialDate,
+      ),
     );
     if (result == null || !mounted) return;
     final created = await ref
@@ -140,10 +154,16 @@ class _FinancialAccountDetailScreenState
     );
   }
 
-  Future<void> _reverseMovement(FinancialMovement movement) async {
+  Future<void> _reverseMovement(
+    FinancialMovement movement,
+    String initialDate,
+  ) async {
     final result = await showDialog<FinancialMovementReversalInput>(
       context: context,
-      builder: (context) => _MovementReversalDialog(movement: movement),
+      builder: (context) => _MovementReversalDialog(
+        movement: movement,
+        initialDate: initialDate,
+      ),
     );
     if (result == null || !mounted) return;
     final reversed = await ref
@@ -168,6 +188,13 @@ class _FinancialAccountDetailScreenState
     final provider = financialAccountDetailControllerProvider(widget.accountId);
     final state = ref.watch(provider);
     final account = state.account;
+    final initialOperationDate = financialOperationInitialDate(
+      now: ref.watch(financialOperationClockProvider)(),
+      openingBalanceDate: state.openingBalance?.effectiveDate,
+      movementEffectiveDates: state.movements.map(
+        (movement) => movement.effectiveDate,
+      ),
+    );
     final transferDestinations = account == null
         ? const <FinancialAccount>[]
         : state.accounts
@@ -277,15 +304,27 @@ class _FinancialAccountDetailScreenState
                   !state.operationMutationInFlight,
               mutationInFlight: state.operationMutationInFlight,
               onIncome: () => unawaited(
-                _createManualEntry(account, FinancialManualEntryKind.income),
+                _createManualEntry(
+                  account,
+                  FinancialManualEntryKind.income,
+                  initialOperationDate,
+                ),
               ),
               onExpense: () => unawaited(
-                _createManualEntry(account, FinancialManualEntryKind.expense),
+                _createManualEntry(
+                  account,
+                  FinancialManualEntryKind.expense,
+                  initialOperationDate,
+                ),
               ),
               onTransfer: transferDestinations.isEmpty
                   ? null
                   : () => unawaited(
-                      _createTransfer(account, transferDestinations),
+                      _createTransfer(
+                        account,
+                        transferDestinations,
+                        initialOperationDate,
+                      ),
                     ),
             ),
             const SizedBox(height: AppTokens.space16),
@@ -306,7 +345,19 @@ class _FinancialAccountDetailScreenState
                 allowReversal:
                     account.status == FinancialAccountStatus.active &&
                     !state.operationMutationInFlight,
-                onReverse: (movement) => unawaited(_reverseMovement(movement)),
+                onReverse: (movement) => unawaited(
+                  _reverseMovement(
+                    movement,
+                    financialOperationInitialDate(
+                      now: ref.read(financialOperationClockProvider)(),
+                      openingBalanceDate: state.openingBalance?.effectiveDate,
+                      movementEffectiveDates: state.movements.map(
+                        (item) => item.effectiveDate,
+                      ),
+                      targetMovementDate: movement.effectiveDate,
+                    ),
+                  ),
+                ),
               ),
             ],
           ],
@@ -778,10 +829,15 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
 }
 
 class _ManualEntryDialog extends StatefulWidget {
-  const _ManualEntryDialog({required this.account, required this.kind});
+  const _ManualEntryDialog({
+    required this.account,
+    required this.kind,
+    required this.initialDate,
+  });
 
   final FinancialAccount account;
   final FinancialManualEntryKind kind;
+  final String initialDate;
 
   @override
   State<_ManualEntryDialog> createState() => _ManualEntryDialogState();
@@ -797,9 +853,8 @@ class _ManualEntryDialogState extends State<_ManualEntryDialog> {
   @override
   void initState() {
     super.initState();
-    final today = _todayDateText();
-    _effectiveDateController = TextEditingController(text: today);
-    _competenceDateController = TextEditingController(text: today);
+    _effectiveDateController = TextEditingController(text: widget.initialDate);
+    _competenceDateController = TextEditingController(text: widget.initialDate);
   }
 
   @override
@@ -896,10 +951,15 @@ class _ManualEntryDialogState extends State<_ManualEntryDialog> {
 }
 
 class _TransferDialog extends StatefulWidget {
-  const _TransferDialog({required this.account, required this.destinations});
+  const _TransferDialog({
+    required this.account,
+    required this.destinations,
+    required this.initialDate,
+  });
 
   final FinancialAccount account;
   final List<FinancialAccount> destinations;
+  final String initialDate;
 
   @override
   State<_TransferDialog> createState() => _TransferDialogState();
@@ -917,9 +977,8 @@ class _TransferDialogState extends State<_TransferDialog> {
   void initState() {
     super.initState();
     _destinationId = widget.destinations.first.accountId;
-    final today = _todayDateText();
-    _effectiveDateController = TextEditingController(text: today);
-    _competenceDateController = TextEditingController(text: today);
+    _effectiveDateController = TextEditingController(text: widget.initialDate);
+    _competenceDateController = TextEditingController(text: widget.initialDate);
   }
 
   @override
@@ -1030,9 +1089,13 @@ class _TransferDialogState extends State<_TransferDialog> {
 }
 
 class _MovementReversalDialog extends StatefulWidget {
-  const _MovementReversalDialog({required this.movement});
+  const _MovementReversalDialog({
+    required this.movement,
+    required this.initialDate,
+  });
 
   final FinancialMovement movement;
+  final String initialDate;
 
   @override
   State<_MovementReversalDialog> createState() =>
@@ -1048,9 +1111,8 @@ class _MovementReversalDialogState extends State<_MovementReversalDialog> {
   @override
   void initState() {
     super.initState();
-    final today = _todayDateText();
-    _effectiveDateController = TextEditingController(text: today);
-    _competenceDateController = TextEditingController(text: today);
+    _effectiveDateController = TextEditingController(text: widget.initialDate);
+    _competenceDateController = TextEditingController(text: widget.initialDate);
   }
 
   @override
@@ -1261,13 +1323,6 @@ class _FailureOrLoading extends StatelessWidget {
       ),
     );
   }
-}
-
-String _todayDateText() {
-  final now = DateTime.now();
-  return '${now.year.toString().padLeft(4, '0')}-'
-      '${now.month.toString().padLeft(2, '0')}-'
-      '${now.day.toString().padLeft(2, '0')}';
 }
 
 String? _validatePositiveMoney(String? value) {
