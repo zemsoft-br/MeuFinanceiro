@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
 import 'package:meufinanceiro_app/features/finance/financial_operation_date_policy.dart';
+import 'package:meufinanceiro_app/features/finance/financial_money_input.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
 
@@ -762,7 +763,7 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
     try {
       Navigator.of(context).pop(
         FinancialOpeningBalanceCreateInput(
-          amount: _amountController.text,
+          amount: normalizeFinancialMoneyInput(_amountController.text),
           currency: widget.account.currency,
           effectiveDate: _dateController.text,
         ),
@@ -788,16 +789,12 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
                 autofocus: true,
                 decoration: InputDecoration(
                   labelText: 'Valor em ${widget.account.currency}',
-                  helperText: 'Use ponto como separador decimal, ex.: 1250.50',
+                  helperText: 'Use vírgula ou ponto decimal, ex.: 1250,50',
                 ),
-                validator: (value) {
-                  final source = value ?? '';
-                  return RegExp(
-                        r'^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$',
-                      ).hasMatch(source)
-                      ? null
-                      : 'Informe um valor decimal válido.';
-                },
+                validator: (value) => validateFinancialMoneyInput(
+                  value,
+                  requirePositive: false,
+                ),
               ),
               const SizedBox(height: AppTokens.space16),
               TextFormField(
@@ -871,7 +868,7 @@ class _ManualEntryDialogState extends State<_ManualEntryDialog> {
     try {
       Navigator.of(context).pop(
         FinancialManualEntryCreateInput(
-          amount: _amountController.text,
+          amount: normalizeFinancialMoneyInput(_amountController.text),
           currency: widget.account.currency,
           effectiveDate: _effectiveDateController.text,
           competenceDate: _competenceDateController.text,
@@ -903,7 +900,7 @@ class _ManualEntryDialogState extends State<_ManualEntryDialog> {
                   autofocus: true,
                   decoration: InputDecoration(
                     labelText: 'Valor em ${widget.account.currency}',
-                    helperText: 'Informe um valor positivo, ex.: 125.50',
+                    helperText: 'Informe um valor positivo, ex.: 125,50',
                   ),
                   validator: _validatePositiveMoney,
                 ),
@@ -997,7 +994,7 @@ class _TransferDialogState extends State<_TransferDialog> {
         FinancialTransferCreateInput(
           sourceAccountId: widget.account.accountId,
           destinationAccountId: _destinationId,
-          amount: _amountController.text,
+          amount: normalizeFinancialMoneyInput(_amountController.text),
           currency: widget.account.currency,
           effectiveDate: _effectiveDateController.text,
           competenceDate: _competenceDateController.text,
@@ -1044,7 +1041,7 @@ class _TransferDialogState extends State<_TransferDialog> {
                   autofocus: true,
                   decoration: InputDecoration(
                     labelText: 'Valor em ${widget.account.currency}',
-                    helperText: 'Informe um valor positivo, ex.: 125.50',
+                    helperText: 'Informe um valor positivo, ex.: 125,50',
                   ),
                   validator: _validatePositiveMoney,
                 ),
@@ -1325,16 +1322,8 @@ class _FailureOrLoading extends StatelessWidget {
   }
 }
 
-String? _validatePositiveMoney(String? value) {
-  final source = value ?? '';
-  final valid = RegExp(
-    r'^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$',
-  ).hasMatch(source);
-  if (!valid || RegExp(r'^0(?:\.0{1,8})?$').hasMatch(source)) {
-    return 'Informe um valor positivo válido.';
-  }
-  return null;
-}
+String? _validatePositiveMoney(String? value) =>
+    validateFinancialMoneyInput(value, requirePositive: true);
 
 String? _validateDescription(String? value) {
   final source = value ?? '';
