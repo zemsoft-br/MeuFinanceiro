@@ -183,3 +183,11 @@ def test_financial_ui_uses_only_existing_design_tokens() -> None:
     assert "AppTokens.space6" not in combined
     assert "AppTokens.space20" in combined
     assert "AppTokens.radiusMedium" in combined
+
+def test_financial_mutation_dialogs_use_safe_ledger_date_policy() -> None:
+    assert "financialOperationInitialDate(" in DETAIL_SCREEN
+    assert "financialOperationClockProvider" in DETAIL_SCREEN
+    assert "_todayDateText" not in DETAIL_SCREEN
+    assert "required this.initialDate" in DETAIL_SCREEN
+    assert "text: widget.initialDate" in DETAIL_SCREEN
+    assert "targetMovementDate: movement.effectiveDate" in DETAIL_SCREEN
