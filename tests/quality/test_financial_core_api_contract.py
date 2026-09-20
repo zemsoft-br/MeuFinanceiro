@@ -79,7 +79,8 @@ def test_financial_route_is_provider_neutral() -> None:
         assert forbidden not in lowered
 
 
-def test_financial_api_exposes_derived_balance_and_statement_without_mutable_balance() -> None:
+def test_financial_api_exposes_derived_balance_and_statement_without_mutable_balance(
+) -> None:
     assert '"/accounts/{account_id}/balance"' in ROUTE
     assert '"/accounts/{account_id}/statement"' in ROUTE
     assert "FinancialBalanceQueryService" in MAIN
