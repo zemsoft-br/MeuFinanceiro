@@ -106,11 +106,11 @@ def test_financial_flutter_exposes_semantic_commands_without_generic_writer() ->
     assert "POST /finance/movements" not in API
 
 
-
-
 def test_financial_flutter_does_not_require_opening_balance_for_commands() -> None:
     assert "state.openingBalance != null" not in DETAIL_SCREEN
     assert "Informe o saldo inicial para liberar novas operações" not in DETAIL_SCREEN
+
+
 def test_financial_flutter_uses_backend_derived_balance_and_statement() -> None:
     assert "getBalance" in API
     assert "getStatement" in API
