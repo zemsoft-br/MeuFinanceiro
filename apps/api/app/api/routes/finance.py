@@ -242,6 +242,10 @@ class FinancialTransferResponse(BaseModel):
     created_at: datetime = Field(serialization_alias="createdAt")
 
 
+class FinancialTransfersResponse(BaseModel):
+    transfers: tuple[FinancialTransferResponse, ...]
+
+
 class FinancialBalanceResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1011,6 +1015,35 @@ def reverse_movement(
     except FinancialMovementPersistenceError as error:
         _raise_movement_error(error)
     return _movement_response(record)
+
+
+@router.get(
+    "/accounts/{account_id}/transfers",
+    response_model=FinancialTransfersResponse,
+)
+def list_transfers(
+    account_id: UUID,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialTransfersResponse:
+    _reject_query_params(request)
+    account_id = _validated_resource_id(account_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        records = _service(request).list_transfers(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+    except FinancialTransferPersistenceError as error:
+        _raise_transfer_error(error)
+    return FinancialTransfersResponse(
+        transfers=tuple(_transfer_response(record) for record in records)
+    )
 
 
 @router.post(
