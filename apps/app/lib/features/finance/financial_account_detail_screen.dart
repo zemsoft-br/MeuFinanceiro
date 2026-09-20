@@ -1284,65 +1284,9 @@ String _todayDateText() {
 String? _validatePositiveMoney(String? value) {
   final source = value ?? '';
   final valid = RegExp(
-    r'^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?
-
-String _dateLabel(String value) {
-  final parts = value.split('-');
-  return parts.length == 3 ? '${parts[2]}/${parts[1]}/${parts[0]}' : value;
-}
-
-String _typeLabel(FinancialAccountType type) => switch (type) {
-  FinancialAccountType.checking => 'Conta corrente',
-  FinancialAccountType.savings => 'Poupança',
-  FinancialAccountType.cash => 'Dinheiro',
-  FinancialAccountType.digitalWallet => 'Carteira digital',
-  FinancialAccountType.investment => 'Investimento',
-  FinancialAccountType.benefit => 'Benefício',
-  FinancialAccountType.custom => 'Personalizada',
-};
-
-String _visibilityLabel(FinancialVisibilityScope scope) => switch (scope) {
-  FinancialVisibilityScope.personal => 'Pessoal',
-  FinancialVisibilityScope.shared => 'Compartilhada',
-  FinancialVisibilityScope.household => 'Residência',
-};
-
-String _effectLabel(FinancialResultEffect effect) => switch (effect) {
-  FinancialResultEffect.income => 'Receita',
-  FinancialResultEffect.expense => 'Despesa',
-  FinancialResultEffect.neutral => 'Neutro',
-};
-,
+    r'^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$',
   ).hasMatch(source);
-  if (!valid || RegExp(r'^0(?:\.0{1,8})?
-
-String _dateLabel(String value) {
-  final parts = value.split('-');
-  return parts.length == 3 ? '${parts[2]}/${parts[1]}/${parts[0]}' : value;
-}
-
-String _typeLabel(FinancialAccountType type) => switch (type) {
-  FinancialAccountType.checking => 'Conta corrente',
-  FinancialAccountType.savings => 'Poupança',
-  FinancialAccountType.cash => 'Dinheiro',
-  FinancialAccountType.digitalWallet => 'Carteira digital',
-  FinancialAccountType.investment => 'Investimento',
-  FinancialAccountType.benefit => 'Benefício',
-  FinancialAccountType.custom => 'Personalizada',
-};
-
-String _visibilityLabel(FinancialVisibilityScope scope) => switch (scope) {
-  FinancialVisibilityScope.personal => 'Pessoal',
-  FinancialVisibilityScope.shared => 'Compartilhada',
-  FinancialVisibilityScope.household => 'Residência',
-};
-
-String _effectLabel(FinancialResultEffect effect) => switch (effect) {
-  FinancialResultEffect.income => 'Receita',
-  FinancialResultEffect.expense => 'Despesa',
-  FinancialResultEffect.neutral => 'Neutro',
-};
-).hasMatch(source)) {
+  if (!valid || RegExp(r'^0(?:\.0{1,8})?$').hasMatch(source)) {
     return 'Informe um valor positivo válido.';
   }
   return null;
@@ -1361,35 +1305,7 @@ String? _validateDescription(String? value) {
 
 String? _validateDate(String? value) {
   final source = value ?? '';
-  if (!RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}
-
-String _dateLabel(String value) {
-  final parts = value.split('-');
-  return parts.length == 3 ? '${parts[2]}/${parts[1]}/${parts[0]}' : value;
-}
-
-String _typeLabel(FinancialAccountType type) => switch (type) {
-  FinancialAccountType.checking => 'Conta corrente',
-  FinancialAccountType.savings => 'Poupança',
-  FinancialAccountType.cash => 'Dinheiro',
-  FinancialAccountType.digitalWallet => 'Carteira digital',
-  FinancialAccountType.investment => 'Investimento',
-  FinancialAccountType.benefit => 'Benefício',
-  FinancialAccountType.custom => 'Personalizada',
-};
-
-String _visibilityLabel(FinancialVisibilityScope scope) => switch (scope) {
-  FinancialVisibilityScope.personal => 'Pessoal',
-  FinancialVisibilityScope.shared => 'Compartilhada',
-  FinancialVisibilityScope.household => 'Residência',
-};
-
-String _effectLabel(FinancialResultEffect effect) => switch (effect) {
-  FinancialResultEffect.income => 'Receita',
-  FinancialResultEffect.expense => 'Despesa',
-  FinancialResultEffect.neutral => 'Neutro',
-};
-).hasMatch(source)) {
+  if (!RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$').hasMatch(source)) {
     return 'Informe a data no formato AAAA-MM-DD.';
   }
   final parsed = DateTime.tryParse('${source}T00:00:00Z');
@@ -1400,7 +1316,6 @@ String _effectLabel(FinancialResultEffect effect) => switch (effect) {
             '${parsed.day.toString().padLeft(2, '0')}';
   return canonical == source ? null : 'Informe uma data válida.';
 }
-
 String _moneyLabel(FinancialMoneyWire money) =>
     '${money.currency} ${money.amount.replaceFirst('.', ',')}';
 
