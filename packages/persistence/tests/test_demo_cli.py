@@ -13,6 +13,11 @@ from meufinanceiro_persistence.demo_cli import (
 _DATABASE_URL = "postgresql+psycopg://demo:demo@localhost/demo"
 
 
+@pytest.fixture(autouse=True, name="clean_persistence")
+def _no_database_for_demo_cli_unit_tests() -> None:
+    """Keep pure demo CLI tests independent from PostgreSQL integration fixtures."""
+
+
 def _settings(
     *,
     direct: str | None = None,
