@@ -18,10 +18,16 @@ class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
   static const openingBalanceKey = Key(
     'financial-account-detail-opening-balance',
   );
-  static const movementsKey = Key('financial-account-detail-movements');
+  static const balanceKey = Key('financial-account-detail-balance');
+  static const actionsKey = Key('financial-account-detail-actions');
+  static const statementKey = Key('financial-account-detail-statement');
+  static const movementsKey = statementKey;
   static const createOpeningButtonKey = Key(
     'financial-account-detail-create-opening',
   );
+  static const incomeButtonKey = Key('financial-account-detail-income');
+  static const expenseButtonKey = Key('financial-account-detail-expense');
+  static const transferButtonKey = Key('financial-account-detail-transfer');
 
   @override
   ConsumerState<FinancialAccountDetailScreen> createState() =>
@@ -78,11 +84,102 @@ class _FinancialAccountDetailScreenState
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _createManualEntry(
+    FinancialAccount account,
+    FinancialManualEntryKind kind,
+  ) async {
+    final result = await showDialog<FinancialManualEntryCreateInput>(
+      context: context,
+      builder: (context) => _ManualEntryDialog(account: account, kind: kind),
+    );
+    if (result == null || !mounted) return;
+    final created = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .createManualEntry(kind, result);
+    if (!mounted) return;
+    final label = kind == FinancialManualEntryKind.income
+        ? 'Receita'
+        : 'Despesa';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          created
+              ? '$label registrada.'
+              : 'Não foi possível registrar $label. Verifique os dados e tente novamente.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createTransfer(
+    FinancialAccount account,
+    List<FinancialAccount> destinations,
+  ) async {
+    final result = await showDialog<FinancialTransferCreateInput>(
+      context: context,
+      builder: (context) => _TransferDialog(
+        account: account,
+        destinations: destinations,
+      ),
+    );
+    if (result == null || !mounted) return;
+    final created = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .createTransfer(result);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          created
+              ? 'Transferência registrada.'
+              : 'Não foi possível registrar a transferência.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reverseMovement(FinancialMovement movement) async {
+    final result = await showDialog<FinancialMovementReversalInput>(
+      context: context,
+      builder: (context) => _MovementReversalDialog(movement: movement),
+    );
+    if (result == null || !mounted) return;
+    final reversed = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .reverseMovement(movement.movementId, result);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          reversed
+              ? 'Lançamento revertido.'
+              : 'Não foi possível reverter o lançamento.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = financialAccountDetailControllerProvider(widget.accountId);
     final state = ref.watch(provider);
     final account = state.account;
+    final transferDestinations = account == null
+        ? const <FinancialAccount>[]
+        : state.accounts
+              .where(
+                (candidate) =>
+                    candidate.accountId != account.accountId &&
+                    candidate.status == FinancialAccountStatus.active &&
+                    candidate.currency == account.currency,
+              )
+              .toList(growable: false);
     final refreshEnabled =
         !state.isBusy &&
         state.phase != FinancialLoadPhase.authenticationRequired &&
@@ -134,7 +231,7 @@ class _FinancialAccountDetailScreenState
                     ),
                     const SizedBox(height: AppTokens.space8),
                     Text(
-                      'Saldo inicial e Movements são exibidos como registros canônicos. O saldo corrente ainda não é calculado nesta tela.',
+                      'Saldo corrente e extrato são derivados do saldo inicial e do ledger canônico de Movements.',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: AppTokens.neutral700,
                       ),
@@ -169,6 +266,31 @@ class _FinancialAccountDetailScreenState
             )
           else ...[
             _AccountIdentityCard(account: account),
+            if (state.balance != null) ...[
+              const SizedBox(height: AppTokens.space16),
+              _BalanceCard(balance: state.balance!),
+            ],
+            const SizedBox(height: AppTokens.space16),
+            _FinanceActionsCard(
+              account: account,
+              destinations: transferDestinations,
+              enabled:
+                  account.status == FinancialAccountStatus.active &&
+                  state.openingBalance != null &&
+                  !state.operationMutationInFlight,
+              mutationInFlight: state.operationMutationInFlight,
+              onIncome: () => unawaited(
+                _createManualEntry(account, FinancialManualEntryKind.income),
+              ),
+              onExpense: () => unawaited(
+                _createManualEntry(account, FinancialManualEntryKind.expense),
+              ),
+              onTransfer: transferDestinations.isEmpty
+                  ? null
+                  : () => unawaited(
+                      _createTransfer(account, transferDestinations),
+                    ),
+            ),
             const SizedBox(height: AppTokens.space16),
             _OpeningBalanceCard(
               account: account,
@@ -180,8 +302,17 @@ class _FinancialAccountDetailScreenState
                   ? () => unawaited(_createOpeningBalance(account))
                   : null,
             ),
-            const SizedBox(height: AppTokens.space16),
-            _MovementsCard(movements: state.movements),
+            if (state.statement != null) ...[
+              const SizedBox(height: AppTokens.space16),
+              _StatementCard(
+                statement: state.statement!,
+                allowReversal:
+                    account.status == FinancialAccountStatus.active &&
+                    !state.operationMutationInFlight,
+                onReverse: (movement) =>
+                    unawaited(_reverseMovement(movement)),
+              ),
+            ],
           ],
         ],
       ),
