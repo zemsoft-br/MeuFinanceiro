@@ -444,8 +444,8 @@ def _movement_reversal_draft(
 def _transfer_draft(payload: FinancialTransferCreateRequest) -> FinancialTransferDraft:
     try:
         return FinancialTransferDraft(
-            source_account_id=_validated_resource_id(payload.source_account_id),
-            destination_account_id=_validated_resource_id(
+            source_account_id=_operation_resource_id(payload.source_account_id),
+            destination_account_id=_operation_resource_id(
                 payload.destination_account_id
             ),
             magnitude=_positive_money(payload.amount, payload.currency),
@@ -473,6 +473,16 @@ def _transfer_reversal_draft(
             competence_date=_plain_date(payload.competence_date),
             reason=payload.reason,
         )
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial operation request",
+        ) from None
+
+
+def _operation_resource_id(value: UUID) -> UUID:
+    try:
+        return validate_financial_resource_id(value)
     except (TypeError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
