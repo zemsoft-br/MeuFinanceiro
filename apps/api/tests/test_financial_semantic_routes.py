@@ -502,10 +502,10 @@ def test_openapi_keeps_generic_movement_writer_absent_and_semantic_paths_present
     paths = test_client.get("/api/v1/openapi.json").json()["paths"]
 
     assert "/api/v1/finance/movements" not in paths
-    assert f"/api/v1/finance/accounts/{{account_id}}/income" in paths
-    assert f"/api/v1/finance/accounts/{{account_id}}/expense" in paths
-    assert f"/api/v1/finance/movements/{{movement_id}}/reversal" in paths
+    assert "/api/v1/finance/accounts/{account_id}/income" in paths
+    assert "/api/v1/finance/accounts/{account_id}/expense" in paths
+    assert "/api/v1/finance/movements/{movement_id}/reversal" in paths
     assert "/api/v1/finance/transfers" in paths
-    assert f"/api/v1/finance/transfers/{{transfer_id}}/reversal" in paths
-    assert f"/api/v1/finance/accounts/{{account_id}}/balance" in paths
-    assert f"/api/v1/finance/accounts/{{account_id}}/statement" in paths
+    assert "/api/v1/finance/transfers/{transfer_id}/reversal" in paths
+    assert "/api/v1/finance/accounts/{account_id}/balance" in paths
+    assert "/api/v1/finance/accounts/{account_id}/statement" in paths
