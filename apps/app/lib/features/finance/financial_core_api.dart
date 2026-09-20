@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:meufinanceiro_app/core/auth/authenticated_api_client.dart';
 
@@ -48,6 +49,35 @@ const _movementKeys = <String>{
   'createdAt',
 };
 const _moneyKeys = <String>{'amount', 'currency'};
+const _transferKeys = <String>{
+  'transferId',
+  'sourceAccountId',
+  'destinationAccountId',
+  'currency',
+  'sourceMovementId',
+  'destinationMovementId',
+  'role',
+  'reversalOfId',
+  'createdAt',
+};
+const _balanceKeys = <String>{
+  'accountId',
+  'currency',
+  'openingBalance',
+  'movementNet',
+  'currentBalance',
+  'movementCount',
+  'calculatedAt',
+};
+const _statementKeys = <String>{
+  'accountId',
+  'currency',
+  'openingBalance',
+  'entries',
+  'closingBalance',
+  'calculatedAt',
+};
+const _statementEntryKeys = <String>{'movement', 'balanceAfter'};
 
 enum FinancialAccountType {
   checking('CHECKING'),
@@ -110,6 +140,19 @@ enum FinancialMovementRole {
   static FinancialMovementRole parse(Object? value) =>
       _enumByWire(values, value, 'role', (item) => item.wireValue);
 }
+
+enum FinancialTransferRole {
+  standard('STANDARD'),
+  reversal('REVERSAL');
+
+  const FinancialTransferRole(this.wireValue);
+  final String wireValue;
+
+  static FinancialTransferRole parse(Object? value) =>
+      _enumByWire(values, value, 'role', (item) => item.wireValue);
+}
+
+enum FinancialManualEntryKind { income, expense }
 
 class FinancialMoneyWire {
   FinancialMoneyWire({required String amount, required String currency})
@@ -201,6 +244,78 @@ class FinancialMovement {
   final DateTime createdAt;
 }
 
+class FinancialTransfer {
+  const FinancialTransfer({
+    required this.transferId,
+    required this.sourceAccountId,
+    required this.destinationAccountId,
+    required this.currency,
+    required this.sourceMovementId,
+    required this.destinationMovementId,
+    required this.role,
+    required this.reversalOfId,
+    required this.createdAt,
+  });
+
+  final String transferId;
+  final String sourceAccountId;
+  final String destinationAccountId;
+  final String currency;
+  final String sourceMovementId;
+  final String destinationMovementId;
+  final FinancialTransferRole role;
+  final String? reversalOfId;
+  final DateTime createdAt;
+}
+
+class FinancialBalanceSnapshot {
+  const FinancialBalanceSnapshot({
+    required this.accountId,
+    required this.currency,
+    required this.openingBalance,
+    required this.movementNet,
+    required this.currentBalance,
+    required this.movementCount,
+    required this.calculatedAt,
+  });
+
+  final String accountId;
+  final String currency;
+  final FinancialMoneyWire? openingBalance;
+  final FinancialMoneyWire movementNet;
+  final FinancialMoneyWire currentBalance;
+  final int movementCount;
+  final DateTime calculatedAt;
+}
+
+class FinancialStatementEntry {
+  const FinancialStatementEntry({
+    required this.movement,
+    required this.balanceAfter,
+  });
+
+  final FinancialMovement movement;
+  final FinancialMoneyWire balanceAfter;
+}
+
+class FinancialStatement {
+  const FinancialStatement({
+    required this.accountId,
+    required this.currency,
+    required this.openingBalance,
+    required this.entries,
+    required this.closingBalance,
+    required this.calculatedAt,
+  });
+
+  final String accountId;
+  final String currency;
+  final FinancialMoneyWire? openingBalance;
+  final List<FinancialStatementEntry> entries;
+  final FinancialMoneyWire closingBalance;
+  final DateTime calculatedAt;
+}
+
 class FinancialAccountCreateInput {
   const FinancialAccountCreateInput({
     required this.name,
@@ -257,6 +372,112 @@ class FinancialOpeningBalanceCreateInput {
     'amount': amount,
     'currency': currency,
     'effectiveDate': effectiveDate,
+  };
+}
+
+class FinancialManualEntryCreateInput {
+  FinancialManualEntryCreateInput({
+    required String amount,
+    required String currency,
+    required String effectiveDate,
+    required String competenceDate,
+    required String description,
+    String? idempotencyKey,
+  }) : idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       amount = _positiveDecimalAmount(amount, 'amount'),
+       currency = _currency(currency, 'currency'),
+       effectiveDate = _date(effectiveDate, 'effectiveDate'),
+       competenceDate = _date(competenceDate, 'competenceDate'),
+       description = _boundedText(description, 'description', maxLength: 256);
+
+  final String idempotencyKey;
+  final String amount;
+  final String currency;
+  final String effectiveDate;
+  final String competenceDate;
+  final String description;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'amount': amount,
+    'currency': currency,
+    'effectiveDate': effectiveDate,
+    'competenceDate': competenceDate,
+    'description': description,
+  };
+}
+
+class FinancialMovementReversalInput {
+  FinancialMovementReversalInput({
+    required String effectiveDate,
+    required String competenceDate,
+    required String reason,
+    String? idempotencyKey,
+  }) : idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       effectiveDate = _date(effectiveDate, 'effectiveDate'),
+       competenceDate = _date(competenceDate, 'competenceDate'),
+       reason = _boundedText(reason, 'reason', maxLength: 256);
+
+  final String idempotencyKey;
+  final String effectiveDate;
+  final String competenceDate;
+  final String reason;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'effectiveDate': effectiveDate,
+    'competenceDate': competenceDate,
+    'reason': reason,
+  };
+}
+
+class FinancialTransferCreateInput {
+  FinancialTransferCreateInput({
+    required String sourceAccountId,
+    required String destinationAccountId,
+    required String amount,
+    required String currency,
+    required String effectiveDate,
+    required String competenceDate,
+    required String description,
+    String? idempotencyKey,
+  }) : idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       sourceAccountId = _financialResourceId(
+         sourceAccountId,
+         'sourceAccountId',
+       ),
+       destinationAccountId = _financialResourceId(
+         destinationAccountId,
+         'destinationAccountId',
+       ),
+       amount = _positiveDecimalAmount(amount, 'amount'),
+       currency = _currency(currency, 'currency'),
+       effectiveDate = _date(effectiveDate, 'effectiveDate'),
+       competenceDate = _date(competenceDate, 'competenceDate'),
+       description = _boundedText(description, 'description', maxLength: 256) {
+    if (this.sourceAccountId == this.destinationAccountId) {
+      throw const FormatException('transfer accounts must differ.');
+    }
+  }
+
+  final String idempotencyKey;
+  final String sourceAccountId;
+  final String destinationAccountId;
+  final String amount;
+  final String currency;
+  final String effectiveDate;
+  final String competenceDate;
+  final String description;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'sourceAccountId': sourceAccountId,
+    'destinationAccountId': destinationAccountId,
+    'amount': amount,
+    'currency': currency,
+    'effectiveDate': effectiveDate,
+    'competenceDate': competenceDate,
+    'description': description,
   };
 }
 
@@ -369,6 +590,100 @@ class FinancialCoreApi {
       throw const FormatException('financial movement identity mismatch.');
     }
     return movement;
+  }
+
+  Future<FinancialMovement> createManualEntry(
+    String accountId,
+    FinancialManualEntryKind kind,
+    FinancialManualEntryCreateInput input,
+  ) async {
+    final id = _financialResourceId(accountId, 'accountId');
+    final endpoint = switch (kind) {
+      FinancialManualEntryKind.income => 'income',
+      FinancialManualEntryKind.expense => 'expense',
+    };
+    final response = await client.post(
+      'finance/accounts/$id/$endpoint',
+      jsonBody: input.toJson(),
+    );
+    final movement = _parseMovement(
+      _decodeJsonObject(response.body, 'financial movement response'),
+    );
+    if (movement.accountId != id ||
+        movement.money.currency != input.currency ||
+        movement.role != FinancialMovementRole.standard) {
+      throw const FormatException('financial movement response mismatch.');
+    }
+    final expectedEffect = kind == FinancialManualEntryKind.income
+        ? FinancialResultEffect.income
+        : FinancialResultEffect.expense;
+    if (movement.resultEffect != expectedEffect) {
+      throw const FormatException('financial movement effect mismatch.');
+    }
+    return movement;
+  }
+
+  Future<FinancialMovement> reverseMovement(
+    String movementId,
+    FinancialMovementReversalInput input,
+  ) async {
+    final id = _financialResourceId(movementId, 'movementId');
+    final response = await client.post(
+      'finance/movements/$id/reversal',
+      jsonBody: input.toJson(),
+    );
+    final movement = _parseMovement(
+      _decodeJsonObject(response.body, 'financial movement reversal response'),
+    );
+    if (movement.role != FinancialMovementRole.reversal ||
+        movement.reversalOfId != id) {
+      throw const FormatException('financial movement reversal mismatch.');
+    }
+    return movement;
+  }
+
+  Future<FinancialTransfer> createTransfer(
+    FinancialTransferCreateInput input,
+  ) async {
+    final response = await client.post(
+      'finance/transfers',
+      jsonBody: input.toJson(),
+    );
+    final transfer = _parseTransfer(
+      _decodeJsonObject(response.body, 'financial transfer response'),
+    );
+    if (transfer.sourceAccountId != input.sourceAccountId ||
+        transfer.destinationAccountId != input.destinationAccountId ||
+        transfer.currency != input.currency ||
+        transfer.role != FinancialTransferRole.standard) {
+      throw const FormatException('financial transfer response mismatch.');
+    }
+    return transfer;
+  }
+
+  Future<FinancialBalanceSnapshot> getBalance(String accountId) async {
+    final id = _financialResourceId(accountId, 'accountId');
+    final response = await client.get('finance/accounts/$id/balance');
+    final snapshot = _parseBalance(
+      _decodeJsonObject(response.body, 'financial balance response'),
+    );
+    if (snapshot.accountId != id) {
+      throw const FormatException('financial balance account mismatch.');
+    }
+    return snapshot;
+  }
+
+  Future<FinancialStatement> getStatement(String accountId) async {
+    final id = _financialResourceId(accountId, 'accountId');
+    final response = await client.get('finance/accounts/$id/statement');
+    final statement = _parseStatement(
+      _decodeJsonObject(response.body, 'financial statement response'),
+    );
+    if (statement.accountId != id ||
+        statement.entries.any((entry) => entry.movement.accountId != id)) {
+      throw const FormatException('financial statement account mismatch.');
+    }
+    return statement;
   }
 }
 
@@ -491,6 +806,121 @@ FinancialMovement _parseMovement(Object? raw) {
   );
 }
 
+FinancialTransfer _parseTransfer(Object? raw) {
+  final values = _strictMap(raw, allowedKeys: _transferKeys, label: 'transfer');
+  final role = FinancialTransferRole.parse(values['role']);
+  final reversalOfId = values['reversalOfId'] == null
+      ? null
+      : _financialResourceId(values['reversalOfId'], 'reversalOfId');
+  if (role == FinancialTransferRole.standard && reversalOfId != null) {
+    throw const FormatException('standard transfer reversal state is invalid.');
+  }
+  if (role == FinancialTransferRole.reversal && reversalOfId == null) {
+    throw const FormatException('transfer reversal reference is required.');
+  }
+  return FinancialTransfer(
+    transferId: _financialResourceId(values['transferId'], 'transferId'),
+    sourceAccountId: _financialResourceId(
+      values['sourceAccountId'],
+      'sourceAccountId',
+    ),
+    destinationAccountId: _financialResourceId(
+      values['destinationAccountId'],
+      'destinationAccountId',
+    ),
+    currency: _currency(values['currency'], 'currency'),
+    sourceMovementId: _financialResourceId(
+      values['sourceMovementId'],
+      'sourceMovementId',
+    ),
+    destinationMovementId: _financialResourceId(
+      values['destinationMovementId'],
+      'destinationMovementId',
+    ),
+    role: role,
+    reversalOfId: reversalOfId,
+    createdAt: _timestamp(values['createdAt'], 'createdAt'),
+  );
+}
+
+FinancialBalanceSnapshot _parseBalance(Object? raw) {
+  final values = _strictMap(raw, allowedKeys: _balanceKeys, label: 'balance');
+  final currency = _currency(values['currency'], 'currency');
+  final opening = values['openingBalance'] == null
+      ? null
+      : _parseMoney(values['openingBalance']);
+  final movementNet = _parseMoney(values['movementNet']);
+  final currentBalance = _parseMoney(values['currentBalance']);
+  final movementCount = values['movementCount'];
+  if (movementCount is! int || movementCount < 0) {
+    throw const FormatException('movementCount is invalid.');
+  }
+  if ((opening != null && opening.currency != currency) ||
+      movementNet.currency != currency ||
+      currentBalance.currency != currency) {
+    throw const FormatException('balance currency mismatch.');
+  }
+  return FinancialBalanceSnapshot(
+    accountId: _financialResourceId(values['accountId'], 'accountId'),
+    currency: currency,
+    openingBalance: opening,
+    movementNet: movementNet,
+    currentBalance: currentBalance,
+    movementCount: movementCount,
+    calculatedAt: _timestamp(values['calculatedAt'], 'calculatedAt'),
+  );
+}
+
+FinancialStatementEntry _parseStatementEntry(Object? raw, String currency) {
+  final values = _strictMap(
+    raw,
+    allowedKeys: _statementEntryKeys,
+    label: 'statement entry',
+  );
+  final movement = _parseMovement(values['movement']);
+  final balanceAfter = _parseMoney(values['balanceAfter']);
+  if (movement.money.currency != currency ||
+      balanceAfter.currency != currency) {
+    throw const FormatException('statement entry currency mismatch.');
+  }
+  return FinancialStatementEntry(
+    movement: movement,
+    balanceAfter: balanceAfter,
+  );
+}
+
+FinancialStatement _parseStatement(Object? raw) {
+  final values = _strictMap(
+    raw,
+    allowedKeys: _statementKeys,
+    label: 'statement',
+  );
+  final currency = _currency(values['currency'], 'currency');
+  final opening = values['openingBalance'] == null
+      ? null
+      : _parseMoney(values['openingBalance']);
+  final closing = _parseMoney(values['closingBalance']);
+  final rawEntries = values['entries'];
+  if (rawEntries is! List || rawEntries.length > 10000) {
+    throw const FormatException('statement entries are invalid.');
+  }
+  final entries = List<FinancialStatementEntry>.unmodifiable(
+    rawEntries.map((entry) => _parseStatementEntry(entry, currency)),
+  );
+  if ((opening != null && opening.currency != currency) ||
+      closing.currency != currency) {
+    throw const FormatException('statement currency mismatch.');
+  }
+  return FinancialStatement(
+    accountId: _financialResourceId(values['accountId'], 'accountId'),
+    currency: currency,
+    openingBalance: opening,
+    entries: entries,
+    closingBalance: closing,
+    calculatedAt: _timestamp(values['calculatedAt'], 'calculatedAt'),
+  );
+}
+
 FinancialMoneyWire _parseMoney(Object? raw) {
   final values = _strictMap(raw, allowedKeys: _moneyKeys, label: 'money');
   final amount = values['amount'];
@@ -604,6 +1034,32 @@ String _decimalAmount(Object? value, String fieldName) {
     throw FormatException('$fieldName is invalid.');
   }
   return normalized;
+}
+
+String _positiveDecimalAmount(Object? value, String fieldName) {
+  final normalized = _decimalAmount(value, fieldName);
+  if (normalized.startsWith('-') || _zeroMoneyPattern.hasMatch(normalized)) {
+    throw FormatException('$fieldName must be positive.');
+  }
+  return normalized;
+}
+
+String _idempotencyKey(Object? value) {
+  final normalized = _financialResourceId(value, 'idempotencyKey');
+  return normalized;
+}
+
+String _newUuidV4() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  final hex = bytes
+      .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+      .join();
+  return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
+      '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
+      '${hex.substring(20)}';
 }
 
 String _date(Object? value, String fieldName) {

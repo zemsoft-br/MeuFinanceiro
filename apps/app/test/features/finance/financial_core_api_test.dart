@@ -14,6 +14,11 @@ const _ownerId = '30000000-0000-4000-8000-000000000003';
 const _openingId = '50000000-0000-4000-8000-000000000005';
 const _movementId = '60000000-0000-4000-8000-000000000006';
 const _reversalId = '70000000-0000-4000-8000-000000000007';
+const _destinationAccountId = '41000000-0000-4000-8000-000000000041';
+const _transferId = '80000000-0000-4000-8000-000000000008';
+const _sourceTransferMovementId = '81000000-0000-4000-8000-000000000081';
+const _destinationTransferMovementId = '82000000-0000-4000-8000-000000000082';
+const _idempotencyKey = '90000000-0000-4000-8000-000000000009';
 
 void main() {
   test('lists accounts through strict authenticated wire contract', () async {
@@ -222,6 +227,178 @@ void main() {
     expect(money.toJson()['amount'], isA<String>());
     expect(money.toString(), isNot(contains(money.amount)));
   });
+
+  test('manual income uses semantic endpoint and string money', () async {
+    final transport = FakeAuthTransport.response(
+      statusCode: 201,
+      body: _incomeMovementObject,
+    );
+    final movement = await _api(transport).createManualEntry(
+      _accountId,
+      FinancialManualEntryKind.income,
+      FinancialManualEntryCreateInput(
+        idempotencyKey: _idempotencyKey,
+        amount: '125.50',
+        currency: 'BRL',
+        effectiveDate: '2026-09-20',
+        competenceDate: '2026-09-20',
+        description: 'Receita manual',
+      ),
+    );
+
+    expect(
+      transport.calls.single.uri.path,
+      '/api/v1/finance/accounts/$_accountId/income',
+    );
+    final body =
+        jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+    expect(body.keys.toSet(), {
+      'idempotencyKey',
+      'amount',
+      'currency',
+      'effectiveDate',
+      'competenceDate',
+      'description',
+    });
+    expect(body['idempotencyKey'], _idempotencyKey);
+    expect(body['amount'], '125.50');
+    expect(body['amount'], isA<String>());
+    expect(movement.resultEffect, FinancialResultEffect.income);
+  });
+
+  test('manual inputs reject zero negative and invalid idempotency', () {
+    for (final amount in ['0', '0.00', '-1.00']) {
+      expect(
+        () => FinancialManualEntryCreateInput(
+          idempotencyKey: _idempotencyKey,
+          amount: amount,
+          currency: 'BRL',
+          effectiveDate: '2026-09-20',
+          competenceDate: '2026-09-20',
+          description: 'Teste',
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    }
+    expect(
+      () => FinancialManualEntryCreateInput(
+        idempotencyKey: 'not-a-uuid',
+        amount: '1.00',
+        currency: 'BRL',
+        effectiveDate: '2026-09-20',
+        competenceDate: '2026-09-20',
+        description: 'Teste',
+      ),
+      throwsA(isA<FormatException>()),
+    );
+
+    final generated = FinancialManualEntryCreateInput(
+      amount: '1.00',
+      currency: 'BRL',
+      effectiveDate: '2026-09-20',
+      competenceDate: '2026-09-20',
+      description: 'Teste',
+    ).idempotencyKey;
+    expect(
+      generated,
+      matches(
+        RegExp(
+          r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
+        ),
+      ),
+    );
+  });
+
+  test('movement reversal never sends caller-controlled amount', () async {
+    final transport = FakeAuthTransport.response(
+      statusCode: 201,
+      body: _reversalMovementObject,
+    );
+    final movement = await _api(transport).reverseMovement(
+      _movementId,
+      FinancialMovementReversalInput(
+        idempotencyKey: _idempotencyKey,
+        effectiveDate: '2026-09-20',
+        competenceDate: '2026-09-20',
+        reason: 'Correção',
+      ),
+    );
+
+    expect(
+      transport.calls.single.uri.path,
+      '/api/v1/finance/movements/$_movementId/reversal',
+    );
+    final body =
+        jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+    expect(body, isNot(contains('amount')));
+    expect(body.keys.toSet(), {
+      'idempotencyKey',
+      'effectiveDate',
+      'competenceDate',
+      'reason',
+    });
+    expect(movement.role, FinancialMovementRole.reversal);
+    expect(movement.reversalOfId, _movementId);
+  });
+
+  test(
+    'transfer uses semantic aggregate endpoint and preserves string money',
+    () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: _transferObject,
+      );
+      final transfer = await _api(transport).createTransfer(
+        FinancialTransferCreateInput(
+          idempotencyKey: _idempotencyKey,
+          sourceAccountId: _accountId,
+          destinationAccountId: _destinationAccountId,
+          amount: '80.25',
+          currency: 'BRL',
+          effectiveDate: '2026-09-20',
+          competenceDate: '2026-09-20',
+          description: 'Reserva',
+        ),
+      );
+
+      expect(transport.calls.single.uri.path, '/api/v1/finance/transfers');
+      final body =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(body['amount'], '80.25');
+      expect(body['amount'], isA<String>());
+      expect(transfer.transferId, _transferId);
+      expect(transfer.role, FinancialTransferRole.standard);
+    },
+  );
+
+  test('balance and statement are parsed as backend-derived values', () async {
+    final balance = await _api(
+      FakeAuthTransport.response(statusCode: 200, body: _balanceObject),
+    ).getBalance(_accountId);
+    expect(balance.currentBalance.amount, '1159.25');
+    expect(balance.movementCount, 1);
+
+    final statement = await _api(
+      FakeAuthTransport.response(statusCode: 200, body: _statementObject),
+    ).getStatement(_accountId);
+    expect(statement.entries, hasLength(1));
+    expect(statement.entries.single.movement.movementId, _movementId);
+    expect(statement.entries.single.balanceAfter.amount, '1159.25');
+    expect(statement.closingBalance.amount, '1159.25');
+  });
+
+  test('derived money parser rejects numeric JSON values', () async {
+    final numeric = _balanceObject.replaceFirst(
+      '"amount":"1159.25"',
+      '"amount":1159.25',
+    );
+    await expectLater(
+      _api(
+        FakeAuthTransport.response(statusCode: 200, body: numeric),
+      ).getBalance(_accountId),
+      throwsA(isA<FormatException>()),
+    );
+  });
 }
 
 FinancialCoreApi _api(FakeAuthTransport transport) {
@@ -269,6 +446,96 @@ const _openingObject =
 
 const _openingResponse = '''{"openingBalance":$_openingObject}''';
 
+const _incomeMovementObject =
+    '''
+{
+  "movementId":"60000000-0000-4000-8000-000000000006",
+  "accountId":"$_accountId",
+  "money":{"amount":"125.50","currency":"BRL"},
+  "resultEffect":"INCOME",
+  "role":"STANDARD",
+  "effectiveDate":"2026-09-20",
+  "competenceDate":"2026-09-20",
+  "description":"Receita manual",
+  "reversalOfId":null,
+  "reversalReason":null,
+  "createdAt":"2026-09-20T05:00:00Z"
+}
+''';
+
+const _reversalMovementObject =
+    '''
+{
+  "movementId":"$_reversalId",
+  "accountId":"$_accountId",
+  "money":{"amount":"75.25","currency":"BRL"},
+  "resultEffect":"EXPENSE",
+  "role":"REVERSAL",
+  "effectiveDate":"2026-09-20",
+  "competenceDate":"2026-09-20",
+  "description":null,
+  "reversalOfId":"$_movementId",
+  "reversalReason":"Correção",
+  "createdAt":"2026-09-20T05:10:00Z"
+}
+''';
+
+const _transferObject =
+    '''
+{
+  "transferId":"$_transferId",
+  "sourceAccountId":"$_accountId",
+  "destinationAccountId":"$_destinationAccountId",
+  "currency":"BRL",
+  "sourceMovementId":"$_sourceTransferMovementId",
+  "destinationMovementId":"$_destinationTransferMovementId",
+  "role":"STANDARD",
+  "reversalOfId":null,
+  "createdAt":"2026-09-20T05:20:00Z"
+}
+''';
+
+const _balanceObject =
+    '''
+{
+  "accountId":"$_accountId",
+  "currency":"BRL",
+  "openingBalance":{"amount":"1234.50","currency":"BRL"},
+  "movementNet":{"amount":"-75.25","currency":"BRL"},
+  "currentBalance":{"amount":"1159.25","currency":"BRL"},
+  "movementCount":1,
+  "calculatedAt":"2026-09-20T05:30:00Z"
+}
+''';
+
+const _statementObject =
+    '''
+{
+  "accountId":"$_accountId",
+  "currency":"BRL",
+  "openingBalance":{"amount":"1234.50","currency":"BRL"},
+  "entries":[
+    {
+      "movement":{
+        "movementId":"$_movementId",
+        "accountId":"$_accountId",
+        "money":{"amount":"-75.25","currency":"BRL"},
+        "resultEffect":"EXPENSE",
+        "role":"STANDARD",
+        "effectiveDate":"2026-08-12",
+        "competenceDate":"2026-08-12",
+        "description":"Mercado",
+        "reversalOfId":null,
+        "reversalReason":null,
+        "createdAt":"2026-08-13T12:00:00Z"
+      },
+      "balanceAfter":{"amount":"1159.25","currency":"BRL"}
+    }
+  ],
+  "closingBalance":{"amount":"1159.25","currency":"BRL"},
+  "calculatedAt":"2026-09-20T05:30:00Z"
+}
+''';
 const _movementsResponse =
     '''
 {

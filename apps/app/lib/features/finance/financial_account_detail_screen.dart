@@ -18,10 +18,16 @@ class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
   static const openingBalanceKey = Key(
     'financial-account-detail-opening-balance',
   );
-  static const movementsKey = Key('financial-account-detail-movements');
+  static const balanceKey = Key('financial-account-detail-balance');
+  static const actionsKey = Key('financial-account-detail-actions');
+  static const statementKey = Key('financial-account-detail-statement');
+  static const movementsKey = statementKey;
   static const createOpeningButtonKey = Key(
     'financial-account-detail-create-opening',
   );
+  static const incomeButtonKey = Key('financial-account-detail-income');
+  static const expenseButtonKey = Key('financial-account-detail-expense');
+  static const transferButtonKey = Key('financial-account-detail-transfer');
 
   @override
   ConsumerState<FinancialAccountDetailScreen> createState() =>
@@ -78,11 +84,100 @@ class _FinancialAccountDetailScreenState
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _createManualEntry(
+    FinancialAccount account,
+    FinancialManualEntryKind kind,
+  ) async {
+    final result = await showDialog<FinancialManualEntryCreateInput>(
+      context: context,
+      builder: (context) => _ManualEntryDialog(account: account, kind: kind),
+    );
+    if (result == null || !mounted) return;
+    final created = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .createManualEntry(kind, result);
+    if (!mounted) return;
+    final label = kind == FinancialManualEntryKind.income
+        ? 'Receita'
+        : 'Despesa';
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          created
+              ? '$label registrada.'
+              : 'Não foi possível registrar $label. Verifique os dados e tente novamente.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _createTransfer(
+    FinancialAccount account,
+    List<FinancialAccount> destinations,
+  ) async {
+    final result = await showDialog<FinancialTransferCreateInput>(
+      context: context,
+      builder: (context) =>
+          _TransferDialog(account: account, destinations: destinations),
+    );
+    if (result == null || !mounted) return;
+    final created = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .createTransfer(result);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          created
+              ? 'Transferência registrada.'
+              : 'Não foi possível registrar a transferência.',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _reverseMovement(FinancialMovement movement) async {
+    final result = await showDialog<FinancialMovementReversalInput>(
+      context: context,
+      builder: (context) => _MovementReversalDialog(movement: movement),
+    );
+    if (result == null || !mounted) return;
+    final reversed = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .reverseMovement(movement.movementId, result);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          reversed
+              ? 'Lançamento revertido.'
+              : 'Não foi possível reverter o lançamento.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = financialAccountDetailControllerProvider(widget.accountId);
     final state = ref.watch(provider);
     final account = state.account;
+    final transferDestinations = account == null
+        ? const <FinancialAccount>[]
+        : state.accounts
+              .where(
+                (candidate) =>
+                    candidate.accountId != account.accountId &&
+                    candidate.status == FinancialAccountStatus.active &&
+                    candidate.currency == account.currency,
+              )
+              .toList(growable: false);
     final refreshEnabled =
         !state.isBusy &&
         state.phase != FinancialLoadPhase.authenticationRequired &&
@@ -134,7 +229,7 @@ class _FinancialAccountDetailScreenState
                     ),
                     const SizedBox(height: AppTokens.space8),
                     Text(
-                      'Saldo inicial e Movements são exibidos como registros canônicos. O saldo corrente ainda não é calculado nesta tela.',
+                      'Saldo corrente e extrato são derivados do saldo inicial e do ledger canônico de Movements.',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: AppTokens.neutral700,
                       ),
@@ -169,6 +264,30 @@ class _FinancialAccountDetailScreenState
             )
           else ...[
             _AccountIdentityCard(account: account),
+            if (state.balance != null) ...[
+              const SizedBox(height: AppTokens.space16),
+              _BalanceCard(balance: state.balance!),
+            ],
+            const SizedBox(height: AppTokens.space16),
+            _FinanceActionsCard(
+              account: account,
+              destinations: transferDestinations,
+              enabled:
+                  account.status == FinancialAccountStatus.active &&
+                  !state.operationMutationInFlight,
+              mutationInFlight: state.operationMutationInFlight,
+              onIncome: () => unawaited(
+                _createManualEntry(account, FinancialManualEntryKind.income),
+              ),
+              onExpense: () => unawaited(
+                _createManualEntry(account, FinancialManualEntryKind.expense),
+              ),
+              onTransfer: transferDestinations.isEmpty
+                  ? null
+                  : () => unawaited(
+                      _createTransfer(account, transferDestinations),
+                    ),
+            ),
             const SizedBox(height: AppTokens.space16),
             _OpeningBalanceCard(
               account: account,
@@ -180,8 +299,16 @@ class _FinancialAccountDetailScreenState
                   ? () => unawaited(_createOpeningBalance(account))
                   : null,
             ),
-            const SizedBox(height: AppTokens.space16),
-            _MovementsCard(movements: state.movements),
+            if (state.statement != null) ...[
+              const SizedBox(height: AppTokens.space16),
+              _StatementCard(
+                statement: state.statement!,
+                allowReversal:
+                    account.status == FinancialAccountStatus.active &&
+                    !state.operationMutationInFlight,
+                onReverse: (movement) => unawaited(_reverseMovement(movement)),
+              ),
+            ],
           ],
         ],
       ),
@@ -294,40 +421,40 @@ class _OpeningBalanceCard extends StatelessWidget {
   }
 }
 
-class _MovementsCard extends StatelessWidget {
-  const _MovementsCard({required this.movements});
-  final List<FinancialMovement> movements;
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({required this.balance});
+
+  final FinancialBalanceSnapshot balance;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      key: FinancialAccountDetailScreen.movementsKey,
+      key: FinancialAccountDetailScreen.balanceKey,
       child: Padding(
         padding: const EdgeInsets.all(AppTokens.space20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Movimentações',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: AppTokens.space8),
-            Text(
-              'Eventos STANDARD e REVERSAL permanecem visíveis separadamente.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
-            ),
+            Text('Saldo atual', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppTokens.space16),
-            if (movements.isEmpty)
-              const Text('Nenhuma movimentação registrada nesta conta.')
-            else
-              ...movements.map(
-                (movement) => Padding(
-                  padding: const EdgeInsets.only(bottom: AppTokens.space12),
-                  child: _MovementRow(movement: movement),
+            Wrap(
+              spacing: AppTokens.space24,
+              runSpacing: AppTokens.space12,
+              children: [
+                _Metadata(
+                  label: 'Saldo corrente',
+                  value: _moneyLabel(balance.currentBalance),
                 ),
-              ),
+                _Metadata(
+                  label: 'Movimentação líquida',
+                  value: _moneyLabel(balance.movementNet),
+                ),
+                _Metadata(
+                  label: 'Movimentos',
+                  value: balance.movementCount.toString(),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -335,12 +462,155 @@ class _MovementsCard extends StatelessWidget {
   }
 }
 
-class _MovementRow extends StatelessWidget {
-  const _MovementRow({required this.movement});
-  final FinancialMovement movement;
+class _FinanceActionsCard extends StatelessWidget {
+  const _FinanceActionsCard({
+    required this.account,
+    required this.destinations,
+    required this.enabled,
+    required this.mutationInFlight,
+    required this.onIncome,
+    required this.onExpense,
+    required this.onTransfer,
+  });
+
+  final FinancialAccount account;
+  final List<FinancialAccount> destinations;
+  final bool enabled;
+  final bool mutationInFlight;
+  final VoidCallback onIncome;
+  final VoidCallback onExpense;
+  final VoidCallback? onTransfer;
 
   @override
   Widget build(BuildContext context) {
+    final canTransfer = enabled && onTransfer != null;
+    return Card(
+      key: FinancialAccountDetailScreen.actionsKey,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Operações', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              enabled
+                  ? 'Registre lançamentos ou transfira valores sem editar o ledger diretamente.'
+                  : 'Operações indisponíveis enquanto esta conta não estiver ativa.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+            ),
+            const SizedBox(height: AppTokens.space16),
+            Wrap(
+              spacing: AppTokens.space12,
+              runSpacing: AppTokens.space12,
+              children: [
+                FilledButton.icon(
+                  key: FinancialAccountDetailScreen.incomeButtonKey,
+                  onPressed: enabled && !mutationInFlight ? onIncome : null,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Nova receita'),
+                ),
+                FilledButton.tonalIcon(
+                  key: FinancialAccountDetailScreen.expenseButtonKey,
+                  onPressed: enabled && !mutationInFlight ? onExpense : null,
+                  icon: const Icon(Icons.remove_rounded),
+                  label: const Text('Nova despesa'),
+                ),
+                OutlinedButton.icon(
+                  key: FinancialAccountDetailScreen.transferButtonKey,
+                  onPressed: canTransfer && !mutationInFlight
+                      ? onTransfer
+                      : null,
+                  icon: const Icon(Icons.swap_horiz_rounded),
+                  label: const Text('Transferir'),
+                ),
+              ],
+            ),
+            if (enabled && destinations.isEmpty) ...[
+              const SizedBox(height: AppTokens.space12),
+              Text(
+                'Não há outra conta ativa em ${account.currency} disponível para transferência.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatementCard extends StatelessWidget {
+  const _StatementCard({
+    required this.statement,
+    required this.allowReversal,
+    required this.onReverse,
+  });
+
+  final FinancialStatement statement;
+  final bool allowReversal;
+  final ValueChanged<FinancialMovement> onReverse;
+
+  @override
+  Widget build(BuildContext context) {
+    final reversedMovementIds = statement.entries
+        .map((entry) => entry.movement.reversalOfId)
+        .whereType<String>()
+        .toSet();
+    return Card(
+      key: FinancialAccountDetailScreen.statementKey,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Extrato', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              'STANDARD e REVERSAL permanecem separados; o saldo após cada evento é derivado pelo backend.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+            ),
+            const SizedBox(height: AppTokens.space16),
+            if (statement.entries.isEmpty)
+              const Text('Nenhuma movimentação registrada nesta conta.')
+            else
+              ...statement.entries.map((entry) {
+                final movement = entry.movement;
+                final reversible =
+                    allowReversal &&
+                    movement.role == FinancialMovementRole.standard &&
+                    movement.resultEffect != FinancialResultEffect.neutral &&
+                    !reversedMovementIds.contains(movement.movementId);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppTokens.space12),
+                  child: _StatementRow(
+                    entry: entry,
+                    onReverse: reversible ? () => onReverse(movement) : null,
+                  ),
+                );
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatementRow extends StatelessWidget {
+  const _StatementRow({required this.entry, required this.onReverse});
+
+  final FinancialStatementEntry entry;
+  final VoidCallback? onReverse;
+
+  @override
+  Widget build(BuildContext context) {
+    final movement = entry.movement;
     final reversal = movement.role == FinancialMovementRole.reversal;
     final label = reversal
         ? movement.reversalReason ?? 'Reversão'
@@ -355,10 +625,10 @@ class _MovementRow extends StatelessWidget {
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: AppTokens.space16,
-        runSpacing: AppTokens.space8,
+        runSpacing: AppTokens.space12,
         children: [
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 650),
+            constraints: const BoxConstraints(maxWidth: 560),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -370,16 +640,35 @@ class _MovementRow extends StatelessWidget {
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
                 ),
+                const SizedBox(height: AppTokens.space4),
+                Text(
+                  'Saldo após evento: ${_moneyLabel(entry.balanceAfter)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
-          Semantics(
-            label:
-                '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
-            child: Text(
-              _moneyLabel(movement.money),
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Semantics(
+                label:
+                    '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
+                child: Text(
+                  _moneyLabel(movement.money),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (onReverse != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                TextButton.icon(
+                  key: Key('financial-movement-reverse-${movement.movementId}'),
+                  onPressed: onReverse,
+                  icon: const Icon(Icons.undo_rounded),
+                  label: const Text('Reverter lançamento'),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -483,6 +772,367 @@ class _OpeningBalanceDialogState extends State<_OpeningBalanceDialog> {
           child: const Text('Cancelar'),
         ),
         FilledButton(onPressed: _submit, child: const Text('Salvar')),
+      ],
+    );
+  }
+}
+
+class _ManualEntryDialog extends StatefulWidget {
+  const _ManualEntryDialog({required this.account, required this.kind});
+
+  final FinancialAccount account;
+  final FinancialManualEntryKind kind;
+
+  @override
+  State<_ManualEntryDialog> createState() => _ManualEntryDialogState();
+}
+
+class _ManualEntryDialogState extends State<_ManualEntryDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = _todayDateText();
+    _effectiveDateController = TextEditingController(text: today);
+    _competenceDateController = TextEditingController(text: today);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _descriptionController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialManualEntryCreateInput(
+          amount: _amountController.text,
+          currency: widget.account.currency,
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          description: _descriptionController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados informados.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final income = widget.kind == FinancialManualEntryKind.income;
+    return AlertDialog(
+      title: Text(income ? 'Nova receita' : 'Nova despesa'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _amountController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Valor em ${widget.account.currency}',
+                    helperText: 'Informe um valor positivo, ex.: 125.50',
+                  ),
+                  validator: _validatePositiveMoney,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Descrição'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(income ? 'Registrar receita' : 'Registrar despesa'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TransferDialog extends StatefulWidget {
+  const _TransferDialog({required this.account, required this.destinations});
+
+  final FinancialAccount account;
+  final List<FinancialAccount> destinations;
+
+  @override
+  State<_TransferDialog> createState() => _TransferDialogState();
+}
+
+class _TransferDialogState extends State<_TransferDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  final _descriptionController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+  late String _destinationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _destinationId = widget.destinations.first.accountId;
+    final today = _todayDateText();
+    _effectiveDateController = TextEditingController(text: today);
+    _competenceDateController = TextEditingController(text: today);
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _descriptionController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialTransferCreateInput(
+          sourceAccountId: widget.account.accountId,
+          destinationAccountId: _destinationId,
+          amount: _amountController.text,
+          currency: widget.account.currency,
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          description: _descriptionController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados da transferência.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Transferir entre contas'),
+      content: SizedBox(
+        width: 500,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String>(
+                  initialValue: _destinationId,
+                  decoration: const InputDecoration(labelText: 'Conta destino'),
+                  items: widget.destinations
+                      .map(
+                        (account) => DropdownMenuItem(
+                          value: account.accountId,
+                          child: Text(account.name),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    if (value != null) setState(() => _destinationId = value);
+                  },
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _amountController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Valor em ${widget.account.currency}',
+                    helperText: 'Informe um valor positivo, ex.: 125.50',
+                  ),
+                  validator: _validatePositiveMoney,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _descriptionController,
+                  decoration: const InputDecoration(labelText: 'Descrição'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('Transferir')),
+      ],
+    );
+  }
+}
+
+class _MovementReversalDialog extends StatefulWidget {
+  const _MovementReversalDialog({required this.movement});
+
+  final FinancialMovement movement;
+
+  @override
+  State<_MovementReversalDialog> createState() =>
+      _MovementReversalDialogState();
+}
+
+class _MovementReversalDialogState extends State<_MovementReversalDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _reasonController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+
+  @override
+  void initState() {
+    super.initState();
+    final today = _todayDateText();
+    _effectiveDateController = TextEditingController(text: today);
+    _competenceDateController = TextEditingController(text: today);
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialMovementReversalInput(
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          reason: _reasonController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados da reversão.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reverter lançamento'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.movement.description ?? 'Lançamento selecionado',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _reasonController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Motivo'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva da reversão',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Confirmar reversão'),
+        ),
       ],
     );
   }
@@ -611,6 +1261,49 @@ class _FailureOrLoading extends StatelessWidget {
       ),
     );
   }
+}
+
+String _todayDateText() {
+  final now = DateTime.now();
+  return '${now.year.toString().padLeft(4, '0')}-'
+      '${now.month.toString().padLeft(2, '0')}-'
+      '${now.day.toString().padLeft(2, '0')}';
+}
+
+String? _validatePositiveMoney(String? value) {
+  final source = value ?? '';
+  final valid = RegExp(
+    r'^(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$',
+  ).hasMatch(source);
+  if (!valid || RegExp(r'^0(?:\.0{1,8})?$').hasMatch(source)) {
+    return 'Informe um valor positivo válido.';
+  }
+  return null;
+}
+
+String? _validateDescription(String? value) {
+  final source = value ?? '';
+  if (source.isEmpty ||
+      source.length > 256 ||
+      source != source.trim() ||
+      source.codeUnits.any((unit) => unit < 32 || unit == 127)) {
+    return 'Informe um texto válido de até 256 caracteres.';
+  }
+  return null;
+}
+
+String? _validateDate(String? value) {
+  final source = value ?? '';
+  if (!RegExp(r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$').hasMatch(source)) {
+    return 'Informe a data no formato AAAA-MM-DD.';
+  }
+  final parsed = DateTime.tryParse('${source}T00:00:00Z');
+  final canonical = parsed == null
+      ? null
+      : '${parsed.year.toString().padLeft(4, '0')}-'
+            '${parsed.month.toString().padLeft(2, '0')}-'
+            '${parsed.day.toString().padLeft(2, '0')}';
+  return canonical == source ? null : 'Informe uma data válida.';
 }
 
 String _moneyLabel(FinancialMoneyWire money) =>

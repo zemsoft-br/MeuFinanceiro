@@ -136,9 +136,12 @@ class FinancialAccountDetailState {
     required this.phase,
     this.account,
     this.openingBalance,
-    this.movements = const [],
+    this.balance,
+    this.statement,
+    this.accounts = const [],
     this.refreshFailure = FinancialRefreshFailure.none,
     this.openingBalanceMutationInFlight = false,
+    this.operationMutationInFlight = false,
   });
 
   const FinancialAccountDetailState.idle()
@@ -149,9 +152,12 @@ class FinancialAccountDetailState {
   FinancialAccountDetailState.loaded({
     required FinancialAccount account,
     required FinancialOpeningBalance? openingBalance,
-    required List<FinancialMovement> movements,
+    required FinancialBalanceSnapshot balance,
+    required FinancialStatement statement,
+    required List<FinancialAccount> accounts,
     bool refreshing = false,
     bool openingBalanceMutationInFlight = false,
+    bool operationMutationInFlight = false,
     FinancialRefreshFailure refreshFailure = FinancialRefreshFailure.none,
   }) : this._(
          phase: refreshing
@@ -159,22 +165,33 @@ class FinancialAccountDetailState {
              : FinancialLoadPhase.loaded,
          account: account,
          openingBalance: openingBalance,
-         movements: List<FinancialMovement>.unmodifiable(movements),
+         balance: balance,
+         statement: statement,
+         accounts: List<FinancialAccount>.unmodifiable(accounts),
          refreshFailure: refreshFailure,
          openingBalanceMutationInFlight: openingBalanceMutationInFlight,
+         operationMutationInFlight: operationMutationInFlight,
        );
 
   final FinancialLoadPhase phase;
   final FinancialAccount? account;
   final FinancialOpeningBalance? openingBalance;
-  final List<FinancialMovement> movements;
+  final FinancialBalanceSnapshot? balance;
+  final FinancialStatement? statement;
+  final List<FinancialAccount> accounts;
   final FinancialRefreshFailure refreshFailure;
   final bool openingBalanceMutationInFlight;
+  final bool operationMutationInFlight;
+
+  List<FinancialMovement> get movements => List<FinancialMovement>.unmodifiable(
+    statement?.entries.map((entry) => entry.movement) ?? const [],
+  );
 
   bool get isBusy =>
       phase == FinancialLoadPhase.loading ||
       phase == FinancialLoadPhase.refreshing ||
-      openingBalanceMutationInFlight;
+      openingBalanceMutationInFlight ||
+      operationMutationInFlight;
 }
 
 final financialAccountDetailControllerProvider = NotifierProvider.autoDispose
@@ -208,13 +225,23 @@ class FinancialAccountDetailController
     FinancialOpeningBalanceCreateInput input,
   ) async {
     final account = state.account;
-    if (account == null || state.openingBalanceMutationInFlight) return false;
+    final balance = state.balance;
+    final statement = state.statement;
+    if (account == null ||
+        balance == null ||
+        statement == null ||
+        state.openingBalanceMutationInFlight) {
+      return false;
+    }
+    final previous = state;
     state = FinancialAccountDetailState.loaded(
       account: account,
-      openingBalance: state.openingBalance,
-      movements: state.movements,
+      openingBalance: previous.openingBalance,
+      balance: balance,
+      statement: statement,
+      accounts: previous.accounts,
       openingBalanceMutationInFlight: true,
-      refreshFailure: state.refreshFailure,
+      refreshFailure: previous.refreshFailure,
     );
     try {
       final opening = await ref
@@ -223,40 +250,134 @@ class FinancialAccountDetailController
       if (opening.money.currency != account.currency) {
         throw const FormatException('opening balance currency mismatch.');
       }
-      state = FinancialAccountDetailState.loaded(
-        account: account,
-        openingBalance: opening,
-        movements: state.movements,
-      );
+      await _load(refresh: true, force: true);
       return true;
     } on AuthenticatedApiException catch (error) {
       if (error.statusCode == 409) {
         await _load(refresh: true, force: true);
         return false;
       }
-      state = FinancialAccountDetailState.phase(
-        financialPhaseForFailure(error),
-      );
+      _restoreAfterMutationFailure(previous, error);
       return false;
     } on FormatException {
-      state = const FinancialAccountDetailState.phase(
-        FinancialLoadPhase.invalidResponse,
-      );
+      _restoreInvalidResponse(previous);
       return false;
     }
+  }
+
+  Future<bool> createManualEntry(
+    FinancialManualEntryKind kind,
+    FinancialManualEntryCreateInput input,
+  ) => _runOperation((api) async {
+    await api.createManualEntry(accountId, kind, input);
+  });
+
+  Future<bool> createTransfer(FinancialTransferCreateInput input) =>
+      _runOperation((api) async {
+        await api.createTransfer(input);
+      });
+
+  Future<bool> reverseMovement(
+    String movementId,
+    FinancialMovementReversalInput input,
+  ) => _runOperation((api) async {
+    await api.reverseMovement(movementId, input);
+  });
+
+  Future<bool> _runOperation(
+    Future<void> Function(FinancialCoreApi api) operation,
+  ) async {
+    final account = state.account;
+    final balance = state.balance;
+    final statement = state.statement;
+    if (account == null ||
+        balance == null ||
+        statement == null ||
+        state.operationMutationInFlight) {
+      return false;
+    }
+    final previous = state;
+    state = FinancialAccountDetailState.loaded(
+      account: account,
+      openingBalance: previous.openingBalance,
+      balance: balance,
+      statement: statement,
+      accounts: previous.accounts,
+      operationMutationInFlight: true,
+      refreshFailure: previous.refreshFailure,
+    );
+    try {
+      await operation(ref.read(financialCoreApiProvider));
+      await _load(refresh: true, force: true);
+      return true;
+    } on AuthenticatedApiException catch (error) {
+      if (error.statusCode == 409 || error.statusCode == 422) {
+        state = FinancialAccountDetailState.loaded(
+          account: account,
+          openingBalance: previous.openingBalance,
+          balance: balance,
+          statement: statement,
+          accounts: previous.accounts,
+        );
+        return false;
+      }
+      _restoreAfterMutationFailure(previous, error);
+      return false;
+    } on FormatException {
+      _restoreInvalidResponse(previous);
+      return false;
+    }
+  }
+
+  void _restoreAfterMutationFailure(
+    FinancialAccountDetailState previous,
+    AuthenticatedApiException error,
+  ) {
+    final phase = financialPhaseForFailure(error);
+    if (phase == FinancialLoadPhase.authenticationRequired ||
+        phase == FinancialLoadPhase.forbidden ||
+        phase == FinancialLoadPhase.primaryResidenceRequired) {
+      state = FinancialAccountDetailState.phase(phase);
+      return;
+    }
+    state = FinancialAccountDetailState.loaded(
+      account: previous.account!,
+      openingBalance: previous.openingBalance,
+      balance: previous.balance!,
+      statement: previous.statement!,
+      accounts: previous.accounts,
+      refreshFailure: FinancialRefreshFailure.temporarilyUnavailable,
+    );
+  }
+
+  void _restoreInvalidResponse(FinancialAccountDetailState previous) {
+    state = FinancialAccountDetailState.loaded(
+      account: previous.account!,
+      openingBalance: previous.openingBalance,
+      balance: previous.balance!,
+      statement: previous.statement!,
+      accounts: previous.accounts,
+      refreshFailure: FinancialRefreshFailure.invalidResponse,
+    );
   }
 
   Future<void> _load({required bool refresh, bool force = false}) async {
     if (!force && (_inFlight || state.isBusy)) return;
     final previous = state;
-    final preserve = refresh && previous.account != null;
+    final preserve =
+        refresh &&
+        previous.account != null &&
+        previous.balance != null &&
+        previous.statement != null;
     final generation = ++_generation;
     _inFlight = true;
     state = preserve
         ? FinancialAccountDetailState.loaded(
             account: previous.account!,
             openingBalance: previous.openingBalance,
-            movements: previous.movements,
+            balance: previous.balance!,
+            statement: previous.statement!,
+            accounts: previous.accounts,
             refreshing: true,
           )
         : const FinancialAccountDetailState.phase(FinancialLoadPhase.loading);
@@ -264,21 +385,32 @@ class FinancialAccountDetailController
       final api = ref.read(financialCoreApiProvider);
       final account = await api.getAccount(accountId);
       final openingBalance = await api.getOpeningBalance(accountId);
-      final movements = await api.listMovements(accountId);
+      final balance = await api.getBalance(accountId);
+      final statement = await api.getStatement(accountId);
+      final accounts = await api.listAccounts();
+
       if (openingBalance != null &&
           openingBalance.money.currency != account.currency) {
         throw const FormatException('opening balance currency mismatch.');
       }
-      if (movements.any(
-        (movement) => movement.money.currency != account.currency,
-      )) {
-        throw const FormatException('movement currency mismatch.');
+      if (balance.accountId != account.accountId ||
+          balance.currency != account.currency) {
+        throw const FormatException('balance account mismatch.');
+      }
+      if (statement.accountId != account.accountId ||
+          statement.currency != account.currency ||
+          statement.entries.any(
+            (entry) => entry.movement.money.currency != account.currency,
+          )) {
+        throw const FormatException('statement account mismatch.');
       }
       if (!_isCurrent(generation)) return;
       state = FinancialAccountDetailState.loaded(
         account: account,
         openingBalance: openingBalance,
-        movements: movements,
+        balance: balance,
+        statement: statement,
+        accounts: accounts,
       );
     } catch (error) {
       if (!_isCurrent(generation)) return;
@@ -289,7 +421,9 @@ class FinancialAccountDetailController
         state = FinancialAccountDetailState.loaded(
           account: previous.account!,
           openingBalance: previous.openingBalance,
-          movements: previous.movements,
+          balance: previous.balance!,
+          statement: previous.statement!,
+          accounts: previous.accounts,
           refreshFailure: phase == FinancialLoadPhase.invalidResponse
               ? FinancialRefreshFailure.invalidResponse
               : FinancialRefreshFailure.temporarilyUnavailable,
