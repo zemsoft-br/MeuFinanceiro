@@ -17,8 +17,7 @@ const _reversalId = '70000000-0000-4000-8000-000000000007';
 const _destinationAccountId = '41000000-0000-4000-8000-000000000041';
 const _transferId = '80000000-0000-4000-8000-000000000008';
 const _sourceTransferMovementId = '81000000-0000-4000-8000-000000000081';
-const _destinationTransferMovementId =
-    '82000000-0000-4000-8000-000000000082';
+const _destinationTransferMovementId = '82000000-0000-4000-8000-000000000082';
 const _idempotencyKey = '90000000-0000-4000-8000-000000000009';
 
 void main() {
