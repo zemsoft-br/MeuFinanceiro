@@ -27,12 +27,7 @@ ROUTER = (FLUTTER / "routing/app_router.dart").read_text(encoding="utf-8")
 
 def test_financial_flutter_money_contract_never_uses_double() -> None:
     combined = (
-        API
-        + CONTROLLER
-        + LIST_SCREEN
-        + CREATE_SCREEN
-        + DETAIL_SCREEN
-        + MONEY_INPUT
+        API + CONTROLLER + LIST_SCREEN + CREATE_SCREEN + DETAIL_SCREEN + MONEY_INPUT
     )
     assert "double.parse" not in combined
     assert "double.tryParse" not in combined
