@@ -28,7 +28,9 @@ def _clean_identifier(value: str, field_name: str) -> str:
 
 
 def _clean_currency(value: str) -> str:
-    currency = _clean_text(value, "currency", max_length=3).upper()
+    if not isinstance(value, str):
+        raise TypeError("currency must be a string")
+    currency = value.strip().upper()
     if len(currency) != 3 or not currency.isascii() or not currency.isalpha():
         raise ValueError("currency must be a three-letter ASCII code")
     return currency
