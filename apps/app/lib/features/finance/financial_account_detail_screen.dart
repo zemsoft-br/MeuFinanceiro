@@ -425,39 +425,186 @@ class _OpeningBalanceCard extends StatelessWidget {
   }
 }
 
-class _MovementsCard extends StatelessWidget {
-  const _MovementsCard({required this.movements});
-  final List<FinancialMovement> movements;
+class _BalanceCard extends StatelessWidget {
+  const _BalanceCard({required this.balance});
+
+  final FinancialBalanceSnapshot balance;
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      key: FinancialAccountDetailScreen.movementsKey,
+      key: FinancialAccountDetailScreen.balanceKey,
       child: Padding(
         padding: const EdgeInsets.all(AppTokens.space20),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Movimentações',
+              'Saldo atual',
               style: Theme.of(context).textTheme.titleLarge,
             ),
+            const SizedBox(height: AppTokens.space16),
+            Wrap(
+              spacing: AppTokens.space24,
+              runSpacing: AppTokens.space12,
+              children: [
+                _Metadata(
+                  label: 'Saldo corrente',
+                  value: _moneyLabel(balance.currentBalance),
+                ),
+                _Metadata(
+                  label: 'Movimentação líquida',
+                  value: _moneyLabel(balance.movementNet),
+                ),
+                _Metadata(
+                  label: 'Movimentos',
+                  value: balance.movementCount.toString(),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FinanceActionsCard extends StatelessWidget {
+  const _FinanceActionsCard({
+    required this.account,
+    required this.destinations,
+    required this.enabled,
+    required this.mutationInFlight,
+    required this.onIncome,
+    required this.onExpense,
+    required this.onTransfer,
+  });
+
+  final FinancialAccount account;
+  final List<FinancialAccount> destinations;
+  final bool enabled;
+  final bool mutationInFlight;
+  final VoidCallback onIncome;
+  final VoidCallback onExpense;
+  final VoidCallback? onTransfer;
+
+  @override
+  Widget build(BuildContext context) {
+    final canTransfer = enabled && onTransfer != null;
+    return Card(
+      key: FinancialAccountDetailScreen.actionsKey,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Operações', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: AppTokens.space8),
             Text(
-              'Eventos STANDARD e REVERSAL permanecem visíveis separadamente.',
+              enabled
+                  ? 'Registre lançamentos ou transfira valores sem editar o ledger diretamente.'
+                  : 'Informe o saldo inicial para liberar novas operações nesta conta.',
               style: Theme.of(
                 context,
               ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
             const SizedBox(height: AppTokens.space16),
-            if (movements.isEmpty)
+            Wrap(
+              spacing: AppTokens.space12,
+              runSpacing: AppTokens.space12,
+              children: [
+                FilledButton.icon(
+                  key: FinancialAccountDetailScreen.incomeButtonKey,
+                  onPressed: enabled && !mutationInFlight ? onIncome : null,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Nova receita'),
+                ),
+                FilledButton.tonalIcon(
+                  key: FinancialAccountDetailScreen.expenseButtonKey,
+                  onPressed: enabled && !mutationInFlight ? onExpense : null,
+                  icon: const Icon(Icons.remove_rounded),
+                  label: const Text('Nova despesa'),
+                ),
+                OutlinedButton.icon(
+                  key: FinancialAccountDetailScreen.transferButtonKey,
+                  onPressed: canTransfer && !mutationInFlight
+                      ? onTransfer
+                      : null,
+                  icon: const Icon(Icons.swap_horiz_rounded),
+                  label: const Text('Transferir'),
+                ),
+              ],
+            ),
+            if (enabled && destinations.isEmpty) ...[
+              const SizedBox(height: AppTokens.space12),
+              Text(
+                'Não há outra conta ativa em ${account.currency} disponível para transferência.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _StatementCard extends StatelessWidget {
+  const _StatementCard({
+    required this.statement,
+    required this.allowReversal,
+    required this.onReverse,
+  });
+
+  final FinancialStatement statement;
+  final bool allowReversal;
+  final ValueChanged<FinancialMovement> onReverse;
+
+  @override
+  Widget build(BuildContext context) {
+    final reversedMovementIds = statement.entries
+        .map((entry) => entry.movement.reversalOfId)
+        .whereType<String>()
+        .toSet();
+    return Card(
+      key: FinancialAccountDetailScreen.statementKey,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Extrato', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              'STANDARD e REVERSAL permanecem separados; o saldo após cada evento é derivado pelo backend.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+            ),
+            const SizedBox(height: AppTokens.space16),
+            if (statement.entries.isEmpty)
               const Text('Nenhuma movimentação registrada nesta conta.')
             else
-              ...movements.map(
-                (movement) => Padding(
-                  padding: const EdgeInsets.only(bottom: AppTokens.space12),
-                  child: _MovementRow(movement: movement),
-                ),
+              ...statement.entries.map(
+                (entry) {
+                  final movement = entry.movement;
+                  final reversible =
+                      allowReversal &&
+                      movement.role == FinancialMovementRole.standard &&
+                      movement.resultEffect != FinancialResultEffect.neutral &&
+                      !reversedMovementIds.contains(movement.movementId);
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: AppTokens.space12),
+                    child: _StatementRow(
+                      entry: entry,
+                      onReverse: reversible
+                          ? () => onReverse(movement)
+                          : null,
+                    ),
+                  );
+                },
               ),
           ],
         ),
@@ -466,12 +613,15 @@ class _MovementsCard extends StatelessWidget {
   }
 }
 
-class _MovementRow extends StatelessWidget {
-  const _MovementRow({required this.movement});
-  final FinancialMovement movement;
+class _StatementRow extends StatelessWidget {
+  const _StatementRow({required this.entry, required this.onReverse});
+
+  final FinancialStatementEntry entry;
+  final VoidCallback? onReverse;
 
   @override
   Widget build(BuildContext context) {
+    final movement = entry.movement;
     final reversal = movement.role == FinancialMovementRole.reversal;
     final label = reversal
         ? movement.reversalReason ?? 'Reversão'
@@ -486,10 +636,10 @@ class _MovementRow extends StatelessWidget {
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: AppTokens.space16,
-        runSpacing: AppTokens.space8,
+        runSpacing: AppTokens.space12,
         children: [
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 650),
+            constraints: const BoxConstraints(maxWidth: 560),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -501,16 +651,35 @@ class _MovementRow extends StatelessWidget {
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
                 ),
+                const SizedBox(height: AppTokens.space4),
+                Text(
+                  'Saldo após evento: ${_moneyLabel(entry.balanceAfter)}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
           ),
-          Semantics(
-            label:
-                '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
-            child: Text(
-              _moneyLabel(movement.money),
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Semantics(
+                label:
+                    '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
+                child: Text(
+                  _moneyLabel(movement.money),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              if (onReverse != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                TextButton.icon(
+                  key: Key('financial-movement-reverse-${movement.movementId}'),
+                  onPressed: onReverse,
+                  icon: const Icon(Icons.undo_rounded),
+                  label: const Text('Reverter lançamento'),
+                ),
+              ],
+            ],
           ),
         ],
       ),
