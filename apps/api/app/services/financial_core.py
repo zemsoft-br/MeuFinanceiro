@@ -12,6 +12,7 @@ from meufinanceiro_finance import (
     FinancialAccountStatement,
     FinancialManualEntryDraft,
     FinancialManualEntryService,
+    FinancialMovementDraft,
     FinancialMovementRecord,
     FinancialMovementReversalDraft,
     FinancialOpeningBalanceDraft,
@@ -82,7 +83,7 @@ class FinancialMovementStoreBoundary(Protocol):
         residence_id: UUID,
         operator_id: UUID,
         idempotency_key: UUID,
-        draft: object,
+        draft: FinancialMovementDraft,
     ) -> FinancialMovementRecord: ...
 
     def reverse_movement(
@@ -173,7 +174,8 @@ class FinancialCoreService:
             raise TypeError("account_store must satisfy FinancialAccountStoreBoundary")
         if not isinstance(opening_balance_store, FinancialOpeningBalanceStoreBoundary):
             raise TypeError(
-                "opening_balance_store must satisfy FinancialOpeningBalanceStoreBoundary"
+                "opening_balance_store must satisfy "
+                "FinancialOpeningBalanceStoreBoundary"
             )
         if not isinstance(movement_store, FinancialMovementStoreBoundary):
             raise TypeError(
