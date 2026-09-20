@@ -5,8 +5,10 @@ ACTION=${1:-up}
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)
 STATE_DIR="$ROOT_DIR/.demo"
+SECRETS_DIR="$STATE_DIR/secrets"
 ENV_FILE="$STATE_DIR/.env"
-KEYRING_FILE="$STATE_DIR/secrets/keyring.json"
+KEYRING_FILE="$SECRETS_DIR/keyring.json"
+OPERATOR_PASSWORD_FILE="$SECRETS_DIR/operator_password.txt"
 PROJECT_NAME="meufinanceiro-demo"
 
 case "$ACTION" in
@@ -30,24 +32,87 @@ docker compose version >/dev/null 2>&1 || {
   exit 1
 }
 
-if [ -z "${DEMO_OPERATOR_PASSWORD:-}" ]; then
-  if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
-    DEMO_OPERATOR_PASSWORD="meufinanceiro-demo-ci-only"
-    export DEMO_OPERATOR_PASSWORD
-  else
-    echo "Defina DEMO_OPERATOR_PASSWORD no ambiente antes de usar o modo demo." >&2
-    exit 1
-  fi
-fi
-
 generate_password() {
   python3 -c 'import secrets; print(secrets.token_hex(24))'
 }
 
+read_operator_password() {
+  python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+try:
+    raw = path.read_text(encoding="utf-8")
+except OSError:
+    print("A credencial privada do operador demo não pôde ser lida.", file=sys.stderr)
+    raise SystemExit(1)
+
+if raw.endswith("\r\n"):
+    value = raw[:-2]
+elif raw.endswith(("\n", "\r")):
+    value = raw[:-1]
+else:
+    value = raw
+
+if "\r" in value or "\n" in value:
+    print("A credencial privada do operador demo deve conter uma única linha.", file=sys.stderr)
+    raise SystemExit(1)
+if not value:
+    print("A credencial privada do operador demo está vazia.", file=sys.stderr)
+    raise SystemExit(1)
+
+sys.stdout.write(value)
+PY
+}
+
+migrate_legacy_operator_password() {
+  legacy_count=$(grep -c '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE" || true)
+  if [ "$legacy_count" -eq 0 ]; then
+    unset legacy_count
+    return
+  fi
+  if [ "$legacy_count" -ne 1 ]; then
+    echo "A configuração demo contém múltiplas credenciais legadas; nenhuma fonte foi alterada." >&2
+    unset legacy_count
+    exit 1
+  fi
+  unset legacy_count
+
+  legacy_password=$(sed -n 's/^DEMO_OPERATOR_PASSWORD=//p' "$ENV_FILE")
+  if [ -z "$legacy_password" ]; then
+    echo "A credencial legada do operador demo está vazia." >&2
+    unset legacy_password
+    exit 1
+  fi
+
+  if [ -f "$OPERATOR_PASSWORD_FILE" ]; then
+    if ! current_password=$(read_operator_password "$OPERATOR_PASSWORD_FILE"); then
+      unset legacy_password current_password
+      exit 1
+    fi
+    if [ "$current_password" != "$legacy_password" ]; then
+      echo "Conflito entre a credencial demo legada e o secret file; nenhuma fonte foi alterada." >&2
+      unset legacy_password current_password
+      exit 1
+    fi
+    unset current_password
+  else
+    printf '%s\n' "$legacy_password" > "$OPERATOR_PASSWORD_FILE"
+    chmod 600 "$OPERATOR_PASSWORD_FILE"
+  fi
+  unset legacy_password
+
+  filtered_env="$STATE_DIR/.env.migrating"
+  grep -v '^DEMO_OPERATOR_PASSWORD=' "$ENV_FILE" > "$filtered_env"
+  chmod 600 "$filtered_env"
+  mv "$filtered_env" "$ENV_FILE"
+}
+
 ensure_configuration() {
   umask 077
-  mkdir -p "$STATE_DIR/secrets"
-  chmod 700 "$STATE_DIR" "$STATE_DIR/secrets"
+  mkdir -p "$SECRETS_DIR"
+  chmod 700 "$STATE_DIR" "$SECRETS_DIR"
 
   if [ ! -f "$ENV_FILE" ]; then
     cat > "$ENV_FILE" <<ENV
@@ -71,6 +136,17 @@ ENV
     echo "A configuração demo existente usa um banco inesperado." >&2
     exit 1
   }
+
+  migrate_legacy_operator_password
+
+  if [ ! -f "$OPERATOR_PASSWORD_FILE" ]; then
+    generate_password > "$OPERATOR_PASSWORD_FILE"
+  fi
+  chmod 600 "$OPERATOR_PASSWORD_FILE"
+
+  if ! read_operator_password "$OPERATOR_PASSWORD_FILE" >/dev/null; then
+    exit 1
+  fi
 
   if [ ! -f "$KEYRING_FILE" ]; then
     python3 "$ROOT_DIR/infra/scripts/manage-secrets.py" init --path "$KEYRING_FILE"
@@ -130,6 +206,8 @@ else:
 PY
     echo "MeuFinanceiro demo disponível em http://127.0.0.1:${PORT}"
     echo "Login demo: demo"
+    printf 'Senha demo: '
+    cat "$OPERATOR_PASSWORD_FILE"
     ;;
   load|status|reset)
     run_fixture_command "$ACTION"
