@@ -19,7 +19,7 @@ void main() {
         movementId: _movementId,
         effect: FinancialResultEffect.neutral,
       ),
-      transfers: const [_standardTransfer],
+      transfers: [_standardTransfer],
     );
 
     expect(transfer?.transferId, _transferId);
@@ -31,7 +31,7 @@ void main() {
         movementId: _movementId,
         effect: FinancialResultEffect.neutral,
       ),
-      transfers: const [_standardTransfer, _reversalTransfer],
+      transfers: [_standardTransfer, _reversalTransfer],
     );
 
     expect(transfer, isNull);
@@ -43,7 +43,7 @@ void main() {
         movementId: _movementId,
         effect: FinancialResultEffect.expense,
       ),
-      transfers: const [_standardTransfer],
+      transfers: [_standardTransfer],
     );
 
     expect(transfer, isNull);
@@ -92,7 +92,7 @@ FinancialMovement _movement({
   createdAt: DateTime.utc(2026, 11, 5),
 );
 
-const _standardTransfer = FinancialTransfer(
+final _standardTransfer = FinancialTransfer(
   transferId: _transferId,
   sourceAccountId: _accountId,
   destinationAccountId: _destinationAccountId,
@@ -104,7 +104,7 @@ const _standardTransfer = FinancialTransfer(
   createdAt: DateTime(2026, 11, 5),
 );
 
-const _reversalTransfer = FinancialTransfer(
+final _reversalTransfer = FinancialTransfer(
   transferId: _reversalTransferId,
   sourceAccountId: _destinationAccountId,
   destinationAccountId: _accountId,
