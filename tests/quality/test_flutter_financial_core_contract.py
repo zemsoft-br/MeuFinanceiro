@@ -84,30 +84,50 @@ def test_detail_controller_revalidates_currency_across_resources() -> None:
     assert "movement currency mismatch" in CONTROLLER
 
 
-def test_financial_flutter_has_no_manual_entry_or_reverse_cta_yet() -> None:
-    combined = LIST_SCREEN + CREATE_SCREEN + DETAIL_SCREEN
-    for forbidden in (
-        "Novo lançamento",
+def test_financial_flutter_exposes_semantic_commands_without_generic_writer() -> None:
+    assert "createManualEntry" in API
+    assert "reverseMovement" in API
+    assert "createTransfer" in API
+    assert "createManualEntry" in CONTROLLER
+    assert "reverseMovement" in CONTROLLER
+    assert "createTransfer" in CONTROLLER
+    for required in (
         "Nova receita",
         "Nova despesa",
-        "Criar receita",
-        "Criar despesa",
-        "reverseMovement",
-        "reverse_movement",
-        "Reverter movimento",
+        "Transferir",
         "Reverter lançamento",
     ):
-        assert forbidden not in combined
-    assert "STANDARD e REVERSAL permanecem visíveis separadamente" in DETAIL_SCREEN
+        assert required in DETAIL_SCREEN
+    assert "finance/movements/$id/reversal" in API
+    assert "finance/transfers" in API
+    assert "POST /finance/movements" not in API
 
 
-def test_financial_flutter_does_not_invent_current_balance() -> None:
-    assert "saldo corrente" in LIST_SCREEN.lower()
-    assert "saldo corrente" in DETAIL_SCREEN.lower()
-    assert "currentBalance" not in (LIST_SCREEN + DETAIL_SCREEN)
-    assert "openingBalance == null" in DETAIL_SCREEN
+def test_financial_flutter_uses_backend_derived_balance_and_statement() -> None:
+    assert "getBalance" in API
+    assert "getStatement" in API
+    assert "currentBalance" in API
+    assert "balanceAfter" in API
+    assert "await api.getBalance(accountId)" in CONTROLLER
+    assert "await api.getStatement(accountId)" in CONTROLLER
+    assert "_moneyLabel(balance.currentBalance)" in DETAIL_SCREEN
+    assert "_moneyLabel(entry.balanceAfter)" in DETAIL_SCREEN
     assert "Saldo inicial não informado" in DETAIL_SCREEN
     assert "não significa saldo zero" in DETAIL_SCREEN
+
+
+def test_financial_flutter_preserves_transfer_atomicity_in_reversal_ui() -> None:
+    assert "movement.resultEffect != FinancialResultEffect.neutral" in DETAIL_SCREEN
+    assert "reverseTransfer" not in DETAIL_SCREEN
+    assert "reverseTransfer" not in CONTROLLER
+    assert "perna" not in DETAIL_SCREEN.lower()
+
+
+def test_financial_flutter_generates_uuid_v4_idempotency_keys() -> None:
+    assert "_newUuidV4" in API
+    assert "(bytes[6] & 0x0f) | 0x40" in API
+    assert "(bytes[8] & 0x3f) | 0x80" in API
+    assert "_idempotencyKey(idempotencyKey ?? _newUuidV4())" in API
 
 
 def test_financial_routes_are_under_app_namespace_and_select_finance_destination() -> (
