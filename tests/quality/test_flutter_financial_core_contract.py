@@ -18,9 +18,9 @@ CREATE_SCREEN = (
 DETAIL_SCREEN = (
     FLUTTER / "features/finance/financial_account_detail_screen.dart"
 ).read_text(encoding="utf-8")
-MONEY_INPUT = (
-    FLUTTER / "features/finance/financial_money_input.dart"
-).read_text(encoding="utf-8")
+MONEY_INPUT = (FLUTTER / "features/finance/financial_money_input.dart").read_text(
+    encoding="utf-8"
+)
 ROUTES = (FLUTTER / "routing/app_routes.dart").read_text(encoding="utf-8")
 ROUTER = (FLUTTER / "routing/app_router.dart").read_text(encoding="utf-8")
 
