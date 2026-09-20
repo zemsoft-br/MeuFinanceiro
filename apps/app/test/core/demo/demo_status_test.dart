@@ -61,12 +61,18 @@ void main() {
   });
 
   test('rejects stale fixture version and checksum', () async {
+    const staleChecksum =
+        '0000000000000000000000000000000000000000000000000000000000000000';
     for (final body in [
       _payload(fixtureVersion: 1),
-      _payload(contractChecksum: '0000000000000000000000000000000000000000000000000000000000000000'),
+      _payload(contractChecksum: staleChecksum),
     ]) {
+      final transport = FakeHealthTransport.response(
+        statusCode: 200,
+        body: body,
+      );
       await expectLater(
-        service(FakeHealthTransport.response(statusCode: 200, body: body)).check(),
+        service(transport).check(),
         throwsA(isA<FormatException>()),
       );
     }
