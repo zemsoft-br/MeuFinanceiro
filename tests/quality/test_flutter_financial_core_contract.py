@@ -18,12 +18,17 @@ CREATE_SCREEN = (
 DETAIL_SCREEN = (
     FLUTTER / "features/finance/financial_account_detail_screen.dart"
 ).read_text(encoding="utf-8")
+MONEY_INPUT = (FLUTTER / "features/finance/financial_money_input.dart").read_text(
+    encoding="utf-8"
+)
 ROUTES = (FLUTTER / "routing/app_routes.dart").read_text(encoding="utf-8")
 ROUTER = (FLUTTER / "routing/app_router.dart").read_text(encoding="utf-8")
 
 
 def test_financial_flutter_money_contract_never_uses_double() -> None:
-    combined = API + CONTROLLER + LIST_SCREEN + CREATE_SCREEN + DETAIL_SCREEN
+    combined = (
+        API + CONTROLLER + LIST_SCREEN + CREATE_SCREEN + DETAIL_SCREEN + MONEY_INPUT
+    )
     assert "double.parse" not in combined
     assert "double.tryParse" not in combined
     assert "double " not in API
@@ -184,6 +189,7 @@ def test_financial_ui_uses_only_existing_design_tokens() -> None:
     assert "AppTokens.space20" in combined
     assert "AppTokens.radiusMedium" in combined
 
+
 def test_financial_mutation_dialogs_use_safe_ledger_date_policy() -> None:
     assert "financialOperationInitialDate(" in DETAIL_SCREEN
     assert "financialOperationClockProvider" in DETAIL_SCREEN
@@ -191,3 +197,15 @@ def test_financial_mutation_dialogs_use_safe_ledger_date_policy() -> None:
     assert "required this.initialDate" in DETAIL_SCREEN
     assert "text: widget.initialDate" in DETAIL_SCREEN
     assert "targetMovementDate: movement.effectiveDate" in DETAIL_SCREEN
+
+
+def test_financial_money_input_accepts_comma_and_normalizes_textually() -> None:
+    assert "normalizeFinancialMoneyInput" in MONEY_INPUT
+    assert "value.replaceAll(',', '.')" in MONEY_INPUT
+    assert "value.contains('.') && value.contains(',')" in MONEY_INPUT
+    assert "double.parse" not in MONEY_INPUT
+    assert "double.tryParse" not in MONEY_INPUT
+    assert "normalizeFinancialMoneyInput(_amountController.text)" in DETAIL_SCREEN
+    assert "Use vírgula ou ponto decimal, ex.: 1250,50" in DETAIL_SCREEN
+    assert DETAIL_SCREEN.count("Informe um valor positivo, ex.: 125,50") == 2
+    assert "Use ponto como separador decimal" not in DETAIL_SCREEN
