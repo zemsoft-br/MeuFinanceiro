@@ -395,7 +395,9 @@ void main() {
     expect(transfers.last.reversalOfId, _transferId);
   });
 
-  test('transfer reversal uses aggregate endpoint and sends no amount', () async {
+  test(
+    'transfer reversal uses aggregate endpoint and sends no amount',
+    () async {
     final transport = FakeAuthTransport.response(
       statusCode: 201,
       body: _transferReversalObject,
@@ -425,7 +427,8 @@ void main() {
     });
     expect(transfer.role, FinancialTransferRole.reversal);
     expect(transfer.reversalOfId, _transferId);
-  });
+    },
+  );
 
   test('balance and statement are parsed as backend-derived values', () async {
     final balance = await _api(
