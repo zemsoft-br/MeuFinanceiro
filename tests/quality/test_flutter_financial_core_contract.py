@@ -24,6 +24,9 @@ MONEY_INPUT = (FLUTTER / "features/finance/financial_money_input.dart").read_tex
 MONEY_FORMAT = (FLUTTER / "features/finance/financial_money_format.dart").read_text(
     encoding="utf-8"
 )
+REGISTRATION_TIME_FORMAT = (
+    FLUTTER / "features/finance/financial_registration_time_format.dart"
+).read_text(encoding="utf-8")
 TRANSFER_REVERSAL_POLICY = (
     FLUTTER / "features/finance/financial_transfer_reversal_policy.dart"
 ).read_text(encoding="utf-8")
@@ -40,6 +43,7 @@ def test_financial_flutter_money_contract_never_uses_double() -> None:
         + DETAIL_SCREEN
         + MONEY_INPUT
         + MONEY_FORMAT
+        + REGISTRATION_TIME_FORMAT
         + TRANSFER_REVERSAL_POLICY
     )
     assert "double.parse" not in combined
@@ -241,6 +245,17 @@ def test_financial_money_display_uses_exact_shared_formatter() -> None:
         "formatFinancialMoney(movement.money)",
     ):
         assert expression in DETAIL_SCREEN
+
+
+def test_financial_statement_displays_registration_time_without_reordering() -> None:
+    assert "formatFinancialRegistrationTime(" in DETAIL_SCREEN
+    assert "createdAt: movement.createdAt" in DETAIL_SCREEN
+    assert "effectiveDate: movement.effectiveDate" in DETAIL_SCREEN
+    assert "createdAt.toLocal()" in REGISTRATION_TIME_FORMAT
+    assert "Registrado às" in REGISTRATION_TIME_FORMAT
+    assert "Registrado em" in REGISTRATION_TIME_FORMAT
+    assert "statement.entries.sort" not in DETAIL_SCREEN
+    assert "DateTime.now()" not in REGISTRATION_TIME_FORMAT
 
 
 def test_financial_money_input_accepts_comma_and_normalizes_textually() -> None:
