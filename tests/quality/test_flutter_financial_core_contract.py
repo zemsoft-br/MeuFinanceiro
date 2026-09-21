@@ -21,6 +21,9 @@ DETAIL_SCREEN = (
 MONEY_INPUT = (FLUTTER / "features/finance/financial_money_input.dart").read_text(
     encoding="utf-8"
 )
+MONEY_FORMAT = (FLUTTER / "features/finance/financial_money_format.dart").read_text(
+    encoding="utf-8"
+)
 TRANSFER_REVERSAL_POLICY = (
     FLUTTER / "features/finance/financial_transfer_reversal_policy.dart"
 ).read_text(encoding="utf-8")
@@ -36,6 +39,7 @@ def test_financial_flutter_money_contract_never_uses_double() -> None:
         + CREATE_SCREEN
         + DETAIL_SCREEN
         + MONEY_INPUT
+        + MONEY_FORMAT
         + TRANSFER_REVERSAL_POLICY
     )
     assert "double.parse" not in combined
@@ -137,8 +141,8 @@ def test_financial_flutter_uses_backend_derived_balance_and_statement() -> None:
     assert "balanceAfter" in API
     assert "await api.getBalance(accountId)" in CONTROLLER
     assert "await api.getStatement(accountId)" in CONTROLLER
-    assert "_moneyLabel(balance.currentBalance)" in DETAIL_SCREEN
-    assert "_moneyLabel(entry.balanceAfter)" in DETAIL_SCREEN
+    assert "formatFinancialMoney(balance.currentBalance)" in DETAIL_SCREEN
+    assert "formatFinancialMoney(entry.balanceAfter)" in DETAIL_SCREEN
     assert "Saldo inicial não informado" in DETAIL_SCREEN
     assert "não significa saldo zero" in DETAIL_SCREEN
 
@@ -220,6 +224,23 @@ def test_financial_mutation_dialogs_use_safe_ledger_date_policy() -> None:
     assert "required this.initialDate" in DETAIL_SCREEN
     assert "text: widget.initialDate" in DETAIL_SCREEN
     assert "targetMovementDate: movement.effectiveDate" in DETAIL_SCREEN
+
+
+def test_financial_money_display_uses_exact_shared_formatter() -> None:
+    assert "formatFinancialMoney" in MONEY_FORMAT
+    assert "fractionalPart.padRight(2, '0')" in MONEY_FORMAT
+    assert "fractionalPart.length > 2" in MONEY_FORMAT
+    assert "double.parse" not in MONEY_FORMAT
+    assert "double.tryParse" not in MONEY_FORMAT
+    assert "_moneyLabel" not in DETAIL_SCREEN
+    for expression in (
+        "formatFinancialMoney(opening.money)",
+        "formatFinancialMoney(balance.currentBalance)",
+        "formatFinancialMoney(balance.movementNet)",
+        "formatFinancialMoney(entry.balanceAfter)",
+        "formatFinancialMoney(movement.money)",
+    ):
+        assert expression in DETAIL_SCREEN
 
 
 def test_financial_money_input_accepts_comma_and_normalizes_textually() -> None:
