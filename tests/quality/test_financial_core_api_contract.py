@@ -102,6 +102,12 @@ def test_semantic_financial_operations_require_explicit_idempotency() -> None:
 def test_financial_api_exposes_provider_neutral_transfer_read_model() -> None:
     assert '"/accounts/{account_id}/transfers"' in ROUTE
     assert "response_model=FinancialTransfersResponse" in ROUTE
-    assert "account_id=_validated_resource_id(account_id)" in ROUTE
+    assert (
+        re.search(
+            r"account_id\s*=\s*_validated_resource_id\(account_id\)",
+            ROUTE,
+        )
+        is not None
+    )
     assert "records = _service(request).list_transfers(" in ROUTE
     assert "account_id=account_id" in ROUTE
