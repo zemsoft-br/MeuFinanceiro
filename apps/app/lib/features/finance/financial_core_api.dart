@@ -481,6 +481,30 @@ class FinancialTransferCreateInput {
   };
 }
 
+class FinancialTransferReversalInput {
+  FinancialTransferReversalInput({
+    required String effectiveDate,
+    required String competenceDate,
+    required String reason,
+    String? idempotencyKey,
+  }) : idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       effectiveDate = _date(effectiveDate, 'effectiveDate'),
+       competenceDate = _date(competenceDate, 'competenceDate'),
+       reason = _boundedText(reason, 'reason', maxLength: 256);
+
+  final String idempotencyKey;
+  final String effectiveDate;
+  final String competenceDate;
+  final String reason;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'effectiveDate': effectiveDate,
+    'competenceDate': competenceDate,
+    'reason': reason,
+  };
+}
+
 class FinancialCoreApi {
   const FinancialCoreApi(this.client);
 
@@ -657,6 +681,48 @@ class FinancialCoreApi {
         transfer.currency != input.currency ||
         transfer.role != FinancialTransferRole.standard) {
       throw const FormatException('financial transfer response mismatch.');
+    }
+    return transfer;
+  }
+
+  Future<List<FinancialTransfer>> listTransfers(String accountId) async {
+    final id = _financialResourceId(accountId, 'accountId');
+    final response = await client.get('finance/accounts/$id/transfers');
+    final root = _strictJsonObject(
+      response.body,
+      allowedKeys: const {'transfers'},
+      label: 'financial transfers response',
+    );
+    final raw = root['transfers'];
+    if (raw is! List || raw.length > 10000) {
+      throw const FormatException('transfers is invalid.');
+    }
+    final transfers = List<FinancialTransfer>.unmodifiable(
+      raw.map(_parseTransfer),
+    );
+    if (transfers.any(
+      (item) => item.sourceAccountId != id && item.destinationAccountId != id,
+    )) {
+      throw const FormatException('transfer account mismatch.');
+    }
+    return transfers;
+  }
+
+  Future<FinancialTransfer> reverseTransfer(
+    String transferId,
+    FinancialTransferReversalInput input,
+  ) async {
+    final id = _financialResourceId(transferId, 'transferId');
+    final response = await client.post(
+      'finance/transfers/$id/reversal',
+      jsonBody: input.toJson(),
+    );
+    final transfer = _parseTransfer(
+      _decodeJsonObject(response.body, 'financial transfer reversal response'),
+    );
+    if (transfer.role != FinancialTransferRole.reversal ||
+        transfer.reversalOfId != id) {
+      throw const FormatException('financial transfer reversal mismatch.');
     }
     return transfer;
   }

@@ -211,6 +211,7 @@ class TransferStore:
     def __init__(self) -> None:
         self.created: FinancialTransferDraft | None = None
         self.reversed: FinancialTransferReversalDraft | None = None
+        self.listed_account_id: UUID | None = None
 
     def create_transfer(
         self,
@@ -235,6 +236,17 @@ class TransferStore:
     ) -> FinancialTransferRecord:
         self.reversed = draft
         return _transfer_record(FinancialTransferRole.REVERSAL, draft.transfer_id)
+
+    def list_transfers(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID | None = None,
+    ) -> tuple[FinancialTransferRecord, ...]:
+        self.listed_account_id = account_id
+        return (_transfer_record(FinancialTransferRole.STANDARD, None),)
 
 
 class BalanceQuery:
@@ -381,9 +393,17 @@ def test_transfer_and_reversal_delegate_to_atomic_transfer_boundary() -> None:
         idempotency_key=IDEMPOTENCY_KEY,
         draft=reversal,
     )
+    listed = service.list_transfers(
+        installation_id=INSTALLATION_ID,
+        residence_id=RESIDENCE_ID,
+        operator_id=OPERATOR_ID,
+        account_id=ACCOUNT_ID,
+    )
 
     assert transfers.created == transfer
     assert transfers.reversed == reversal
+    assert transfers.listed_account_id == ACCOUNT_ID
+    assert listed[0].id == TRANSFER_ID
     assert reversed_record.role is FinancialTransferRole.REVERSAL
 
 

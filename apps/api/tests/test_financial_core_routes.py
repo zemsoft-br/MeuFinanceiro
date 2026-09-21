@@ -19,6 +19,8 @@ from meufinanceiro_finance import (
     FinancialOpeningBalanceDraft,
     FinancialOpeningBalanceRecord,
     FinancialResultEffect,
+    FinancialTransferRecord,
+    FinancialTransferRole,
     FinancialVisibilityScope,
     Money,
 )
@@ -37,6 +39,10 @@ ACCOUNT_ID = UUID("40000000-0000-4000-8000-000000000004")
 OPENING_ID = UUID("50000000-0000-4000-8000-000000000005")
 MOVEMENT_ID = UUID("60000000-0000-4000-8000-000000000006")
 REVERSAL_ID = UUID("70000000-0000-4000-8000-000000000007")
+DESTINATION_ACCOUNT_ID = UUID("41000000-0000-4000-8000-000000000041")
+TRANSFER_ID = UUID("80000000-0000-4000-8000-000000000008")
+TRANSFER_SOURCE_MOVEMENT_ID = UUID("81000000-0000-4000-8000-000000000081")
+TRANSFER_DESTINATION_MOVEMENT_ID = UUID("82000000-0000-4000-8000-000000000082")
 NOW = datetime(2026, 8, 13, 12, 0, tzinfo=UTC)
 
 
@@ -116,6 +122,20 @@ class FakeFinancialCoreService:
                 description=None,
                 reversal_of_id=MOVEMENT_ID,
                 reversal_reason="Lançamento incorreto",
+                created_by_operator_id=OPERATOR_ID,
+                created_at=NOW,
+            ),
+        )
+        self.transfers: tuple[FinancialTransferRecord, ...] = (
+            FinancialTransferRecord(
+                id=TRANSFER_ID,
+                source_account_id=ACCOUNT_ID,
+                destination_account_id=DESTINATION_ACCOUNT_ID,
+                currency="BRL",
+                source_movement_id=TRANSFER_SOURCE_MOVEMENT_ID,
+                destination_movement_id=TRANSFER_DESTINATION_MOVEMENT_ID,
+                role=FinancialTransferRole.STANDARD,
+                reversal_of_id=None,
                 created_by_operator_id=OPERATOR_ID,
                 created_at=NOW,
             ),
@@ -207,6 +227,18 @@ class FakeFinancialCoreService:
         self._scope("get_movement", installation_id, residence_id, operator_id)
         self.calls.append(("movement_id", (movement_id,)))
         return self.movements[0]
+
+    def list_transfers(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID | None = None,
+    ) -> tuple[FinancialTransferRecord, ...]:
+        self._scope("list_transfers", installation_id, residence_id, operator_id)
+        self.calls.append(("transfer_account_id", (account_id,)))
+        return self.transfers
 
 
 @pytest.fixture
@@ -369,6 +401,39 @@ def test_movement_list_preserves_standard_and_reversal_events(
     assert body[1]["reversalOfId"] == str(MOVEMENT_ID)
     assert body[1]["description"] is None
     assert body[1]["reversalReason"] == "Lançamento incorreto"
+    assert_no_store(response)
+
+
+def test_transfer_list_exposes_canonical_leg_relation_for_account(
+    client: tuple[TestClient, FakeAuthentication, FakeFinancialCoreService],
+) -> None:
+    test_client, _, service = client
+    response = test_client.get(
+        f"/api/v1/finance/accounts/{ACCOUNT_ID}/transfers",
+        headers=headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "transfers": [
+            {
+                "transferId": str(TRANSFER_ID),
+                "sourceAccountId": str(ACCOUNT_ID),
+                "destinationAccountId": str(DESTINATION_ACCOUNT_ID),
+                "currency": "BRL",
+                "sourceMovementId": str(TRANSFER_SOURCE_MOVEMENT_ID),
+                "destinationMovementId": str(TRANSFER_DESTINATION_MOVEMENT_ID),
+                "role": "STANDARD",
+                "reversalOfId": None,
+                "createdAt": "2026-08-13T12:00:00Z",
+            }
+        ]
+    }
+    assert (
+        "list_transfers",
+        (INSTALLATION_ID, RESIDENCE_ID, OPERATOR_ID),
+    ) in service.calls
+    assert ("transfer_account_id", (ACCOUNT_ID,)) in service.calls
     assert_no_store(response)
 
 

@@ -139,6 +139,7 @@ class FinancialAccountDetailState {
     this.balance,
     this.statement,
     this.accounts = const [],
+    this.transfers = const [],
     this.refreshFailure = FinancialRefreshFailure.none,
     this.openingBalanceMutationInFlight = false,
     this.operationMutationInFlight = false,
@@ -155,6 +156,7 @@ class FinancialAccountDetailState {
     required FinancialBalanceSnapshot balance,
     required FinancialStatement statement,
     required List<FinancialAccount> accounts,
+    List<FinancialTransfer> transfers = const [],
     bool refreshing = false,
     bool openingBalanceMutationInFlight = false,
     bool operationMutationInFlight = false,
@@ -168,6 +170,7 @@ class FinancialAccountDetailState {
          balance: balance,
          statement: statement,
          accounts: List<FinancialAccount>.unmodifiable(accounts),
+         transfers: List<FinancialTransfer>.unmodifiable(transfers),
          refreshFailure: refreshFailure,
          openingBalanceMutationInFlight: openingBalanceMutationInFlight,
          operationMutationInFlight: operationMutationInFlight,
@@ -179,6 +182,7 @@ class FinancialAccountDetailState {
   final FinancialBalanceSnapshot? balance;
   final FinancialStatement? statement;
   final List<FinancialAccount> accounts;
+  final List<FinancialTransfer> transfers;
   final FinancialRefreshFailure refreshFailure;
   final bool openingBalanceMutationInFlight;
   final bool operationMutationInFlight;
@@ -240,6 +244,7 @@ class FinancialAccountDetailController
       balance: balance,
       statement: statement,
       accounts: previous.accounts,
+      transfers: previous.transfers,
       openingBalanceMutationInFlight: true,
       refreshFailure: previous.refreshFailure,
     );
@@ -284,6 +289,13 @@ class FinancialAccountDetailController
     await api.reverseMovement(movementId, input);
   });
 
+  Future<bool> reverseTransfer(
+    String transferId,
+    FinancialTransferReversalInput input,
+  ) => _runOperation((api) async {
+    await api.reverseTransfer(transferId, input);
+  });
+
   Future<bool> _runOperation(
     Future<void> Function(FinancialCoreApi api) operation,
   ) async {
@@ -303,6 +315,7 @@ class FinancialAccountDetailController
       balance: balance,
       statement: statement,
       accounts: previous.accounts,
+      transfers: previous.transfers,
       operationMutationInFlight: true,
       refreshFailure: previous.refreshFailure,
     );
@@ -318,6 +331,7 @@ class FinancialAccountDetailController
           balance: balance,
           statement: statement,
           accounts: previous.accounts,
+          transfers: previous.transfers,
         );
         return false;
       }
@@ -346,6 +360,7 @@ class FinancialAccountDetailController
       balance: previous.balance!,
       statement: previous.statement!,
       accounts: previous.accounts,
+      transfers: previous.transfers,
       refreshFailure: FinancialRefreshFailure.temporarilyUnavailable,
     );
   }
@@ -357,6 +372,7 @@ class FinancialAccountDetailController
       balance: previous.balance!,
       statement: previous.statement!,
       accounts: previous.accounts,
+      transfers: previous.transfers,
       refreshFailure: FinancialRefreshFailure.invalidResponse,
     );
   }
@@ -378,6 +394,7 @@ class FinancialAccountDetailController
             balance: previous.balance!,
             statement: previous.statement!,
             accounts: previous.accounts,
+            transfers: previous.transfers,
             refreshing: true,
           )
         : const FinancialAccountDetailState.phase(FinancialLoadPhase.loading);
@@ -387,6 +404,7 @@ class FinancialAccountDetailController
       final openingBalance = await api.getOpeningBalance(accountId);
       final balance = await api.getBalance(accountId);
       final statement = await api.getStatement(accountId);
+      final transfers = await api.listTransfers(accountId);
       final accounts = await api.listAccounts();
 
       if (openingBalance != null &&
@@ -404,6 +422,32 @@ class FinancialAccountDetailController
           )) {
         throw const FormatException('statement account mismatch.');
       }
+      final statementMovementIds = statement.entries
+          .map((entry) => entry.movement.movementId)
+          .toSet();
+      final standardTransferIds = transfers
+          .where((item) => item.role == FinancialTransferRole.standard)
+          .map((item) => item.transferId)
+          .toSet();
+      final localTransferMovementIds = <String>{};
+      for (final transfer in transfers) {
+        if (transfer.currency != account.currency ||
+            (transfer.sourceAccountId != account.accountId &&
+                transfer.destinationAccountId != account.accountId)) {
+          throw const FormatException('transfer account mismatch.');
+        }
+        final localMovementId = transfer.sourceAccountId == account.accountId
+            ? transfer.sourceMovementId
+            : transfer.destinationMovementId;
+        if (!statementMovementIds.contains(localMovementId) ||
+            !localTransferMovementIds.add(localMovementId)) {
+          throw const FormatException('transfer movement relation mismatch.');
+        }
+        if (transfer.role == FinancialTransferRole.reversal &&
+            !standardTransferIds.contains(transfer.reversalOfId)) {
+          throw const FormatException('transfer reversal relation mismatch.');
+        }
+      }
       if (!_isCurrent(generation)) return;
       state = FinancialAccountDetailState.loaded(
         account: account,
@@ -411,6 +455,7 @@ class FinancialAccountDetailController
         balance: balance,
         statement: statement,
         accounts: accounts,
+        transfers: transfers,
       );
     } catch (error) {
       if (!_isCurrent(generation)) return;
@@ -424,6 +469,7 @@ class FinancialAccountDetailController
           balance: previous.balance!,
           statement: previous.statement!,
           accounts: previous.accounts,
+          transfers: previous.transfers,
           refreshFailure: phase == FinancialLoadPhase.invalidResponse
               ? FinancialRefreshFailure.invalidResponse
               : FinancialRefreshFailure.temporarilyUnavailable,

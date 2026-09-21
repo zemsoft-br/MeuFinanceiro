@@ -18,6 +18,11 @@ const _destinationAccountId = '41000000-0000-4000-8000-000000000041';
 const _transferId = '80000000-0000-4000-8000-000000000008';
 const _sourceTransferMovementId = '81000000-0000-4000-8000-000000000081';
 const _destinationTransferMovementId = '82000000-0000-4000-8000-000000000082';
+const _reversalTransferId = '83000000-0000-4000-8000-000000000083';
+const _reversalSourceTransferMovementId =
+    '84000000-0000-4000-8000-000000000084';
+const _reversalDestinationTransferMovementId =
+    '85000000-0000-4000-8000-000000000085';
 const _idempotencyKey = '90000000-0000-4000-8000-000000000009';
 
 void main() {
@@ -371,6 +376,60 @@ void main() {
     },
   );
 
+  test('lists account transfer relations through strict read model', () async {
+    final transport = FakeAuthTransport.response(
+      statusCode: 200,
+      body: _transfersResponse,
+    );
+    final transfers = await _api(transport).listTransfers(_accountId);
+
+    expect(transport.calls.single.method, AuthHttpMethod.get);
+    expect(
+      transport.calls.single.uri.path,
+      '/api/v1/finance/accounts/$_accountId/transfers',
+    );
+    expect(transfers, hasLength(2));
+    expect(transfers.first.transferId, _transferId);
+    expect(transfers.first.role, FinancialTransferRole.standard);
+    expect(transfers.last.role, FinancialTransferRole.reversal);
+    expect(transfers.last.reversalOfId, _transferId);
+  });
+
+  test(
+    'transfer reversal uses aggregate endpoint and sends no amount',
+    () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: _transferReversalObject,
+      );
+      final transfer = await _api(transport).reverseTransfer(
+        _transferId,
+        FinancialTransferReversalInput(
+          idempotencyKey: _idempotencyKey,
+          effectiveDate: '2026-09-21',
+          competenceDate: '2026-09-21',
+          reason: 'Correção da transferência',
+        ),
+      );
+
+      expect(
+        transport.calls.single.uri.path,
+        '/api/v1/finance/transfers/$_transferId/reversal',
+      );
+      final body =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(body, isNot(contains('amount')));
+      expect(body.keys.toSet(), {
+        'idempotencyKey',
+        'effectiveDate',
+        'competenceDate',
+        'reason',
+      });
+      expect(transfer.role, FinancialTransferRole.reversal);
+      expect(transfer.reversalOfId, _transferId);
+    },
+  );
+
   test('balance and statement are parsed as backend-derived values', () async {
     final balance = await _api(
       FakeAuthTransport.response(statusCode: 200, body: _balanceObject),
@@ -492,6 +551,31 @@ const _transferObject =
   "role":"STANDARD",
   "reversalOfId":null,
   "createdAt":"2026-09-20T05:20:00Z"
+}
+''';
+
+const _transferReversalObject =
+    '''
+{
+  "transferId":"$_reversalTransferId",
+  "sourceAccountId":"$_destinationAccountId",
+  "destinationAccountId":"$_accountId",
+  "currency":"BRL",
+  "sourceMovementId":"$_reversalSourceTransferMovementId",
+  "destinationMovementId":"$_reversalDestinationTransferMovementId",
+  "role":"REVERSAL",
+  "reversalOfId":"$_transferId",
+  "createdAt":"2026-09-21T05:20:00Z"
+}
+''';
+
+const _transfersResponse =
+    '''
+{
+  "transfers":[
+    $_transferObject,
+    $_transferReversalObject
+  ]
 }
 ''';
 

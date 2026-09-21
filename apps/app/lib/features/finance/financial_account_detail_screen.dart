@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
 import 'package:meufinanceiro_app/features/finance/financial_operation_date_policy.dart';
+import 'package:meufinanceiro_app/features/finance/financial_transfer_reversal_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_money_input.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
@@ -182,6 +183,34 @@ class _FinancialAccountDetailScreenState
     );
   }
 
+  Future<void> _reverseTransfer(
+    FinancialTransfer transfer,
+    FinancialMovement movement,
+    String initialDate,
+  ) async {
+    final result = await showDialog<FinancialTransferReversalInput>(
+      context: context,
+      builder: (context) =>
+          _TransferReversalDialog(movement: movement, initialDate: initialDate),
+    );
+    if (result == null || !mounted) return;
+    final reversed = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .reverseTransfer(transfer.transferId, result);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          reversed
+              ? 'Transferência revertida.'
+              : 'Não foi possível reverter a transferência.',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = financialAccountDetailControllerProvider(widget.accountId);
@@ -341,11 +370,26 @@ class _FinancialAccountDetailScreenState
               const SizedBox(height: AppTokens.space16),
               _StatementCard(
                 statement: state.statement!,
+                transfers: state.transfers,
                 allowReversal:
                     account.status == FinancialAccountStatus.active &&
                     !state.operationMutationInFlight,
-                onReverse: (movement) => unawaited(
+                onReverseMovement: (movement) => unawaited(
                   _reverseMovement(
+                    movement,
+                    financialOperationInitialDate(
+                      now: ref.read(financialOperationClockProvider)(),
+                      openingBalanceDate: state.openingBalance?.effectiveDate,
+                      movementEffectiveDates: state.movements.map(
+                        (item) => item.effectiveDate,
+                      ),
+                      targetMovementDate: movement.effectiveDate,
+                    ),
+                  ),
+                ),
+                onReverseTransfer: (transfer, movement) => unawaited(
+                  _reverseTransfer(
+                    transfer,
                     movement,
                     financialOperationInitialDate(
                       now: ref.read(financialOperationClockProvider)(),
@@ -597,13 +641,17 @@ class _FinanceActionsCard extends StatelessWidget {
 class _StatementCard extends StatelessWidget {
   const _StatementCard({
     required this.statement,
+    required this.transfers,
     required this.allowReversal,
-    required this.onReverse,
+    required this.onReverseMovement,
+    required this.onReverseTransfer,
   });
 
   final FinancialStatement statement;
+  final List<FinancialTransfer> transfers;
   final bool allowReversal;
-  final ValueChanged<FinancialMovement> onReverse;
+  final ValueChanged<FinancialMovement> onReverseMovement;
+  final void Function(FinancialTransfer, FinancialMovement) onReverseTransfer;
 
   @override
   Widget build(BuildContext context) {
@@ -632,16 +680,28 @@ class _StatementCard extends StatelessWidget {
             else
               ...statement.entries.map((entry) {
                 final movement = entry.movement;
-                final reversible =
+                final reversibleMovement =
                     allowReversal &&
                     movement.role == FinancialMovementRole.standard &&
                     movement.resultEffect != FinancialResultEffect.neutral &&
                     !reversedMovementIds.contains(movement.movementId);
+                final reversibleTransfer = allowReversal
+                    ? reversibleTransferForMovement(
+                        movement: movement,
+                        transfers: transfers,
+                      )
+                    : null;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: AppTokens.space12),
                   child: _StatementRow(
                     entry: entry,
-                    onReverse: reversible ? () => onReverse(movement) : null,
+                    transferId: reversibleTransfer?.transferId,
+                    onReverseMovement: reversibleMovement
+                        ? () => onReverseMovement(movement)
+                        : null,
+                    onReverseTransfer: reversibleTransfer == null
+                        ? null
+                        : () => onReverseTransfer(reversibleTransfer, movement),
                   ),
                 );
               }),
@@ -653,10 +713,17 @@ class _StatementCard extends StatelessWidget {
 }
 
 class _StatementRow extends StatelessWidget {
-  const _StatementRow({required this.entry, required this.onReverse});
+  const _StatementRow({
+    required this.entry,
+    required this.transferId,
+    required this.onReverseMovement,
+    required this.onReverseTransfer,
+  });
 
   final FinancialStatementEntry entry;
-  final VoidCallback? onReverse;
+  final String? transferId;
+  final VoidCallback? onReverseMovement;
+  final VoidCallback? onReverseTransfer;
 
   @override
   Widget build(BuildContext context) {
@@ -709,13 +776,22 @@ class _StatementRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
-              if (onReverse != null) ...[
+              if (onReverseMovement != null) ...[
                 const SizedBox(height: AppTokens.space8),
                 TextButton.icon(
                   key: Key('financial-movement-reverse-${movement.movementId}'),
-                  onPressed: onReverse,
+                  onPressed: onReverseMovement,
                   icon: const Icon(Icons.undo_rounded),
                   label: const Text('Reverter lançamento'),
+                ),
+              ],
+              if (onReverseTransfer != null && transferId != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                TextButton.icon(
+                  key: Key('financial-transfer-reverse-$transferId'),
+                  onPressed: onReverseTransfer,
+                  icon: const Icon(Icons.undo_rounded),
+                  label: const Text('Reverter transferência'),
                 ),
               ],
             ],
@@ -1147,6 +1223,120 @@ class _MovementReversalDialogState extends State<_MovementReversalDialog> {
               children: [
                 Text(
                   widget.movement.description ?? 'Lançamento selecionado',
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _reasonController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Motivo'),
+                  validator: _validateDescription,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _effectiveDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data efetiva da reversão',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+                const SizedBox(height: AppTokens.space16),
+                TextFormField(
+                  controller: _competenceDateController,
+                  decoration: const InputDecoration(
+                    labelText: 'Data de competência',
+                    helperText: 'Formato AAAA-MM-DD',
+                  ),
+                  validator: _validateDate,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: _submit,
+          child: const Text('Confirmar reversão'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TransferReversalDialog extends StatefulWidget {
+  const _TransferReversalDialog({
+    required this.movement,
+    required this.initialDate,
+  });
+
+  final FinancialMovement movement;
+  final String initialDate;
+
+  @override
+  State<_TransferReversalDialog> createState() =>
+      _TransferReversalDialogState();
+}
+
+class _TransferReversalDialogState extends State<_TransferReversalDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _reasonController = TextEditingController();
+  late final TextEditingController _effectiveDateController;
+  late final TextEditingController _competenceDateController;
+
+  @override
+  void initState() {
+    super.initState();
+    _effectiveDateController = TextEditingController(text: widget.initialDate);
+    _competenceDateController = TextEditingController(text: widget.initialDate);
+  }
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    _effectiveDateController.dispose();
+    _competenceDateController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialTransferReversalInput(
+          effectiveDate: _effectiveDateController.text,
+          competenceDate: _competenceDateController.text,
+          reason: _reasonController.text,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Revise os dados da reversão da transferência.'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Reverter transferência'),
+      content: SizedBox(
+        width: 480,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.movement.description ?? 'Transferência selecionada',
                   style: Theme.of(context).textTheme.bodyLarge,
                 ),
                 const SizedBox(height: AppTokens.space16),

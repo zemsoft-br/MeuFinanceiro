@@ -137,6 +137,15 @@ class FinancialTransferStoreBoundary(Protocol):
         draft: FinancialTransferReversalDraft,
     ) -> FinancialTransferRecord: ...
 
+    def list_transfers(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID | None = None,
+    ) -> tuple[FinancialTransferRecord, ...]: ...
+
 
 @runtime_checkable
 class FinancialBalanceQueryBoundary(Protocol):
@@ -370,6 +379,21 @@ class FinancialCoreService:
             operator_id=operator_id,
             idempotency_key=idempotency_key,
             draft=draft,
+        )
+
+    def list_transfers(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID | None = None,
+    ) -> tuple[FinancialTransferRecord, ...]:
+        return self._transfers.list_transfers(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
         )
 
     def get_balance_snapshot(
