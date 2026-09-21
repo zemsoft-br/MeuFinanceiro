@@ -153,8 +153,7 @@ def test_financial_flutter_preserves_transfer_atomicity_in_reversal_ui() -> None
     assert "reversibleTransferForMovement" in DETAIL_SCREEN
     assert "FinancialTransferRole.reversal" in TRANSFER_REVERSAL_POLICY
     assert (
-        "reversedTransferIds.contains(transfer.transferId)"
-        in TRANSFER_REVERSAL_POLICY
+        "reversedTransferIds.contains(transfer.transferId)" in TRANSFER_REVERSAL_POLICY
     )
     assert "movement maps to multiple reversible transfers" in TRANSFER_REVERSAL_POLICY
     assert "perna" not in DETAIL_SCREEN.lower()
