@@ -502,7 +502,10 @@ class _OpeningBalanceCard extends StatelessWidget {
                 spacing: AppTokens.space24,
                 runSpacing: AppTokens.space12,
                 children: [
-                  _Metadata(label: 'Valor', value: formatFinancialMoney(opening.money)),
+                  _Metadata(
+                    label: 'Valor',
+                    value: formatFinancialMoney(opening.money),
+                  ),
                   _Metadata(
                     label: 'Data efetiva',
                     value: _dateLabel(opening.effectiveDate),

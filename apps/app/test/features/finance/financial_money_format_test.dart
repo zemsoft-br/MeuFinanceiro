@@ -17,6 +17,5 @@ void main() {
   });
 }
 
-String _label(String amount) => formatFinancialMoney(
-  FinancialMoneyWire(amount: amount, currency: 'BRL'),
-);
+String _label(String amount) =>
+    formatFinancialMoney(FinancialMoneyWire(amount: amount, currency: 'BRL'));
