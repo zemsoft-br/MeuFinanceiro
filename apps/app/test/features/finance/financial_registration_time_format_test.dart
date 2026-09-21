@@ -2,17 +2,20 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/features/finance/financial_registration_time_format.dart';
 
 void main() {
-  test('shows only registration time when local date matches effective date', () {
-    final createdAt = DateTime(2026, 9, 21, 14, 5);
+  test(
+    'shows only registration time when local date matches effective date',
+    () {
+      final createdAt = DateTime(2026, 9, 21, 14, 5);
 
-    expect(
-      formatFinancialRegistrationTime(
-        createdAt: createdAt,
-        effectiveDate: '2026-09-21',
-      ),
-      'Registrado às 14:05',
-    );
-  });
+      expect(
+        formatFinancialRegistrationTime(
+          createdAt: createdAt,
+          effectiveDate: '2026-09-21',
+        ),
+        'Registrado às 14:05',
+      );
+    },
+  );
 
   test('shows registration date and time when local date differs', () {
     final createdAt = DateTime(2026, 9, 21, 14, 5);
