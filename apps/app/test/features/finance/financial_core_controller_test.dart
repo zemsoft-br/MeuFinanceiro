@@ -156,7 +156,7 @@ const _destinationAccountObject =
     '''
 {
   "accountId":"$_destinationAccountId",
-  "ownerOperatorId":null,
+  "ownerOperatorId":"$_ownerId",
   "visibilityScope":"HOUSEHOLD",
   "accountType":"CASH",
   "customTypeName":null,
