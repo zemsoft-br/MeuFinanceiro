@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
+import 'package:meufinanceiro_app/features/finance/financial_money_format.dart';
 import 'package:meufinanceiro_app/features/finance/financial_operation_date_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_transfer_reversal_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_money_input.dart';
@@ -501,7 +502,7 @@ class _OpeningBalanceCard extends StatelessWidget {
                 spacing: AppTokens.space24,
                 runSpacing: AppTokens.space12,
                 children: [
-                  _Metadata(label: 'Valor', value: _moneyLabel(opening.money)),
+                  _Metadata(label: 'Valor', value: formatFinancialMoney(opening.money)),
                   _Metadata(
                     label: 'Data efetiva',
                     value: _dateLabel(opening.effectiveDate),
@@ -537,11 +538,11 @@ class _BalanceCard extends StatelessWidget {
               children: [
                 _Metadata(
                   label: 'Saldo corrente',
-                  value: _moneyLabel(balance.currentBalance),
+                  value: formatFinancialMoney(balance.currentBalance),
                 ),
                 _Metadata(
                   label: 'Movimentação líquida',
-                  value: _moneyLabel(balance.movementNet),
+                  value: formatFinancialMoney(balance.movementNet),
                 ),
                 _Metadata(
                   label: 'Movimentos',
@@ -759,7 +760,7 @@ class _StatementRow extends StatelessWidget {
                 ),
                 const SizedBox(height: AppTokens.space4),
                 Text(
-                  'Saldo após evento: ${_moneyLabel(entry.balanceAfter)}',
+                  'Saldo após evento: ${formatFinancialMoney(entry.balanceAfter)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -770,9 +771,9 @@ class _StatementRow extends StatelessWidget {
             children: [
               Semantics(
                 label:
-                    '${reversal ? 'Reversão' : 'Movimento'}: ${_moneyLabel(movement.money)}',
+                    '${reversal ? 'Reversão' : 'Movimento'}: ${formatFinancialMoney(movement.money)}',
                 child: Text(
-                  _moneyLabel(movement.money),
+                  formatFinancialMoney(movement.money),
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
@@ -1535,9 +1536,6 @@ String? _validateDate(String? value) {
             '${parsed.day.toString().padLeft(2, '0')}';
   return canonical == source ? null : 'Informe uma data válida.';
 }
-
-String _moneyLabel(FinancialMoneyWire money) =>
-    '${money.currency} ${money.amount.replaceFirst('.', ',')}';
 
 String _dateLabel(String value) {
   final parts = value.split('-');
