@@ -701,8 +701,7 @@ class FinancialCoreApi {
       raw.map(_parseTransfer),
     );
     if (transfers.any(
-      (item) =>
-          item.sourceAccountId != id && item.destinationAccountId != id,
+      (item) => item.sourceAccountId != id && item.destinationAccountId != id,
     )) {
       throw const FormatException('transfer account mismatch.');
     }

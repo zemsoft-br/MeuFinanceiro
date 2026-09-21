@@ -19,8 +19,7 @@ const _sourceMovementId = '81000000-0000-4000-8000-000000000081';
 const _destinationMovementId = '82000000-0000-4000-8000-000000000082';
 const _reversalTransferId = '83000000-0000-4000-8000-000000000083';
 const _reversalSourceMovementId = '84000000-0000-4000-8000-000000000084';
-const _reversalDestinationMovementId =
-    '85000000-0000-4000-8000-000000000085';
+const _reversalDestinationMovementId = '85000000-0000-4000-8000-000000000085';
 const _idempotencyKey = '90000000-0000-4000-8000-000000000009';
 
 void main() {
@@ -51,21 +50,31 @@ void main() {
           return const AuthHttpResponse(statusCode: 405, body: '{}');
         }
         return switch (path) {
-          '/api/v1/finance/accounts/$_accountId' =>
-            const AuthHttpResponse(statusCode: 200, body: _accountObject),
+          '/api/v1/finance/accounts/$_accountId' => const AuthHttpResponse(
+            statusCode: 200,
+            body: _accountObject,
+          ),
           '/api/v1/finance/accounts/$_accountId/opening-balance' =>
             const AuthHttpResponse(
               statusCode: 200,
               body: '{"openingBalance":null}',
             ),
-          '/api/v1/finance/accounts/$_accountId/balance' =>
-            AuthHttpResponse(statusCode: 200, body: _balanceObject(reversed)),
-          '/api/v1/finance/accounts/$_accountId/statement' =>
-            AuthHttpResponse(statusCode: 200, body: _statementObject(reversed)),
-          '/api/v1/finance/accounts/$_accountId/transfers' =>
-            AuthHttpResponse(statusCode: 200, body: _transfersObject(reversed)),
-          '/api/v1/finance/accounts' =>
-            const AuthHttpResponse(statusCode: 200, body: _accountsObject),
+          '/api/v1/finance/accounts/$_accountId/balance' => AuthHttpResponse(
+            statusCode: 200,
+            body: _balanceObject(reversed),
+          ),
+          '/api/v1/finance/accounts/$_accountId/statement' => AuthHttpResponse(
+            statusCode: 200,
+            body: _statementObject(reversed),
+          ),
+          '/api/v1/finance/accounts/$_accountId/transfers' => AuthHttpResponse(
+            statusCode: 200,
+            body: _transfersObject(reversed),
+          ),
+          '/api/v1/finance/accounts' => const AuthHttpResponse(
+            statusCode: 200,
+            body: _accountsObject,
+          ),
           _ => const AuthHttpResponse(statusCode: 404, body: '{}'),
         };
       });

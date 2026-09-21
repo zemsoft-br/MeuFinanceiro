@@ -9,8 +9,7 @@ const _destinationMovementId = '82000000-0000-4000-8000-000000000082';
 const _transferId = '80000000-0000-4000-8000-000000000008';
 const _reversalTransferId = '83000000-0000-4000-8000-000000000083';
 const _reversalSourceMovementId = '84000000-0000-4000-8000-000000000084';
-const _reversalDestinationMovementId =
-    '85000000-0000-4000-8000-000000000085';
+const _reversalDestinationMovementId = '85000000-0000-4000-8000-000000000085';
 
 void main() {
   test('returns standard transfer for its neutral movement leg', () {

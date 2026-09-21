@@ -190,10 +190,8 @@ class _FinancialAccountDetailScreenState
   ) async {
     final result = await showDialog<FinancialTransferReversalInput>(
       context: context,
-      builder: (context) => _TransferReversalDialog(
-        movement: movement,
-        initialDate: initialDate,
-      ),
+      builder: (context) =>
+          _TransferReversalDialog(movement: movement, initialDate: initialDate),
     );
     if (result == null || !mounted) return;
     final reversed = await ref
@@ -703,10 +701,7 @@ class _StatementCard extends StatelessWidget {
                         : null,
                     onReverseTransfer: reversibleTransfer == null
                         ? null
-                        : () => onReverseTransfer(
-                            reversibleTransfer,
-                            movement,
-                          ),
+                        : () => onReverseTransfer(reversibleTransfer, movement),
                   ),
                 );
               }),
