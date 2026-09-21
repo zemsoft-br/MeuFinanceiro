@@ -3,8 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/core/auth/auth_http.dart';
-import 'package:meufinanceiro_app/core/auth/authenticated_api_client.dart';
-import 'package:meufinanceiro_app/core/auth/session_token_vault.dart';
+import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
 
