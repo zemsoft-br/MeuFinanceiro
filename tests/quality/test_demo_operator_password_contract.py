@@ -29,7 +29,7 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert '--user "$(id -u):$(id -g)"' in unix
     assert "--user root" not in unix
     assert 'if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then' in unix
-    assert 'Senha demo: [ocultada em CI]' in unix
+    assert "Senha demo: [ocultada em CI]" in unix
     assert 'cat "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'rm -rf "$STATE_DIR"' in unix
     assert "migrate_legacy_operator_password" in unix
