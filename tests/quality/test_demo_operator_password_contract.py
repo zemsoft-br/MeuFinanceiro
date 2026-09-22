@@ -4,6 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "compose.yaml"
 UNIX_SCRIPT = ROOT / "infra/scripts/demo-up.sh"
 WINDOWS_SCRIPT = ROOT / "infra/scripts/demo-up.ps1"
+DEMO_SMOKE = ROOT / "tests/smoke/demo-compose-smoke.sh"
 CLI = ROOT / "packages/persistence/src/meufinanceiro_persistence/demo_cli.py"
 RUNBOOK = ROOT / "docs/runbooks/DEMO_MODE.md"
 
@@ -26,6 +27,10 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert 'OPERATOR_PASSWORD_FILE="$SECRETS_DIR/operator_password.txt"' in unix
     assert 'generate_password > "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'chmod 600 "$OPERATOR_PASSWORD_FILE"' in unix
+    assert '--user "$(id -u):$(id -g)"' in unix
+    assert "--user root" not in unix
+    assert 'if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then' in unix
+    assert "Senha demo: [ocultada em CI]" in unix
     assert 'cat "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'rm -rf "$STATE_DIR"' in unix
     assert "migrate_legacy_operator_password" in unix
@@ -61,6 +66,18 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert "Read-OperatorPasswordFile -Path $OperatorPasswordFile" in windows
     assert "(Get-Content $OperatorPasswordFile -Raw).Trim()" not in windows
     assert 'GetEnvironmentVariable("DEMO_OPERATOR_PASSWORD")' not in windows
+
+
+def test_demo_smoke_runs_fixture_with_host_uid_gid() -> None:
+    smoke = DEMO_SMOKE.read_text(encoding="utf-8")
+
+    assert "run_fixture_command()" in smoke
+    assert "compose run --rm --no-deps" in smoke
+    assert '--user "$(id -u):$(id -g)"' in smoke
+    assert "run_fixture_command reset" in smoke
+    assert "run_fixture_command load" in smoke
+    assert "compose run --rm demo-fixture" not in smoke
+    assert "--user root" not in smoke
 
 
 def test_demo_cli_prefers_single_explicit_password_source() -> None:

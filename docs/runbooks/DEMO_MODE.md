@@ -94,6 +94,8 @@ O arquivo recebe permissões privadas equivalentes aos demais secrets locais. O 
 /run/secrets/demo_operator_password
 ```
 
+No fluxo Unix, o container efêmero `demo-fixture` é executado com o UID/GID do operador que criou o arquivo. Isso mantém `operator_password.txt` em `0600` e permite a leitura do secret file-backed no Linux sem tornar o arquivo world-readable nem executar o fixture como root fixo. O comportamento vale para `load`, `status` e `reset`; o runtime normal da API continua usando o usuário não-root definido na imagem.
+
 Você **não precisa definir `DEMO_OPERATOR_PASSWORD`** para usar `demo-up.sh` ou `demo-up.ps1`. A variável continua aceita internamente pelo CLI somente como compatibilidade para testes e tooling legado; arquivo e variável ao mesmo tempo são rejeitados para evitar fonte ambígua.
 
 A mesma senha é reutilizada enquanto o diretório `.demo` existir. O comando `purge` remove o arquivo junto com todo o estado demo; uma preparação futura gera outra credencial.
@@ -111,7 +113,7 @@ Login demo: demo
 Senha demo: <senha-gerada-localmente>
 ```
 
-A senha não é enviada à API, não é persistida em logs do serviço e não é adicionada ao `.demo/.env`.
+Quando `GITHUB_ACTIONS=true`, a senha não é impressa: o script mostra apenas `Senha demo: [ocultada em CI]`. A senha não é enviada à API, não é persistida em logs do serviço e não é adicionada ao `.demo/.env`.
 
 ## Operação no Linux/macOS/WSL
 

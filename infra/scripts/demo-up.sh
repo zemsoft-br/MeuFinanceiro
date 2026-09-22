@@ -171,7 +171,9 @@ compose_demo() {
 }
 
 run_fixture_command() {
-  compose_demo run --rm --no-deps demo-fixture \
+  compose_demo run --rm --no-deps \
+    --user "$(id -u):$(id -g)" \
+    demo-fixture \
     python -m meufinanceiro_persistence.demo_cli "$1"
 }
 
@@ -206,8 +208,12 @@ else:
 PY
     echo "MeuFinanceiro demo disponível em http://127.0.0.1:${PORT}"
     echo "Login demo: demo"
-    printf 'Senha demo: '
-    cat "$OPERATOR_PASSWORD_FILE"
+    if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+      echo "Senha demo: [ocultada em CI]"
+    else
+      printf 'Senha demo: '
+      cat "$OPERATOR_PASSWORD_FILE"
+    fi
     ;;
   load|status|reset)
     run_fixture_command "$ACTION"
