@@ -28,6 +28,13 @@ compose() {
     "$@"
 }
 
+run_fixture_command() {
+  compose run --rm --no-deps \
+    --user "$(id -u):$(id -g)" \
+    demo-fixture \
+    python -m meufinanceiro_persistence.demo_cli "$1"
+}
+
 status_json() {
   python3 - "$BASE_URL/api/v1/demo/status" <<'PY'
 import sys
@@ -56,8 +63,7 @@ TASK_JSON=$(compose exec -T api python -m meufinanceiro_persistence.cli \
   enqueue-demo --idempotency-key demo-fixture-isolation-smoke)
 TASK_ID=$(printf '%s' "$TASK_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')
 
-compose run --rm demo-fixture \
-  python -m meufinanceiro_persistence.demo_cli reset >/dev/null
+run_fixture_command reset >/dev/null
 status_json | python3 -c '
 import json, sys
 payload = json.load(sys.stdin)
@@ -65,8 +71,7 @@ assert payload["enabled"] is True
 assert payload["loaded"] is False
 '
 
-SECOND_RESET=$(compose run --rm demo-fixture \
-  python -m meufinanceiro_persistence.demo_cli reset)
+SECOND_RESET=$(run_fixture_command reset)
 printf '%s' "$SECOND_RESET" | python3 -c '
 import json, sys
 payload = json.load(sys.stdin)
@@ -77,10 +82,8 @@ assert payload["removed"] is False
 compose exec -T api python -m meufinanceiro_persistence.cli \
   get --task-id "$TASK_ID" >/dev/null
 
-FIRST_LOAD=$(compose run --rm demo-fixture \
-  python -m meufinanceiro_persistence.demo_cli load)
-SECOND_LOAD=$(compose run --rm demo-fixture \
-  python -m meufinanceiro_persistence.demo_cli load)
+FIRST_LOAD=$(run_fixture_command load)
+SECOND_LOAD=$(run_fixture_command load)
 python3 - "$FIRST_LOAD" "$SECOND_LOAD" <<'PY'
 import json
 import sys
