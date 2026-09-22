@@ -9,6 +9,7 @@ import 'package:meufinanceiro_app/features/finance/financial_money_format.dart';
 import 'package:meufinanceiro_app/features/finance/financial_operation_date_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_transfer_reversal_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_money_input.dart';
+import 'package:meufinanceiro_app/features/finance/financial_registration_time_format.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/tokens.dart';
 
@@ -757,6 +758,16 @@ class _StatementRow extends StatelessWidget {
                 const SizedBox(height: AppTokens.space4),
                 Text(
                   '${_dateLabel(movement.effectiveDate)} · ${_effectLabel(movement.resultEffect)} · ${reversal ? 'Reversão' : 'Original'}',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
+                ),
+                const SizedBox(height: AppTokens.space4),
+                Text(
+                  formatFinancialRegistrationTime(
+                    createdAt: movement.createdAt,
+                    effectiveDate: movement.effectiveDate,
+                  ),
                   style: Theme.of(
                     context,
                   ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
