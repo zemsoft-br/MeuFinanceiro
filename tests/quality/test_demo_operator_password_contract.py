@@ -26,6 +26,8 @@ def test_demo_scripts_generate_reuse_purge_and_migrate_operator_password() -> No
     assert 'OPERATOR_PASSWORD_FILE="$SECRETS_DIR/operator_password.txt"' in unix
     assert 'generate_password > "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'chmod 600 "$OPERATOR_PASSWORD_FILE"' in unix
+    assert '--user "$(id -u):$(id -g)"' in unix
+    assert "--user root" not in unix
     assert 'cat "$OPERATOR_PASSWORD_FILE"' in unix
     assert 'rm -rf "$STATE_DIR"' in unix
     assert "migrate_legacy_operator_password" in unix

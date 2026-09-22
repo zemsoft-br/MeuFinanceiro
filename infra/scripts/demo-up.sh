@@ -171,7 +171,9 @@ compose_demo() {
 }
 
 run_fixture_command() {
-  compose_demo run --rm --no-deps demo-fixture \
+  compose_demo run --rm --no-deps \
+    --user "$(id -u):$(id -g)" \
+    demo-fixture \
     python -m meufinanceiro_persistence.demo_cli "$1"
 }
 
