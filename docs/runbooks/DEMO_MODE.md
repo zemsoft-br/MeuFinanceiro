@@ -113,7 +113,7 @@ Login demo: demo
 Senha demo: <senha-gerada-localmente>
 ```
 
-A senha não é enviada à API, não é persistida em logs do serviço e não é adicionada ao `.demo/.env`.
+Quando `GITHUB_ACTIONS=true`, a senha não é impressa: o script mostra apenas `Senha demo: [ocultada em CI]`. A senha não é enviada à API, não é persistida em logs do serviço e não é adicionada ao `.demo/.env`.
 
 ## Operação no Linux/macOS/WSL
 

@@ -208,8 +208,12 @@ else:
 PY
     echo "MeuFinanceiro demo disponível em http://127.0.0.1:${PORT}"
     echo "Login demo: demo"
-    printf 'Senha demo: '
-    cat "$OPERATOR_PASSWORD_FILE"
+    if [ "${GITHUB_ACTIONS:-false}" = "true" ]; then
+      echo "Senha demo: [ocultada em CI]"
+    else
+      printf 'Senha demo: '
+      cat "$OPERATOR_PASSWORD_FILE"
+    fi
     ;;
   load|status|reset)
     run_fixture_command "$ACTION"
