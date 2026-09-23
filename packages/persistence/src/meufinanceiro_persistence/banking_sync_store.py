@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import sys
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import NoReturn
 from uuid import UUID, uuid4
@@ -115,6 +118,10 @@ class BankingManualSyncStoreMixin:
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
+                )
+                _acquire_connection_sync_gate(
+                    connection,
+                    connection_id=connection_id,
                 )
                 connection_status = _require_connection(
                     connection,
@@ -328,6 +335,106 @@ class BankingManualSyncStoreMixin:
                 "banking synchronization could not be completed"
             ) from None
         return _sync_run_record(row)
+
+    def execute_connection_disconnection(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+        operation: Callable[[], None],
+    ) -> bool:
+        """Serialize external disconnect without holding an SQL transaction open."""
+
+        if not callable(operation):
+            raise TypeError("operation must be callable")
+
+        try:
+            with _connection_advisory_guard(
+                self._engine,
+                connection_id,
+            ) as guard_connection:
+                # Short readiness transaction. The session advisory lock
+                # remains held after this transaction commits.
+                with guard_connection.begin():
+                    _set_context(
+                        guard_connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                    )
+                    connection_status = _require_connection(
+                        guard_connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                        for_update=True,
+                    )
+
+                    if connection_status is StoredConnectionStatus.DISCONNECTED:
+                        return False
+
+                    _require_no_active_sync_for_disconnection(
+                        guard_connection,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                    )
+
+                # No SQL transaction is open here. The session-level advisory
+                # lock alone serializes disconnect against begin_manual_sync().
+                operation()
+
+                # Short local finalization transaction.
+                with guard_connection.begin():
+                    _set_context(
+                        guard_connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                    )
+                    return _finalize_connection_disconnection(
+                        guard_connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                    )
+        except BankingPersistenceError:
+            raise
+        except DBAPIError:
+            raise BankingPersistenceError(
+                "banking connection could not be disconnected"
+            ) from None
+
+    def finalize_connection_disconnection(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        connection_id: UUID,
+    ) -> bool:
+        """Finalize local disconnection idempotently without external I/O."""
+
+        try:
+            with _connection_advisory_guard(
+                self._engine,
+                connection_id,
+            ) as guard_connection:
+                with guard_connection.begin():
+                    _set_context(
+                        guard_connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                    )
+                    return _finalize_connection_disconnection(
+                        guard_connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        connection_id=connection_id,
+                    )
+        except BankingPersistenceError:
+            raise
+        except DBAPIError:
+            raise BankingPersistenceError(
+                "banking connection disconnection could not be finalized"
+            ) from None
 
     def replace_external_accounts(
         self,
@@ -594,6 +701,175 @@ def _set_context(
             )
         )
     )
+
+
+def _connection_advisory_lock_key(connection_id: UUID) -> int:
+    """Fold a UUID into PostgreSQL's signed 64-bit advisory-lock key space."""
+
+    upper = connection_id.int >> 64
+    lower = connection_id.int & ((1 << 64) - 1)
+    value = upper ^ lower
+
+    if value >= 1 << 63:
+        value -= 1 << 64
+
+    return value
+
+
+@contextmanager
+def _connection_advisory_guard(
+    engine: Engine,
+    connection_id: UUID,
+) -> Iterator[Connection]:
+    """Hold a session advisory lock while allowing short SQL transactions."""
+
+    lock_key = _connection_advisory_lock_key(connection_id)
+
+    with engine.connect() as connection:
+        lock_acquired = False
+        connection_usable = True
+
+        try:
+            try:
+                connection.execute(select(func.pg_advisory_lock(lock_key)))
+                # pg_advisory_lock is session-scoped: once execute() returns,
+                # the physical PostgreSQL session owns the lock regardless of
+                # whether the surrounding SQL transaction can commit.
+                lock_acquired = True
+                connection.commit()
+            except DBAPIError:
+                # Acquisition may have succeeded server-side even if COMMIT
+                # failed. Discard the physical session so a session lock can
+                # never leak back into the SQLAlchemy pool.
+                connection.invalidate()
+                connection_usable = False
+                raise
+
+            yield connection
+        finally:
+            active_error = sys.exc_info()[0] is not None
+
+            if connection_usable:
+                try:
+                    if connection.in_transaction():
+                        connection.rollback()
+
+                    if lock_acquired:
+                        unlocked = connection.scalar(
+                            select(func.pg_advisory_unlock(lock_key))
+                        )
+                        connection.commit()
+
+                        if unlocked is not True:
+                            connection.invalidate()
+                            connection_usable = False
+
+                            if not active_error:
+                                raise BankingPersistenceError(
+                                    "banking connection guard could not be released"
+                                )
+                except DBAPIError:
+                    # Any uncertain cleanup state must discard the physical
+                    # session because session advisory locks survive rollback.
+                    connection.invalidate()
+                    connection_usable = False
+
+                    if not active_error:
+                        raise BankingPersistenceError(
+                            "banking connection guard could not be released"
+                        ) from None
+
+
+def _acquire_connection_sync_gate(
+    connection: Connection,
+    *,
+    connection_id: UUID,
+) -> None:
+    """Serialize sync creation against an explicit disconnect operation."""
+
+    connection.execute(
+        select(func.pg_advisory_xact_lock(_connection_advisory_lock_key(connection_id)))
+    )
+
+
+def _finalize_connection_disconnection(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    connection_id: UUID,
+) -> bool:
+    connection_status = _require_connection(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        for_update=True,
+    )
+
+    if connection_status is StoredConnectionStatus.DISCONNECTED:
+        return False
+
+    _require_no_active_sync_for_disconnection(
+        connection,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
+
+    connection.execute(
+        update(connections)
+        .where(
+            connections.c.id == connection_id,
+            connections.c.installation_id == installation_id,
+            connections.c.residence_id == residence_id,
+        )
+        .values(
+            status=StoredConnectionStatus.DISCONNECTED.value,
+            requires_user_action=False,
+            next_refresh_allowed_at=None,
+            provider_reason_code=None,
+            disconnected_at=func.transaction_timestamp(),
+            updated_at=func.transaction_timestamp(),
+        )
+    )
+
+    connection.execute(
+        update(external_accounts)
+        .where(
+            external_accounts.c.residence_id == residence_id,
+            external_accounts.c.connection_id == connection_id,
+        )
+        .values(
+            status=StoredExternalAccountStatus.DISCONNECTED.value,
+            updated_at=func.transaction_timestamp(),
+        )
+    )
+
+    return True
+
+
+def _require_no_active_sync_for_disconnection(
+    connection: Connection,
+    *,
+    residence_id: UUID,
+    connection_id: UUID,
+) -> None:
+    active_sync_id = connection.scalar(
+        select(sync_runs.c.id)
+        .where(
+            sync_runs.c.residence_id == residence_id,
+            sync_runs.c.connection_id == connection_id,
+            sync_runs.c.status.in_(
+                (
+                    StoredSyncStatus.REQUESTED.value,
+                    StoredSyncStatus.RUNNING.value,
+                )
+            ),
+        )
+        .limit(1)
+    )
+    if active_sync_id is not None:
+        raise SyncConflictError("active banking synchronization prevents disconnection")
 
 
 def _require_connection(

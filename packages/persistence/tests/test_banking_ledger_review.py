@@ -24,6 +24,7 @@ from sqlalchemy.engine import Engine
 from meufinanceiro_persistence import (
     BankingIntegrationStore,
     BankingLedgerReviewConflictError,
+    CapabilitySnapshot,
     BankingLedgerReviewDecision,
     BankingLedgerReviewDraft,
     BankingLedgerReviewNotEligibleError,
@@ -31,6 +32,9 @@ from meufinanceiro_persistence import (
     BankingLedgerReviewStore,
     ExternalAccountSnapshot,
     ProviderConfigurationState,
+    StoredCapability,
+    StoredCapabilitySource,
+    StoredCapabilityState,
     StoredConnectionStatus,
     StoredExternalAccountStatus,
     StoredExternalAccountType,
@@ -42,12 +46,15 @@ from meufinanceiro_persistence.banking_ledger_review_schema import (
 )
 from meufinanceiro_persistence.banking_observation_schema import external_observations
 from meufinanceiro_persistence.banking_reconciliation_schema import (
+    reconciled_transaction_sources,
     reconciled_transactions,
 )
 from meufinanceiro_persistence.financial_account_store import FinancialAccountStore
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
 from meufinanceiro_persistence.schema import (
+    connection_capabilities,
+    external_accounts,
     household_memberships,
     household_residences,
     identity_installation,
@@ -621,3 +628,254 @@ def test_link_conflict_after_provisional_movement_rolls_back_atomically(
 
     assert _count(engine, reconciled_transaction_ledger_links) == 1
     assert _count(engine, financial_movements) == 0
+
+
+def test_disconnection_preserves_capabilities_observations_reconciliation_ledger_and_movements(
+    engine: Engine,
+    runtime_engine: Engine,
+) -> None:
+    installation_id, residence_id, owner_id, _member_id = _create_household(engine)
+
+    financial_account_id = _create_financial_account(
+        runtime_engine,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=owner_id,
+    )
+
+    reconciled_id = _create_reconciled_transaction(
+        engine,
+        runtime_engine,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        amount="321.45",
+    )
+
+    with engine.begin() as connection:
+        connection_id = connection.scalar(
+            select(reconciled_transactions.c.connection_id).where(
+                reconciled_transactions.c.id == reconciled_id,
+                reconciled_transactions.c.residence_id == residence_id,
+            )
+        )
+
+    assert isinstance(connection_id, UUID)
+
+    banking = BankingIntegrationStore(
+        runtime_engine,
+        SecretCipher(create_keyring()),
+    )
+
+    capabilities = banking.replace_capabilities(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        snapshots=(
+            CapabilitySnapshot(
+                capability=StoredCapability.TRANSACTIONS,
+                state=StoredCapabilityState.SUPPORTED,
+                source=StoredCapabilitySource.OBSERVATION,
+                observed_at=NOW,
+            ),
+            CapabilitySnapshot(
+                capability=StoredCapability.DISCONNECT,
+                state=StoredCapabilityState.SUPPORTED,
+                source=StoredCapabilitySource.CONTRACT,
+                observed_at=NOW,
+            ),
+        ),
+    )
+
+    assert len(capabilities) == 2
+
+    review_store = BankingLedgerReviewStore(runtime_engine)
+
+    candidate = review_store.get_candidate(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=owner_id,
+        reconciled_transaction_id=reconciled_id,
+    )
+
+    reviewed = review_store.decide(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=owner_id,
+        reconciled_transaction_id=reconciled_id,
+        idempotency_key=new_financial_idempotency_key(),
+        draft=BankingLedgerReviewDraft(
+            source_observation_id=candidate.source_observation_id,
+            source_observation_updated_at=candidate.source_observation_updated_at,
+            decision=BankingLedgerReviewDecision.IMPORT_AS_INCOME,
+            financial_account_id=financial_account_id,
+        ),
+    )
+
+    movement_id = reviewed.movement_id
+    assert isinstance(movement_id, UUID)
+
+    def historical_snapshot() -> dict[str, object]:
+        with engine.begin() as connection:
+            capability_rows = (
+                connection.execute(
+                    select(
+                        connection_capabilities.c.capability,
+                        connection_capabilities.c.state,
+                        connection_capabilities.c.source,
+                        connection_capabilities.c.observed_at,
+                    )
+                    .where(
+                        connection_capabilities.c.residence_id == residence_id,
+                        connection_capabilities.c.connection_id == connection_id,
+                    )
+                    .order_by(connection_capabilities.c.capability)
+                )
+                .mappings()
+                .all()
+            )
+
+            observations = (
+                connection.execute(
+                    select(
+                        external_observations.c.id,
+                        external_observations.c.status,
+                        external_observations.c.amount,
+                        external_observations.c.updated_at,
+                    ).where(
+                        external_observations.c.residence_id == residence_id,
+                        external_observations.c.connection_id == connection_id,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            reconciled = (
+                connection.execute(
+                    select(
+                        reconciled_transactions.c.id,
+                        reconciled_transactions.c.status,
+                        reconciled_transactions.c.source_observation_id,
+                        reconciled_transactions.c.updated_at,
+                    ).where(
+                        reconciled_transactions.c.id == reconciled_id,
+                        reconciled_transactions.c.residence_id == residence_id,
+                        reconciled_transactions.c.connection_id == connection_id,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            sources = (
+                connection.execute(
+                    select(
+                        reconciled_transaction_sources.c.id,
+                        reconciled_transaction_sources.c.source_observation_id,
+                        reconciled_transaction_sources.c.observation_updated_at,
+                    ).where(
+                        reconciled_transaction_sources.c.residence_id == residence_id,
+                        reconciled_transaction_sources.c.connection_id == connection_id,
+                        reconciled_transaction_sources.c.reconciled_transaction_id
+                        == reconciled_id,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            ledger_links = (
+                connection.execute(
+                    select(
+                        reconciled_transaction_ledger_links.c.id,
+                        reconciled_transaction_ledger_links.c.movement_id,
+                        reconciled_transaction_ledger_links.c.decision,
+                        reconciled_transaction_ledger_links.c.decided_at,
+                    ).where(
+                        reconciled_transaction_ledger_links.c.residence_id
+                        == residence_id,
+                        reconciled_transaction_ledger_links.c.connection_id
+                        == connection_id,
+                        reconciled_transaction_ledger_links.c.reconciled_transaction_id
+                        == reconciled_id,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            movements = (
+                connection.execute(
+                    select(
+                        financial_movements.c.id,
+                        financial_movements.c.account_id,
+                        financial_movements.c.amount,
+                        financial_movements.c.result_effect,
+                        financial_movements.c.effective_date,
+                        financial_movements.c.description,
+                        financial_movements.c.created_at,
+                    ).where(
+                        financial_movements.c.id == movement_id,
+                        financial_movements.c.residence_id == residence_id,
+                    )
+                )
+                .mappings()
+                .all()
+            )
+
+            return {
+                "capabilities": capability_rows,
+                "observations": observations,
+                "reconciled": reconciled,
+                "sources": sources,
+                "ledger_links": ledger_links,
+                "movements": movements,
+            }
+
+    before = historical_snapshot()
+
+    assert len(before["capabilities"]) == 2
+    assert len(before["observations"]) == 1
+    assert len(before["reconciled"]) == 1
+    assert len(before["sources"]) == 1
+    assert len(before["ledger_links"]) == 1
+    assert len(before["movements"]) == 1
+
+    finalized = banking.finalize_connection_disconnection(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
+
+    assert finalized is True
+
+    after = historical_snapshot()
+
+    # Disconnect changes connection/account lifecycle only. Historical
+    # capabilities, observations, reconciliation provenance, ledger link and
+    # immutable Movement evidence remain byte-for-byte equivalent at the
+    # relational value level.
+    assert after == before
+
+    with engine.begin() as connection:
+        account_statuses = (
+            connection.execute(
+                select(external_accounts.c.status).where(
+                    external_accounts.c.residence_id == residence_id,
+                    external_accounts.c.connection_id == connection_id,
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+    assert account_statuses == [StoredExternalAccountStatus.DISCONNECTED.value]
+
+    disconnected = banking.get_connection(
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+    )
+
+    assert disconnected.status is StoredConnectionStatus.DISCONNECTED
+    assert disconnected.disconnected_at is not None
