@@ -9,6 +9,9 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from meufinanceiro_persistence.banking_connection_gate import (
+    acquire_connection_advisory_xact_gate,
+)
 from meufinanceiro_persistence.banking_fairness_models import (
     StoredSyncCycleStatus,
     SyncCycleAccountRecord,
@@ -22,6 +25,7 @@ from meufinanceiro_persistence.banking_fairness_schema import (
 from meufinanceiro_persistence.banking_models import (
     BankingPersistenceError,
     ConnectionNotFoundError,
+    StoredConnectionStatus,
     StoredExternalAccountType,
     StoredSyncResource,
     SyncConflictError,
@@ -88,6 +92,9 @@ class BankingSyncFairnessStoreMixin:
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
+                )
+                acquire_connection_advisory_xact_gate(
+                    connection, connection_id=connection_id
                 )
                 _require_connection(
                     connection,
@@ -261,7 +268,7 @@ def _require_connection(
     connection_id: UUID,
 ) -> None:
     value = connection.scalar(
-        select(connections.c.id)
+        select(connections.c.status)
         .where(
             connections.c.id == connection_id,
             connections.c.installation_id == installation_id,
@@ -271,6 +278,10 @@ def _require_connection(
     )
     if value is None:
         raise ConnectionNotFoundError("banking connection was not found")
+    if value == StoredConnectionStatus.DISCONNECTED.value:
+        raise SyncConflictError(
+            "disconnected banking connection cannot be synchronized"
+        )
 
 
 def _open_cycle(

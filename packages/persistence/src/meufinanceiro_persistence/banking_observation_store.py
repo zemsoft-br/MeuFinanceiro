@@ -10,6 +10,9 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import Connection, Engine, RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from meufinanceiro_persistence.banking_connection_gate import (
+    acquire_connection_advisory_xact_gate,
+)
 from meufinanceiro_persistence.banking_fairness_models import StoredSyncCycleStatus
 from meufinanceiro_persistence.banking_fairness_schema import (
     sync_cycle_accounts,
@@ -19,6 +22,7 @@ from meufinanceiro_persistence.banking_models import (
     BankingPersistenceError,
     ConnectionNotFoundError,
     ExternalAccountNotFoundError,
+    StoredConnectionStatus,
     StoredSyncResource,
     SyncConflictError,
     clean_cursor,
@@ -84,6 +88,9 @@ class BankingTransactionObservationStoreMixin:
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
+                )
+                acquire_connection_advisory_xact_gate(
+                    connection, connection_id=connection_id
                 )
                 _require_connection(
                     connection,
@@ -257,14 +264,20 @@ def _require_connection(
     connection_id: UUID,
 ) -> None:
     value = connection.scalar(
-        select(connections.c.id).where(
+        select(connections.c.status)
+        .where(
             connections.c.id == connection_id,
             connections.c.installation_id == installation_id,
             connections.c.residence_id == residence_id,
         )
+        .with_for_update()
     )
     if value is None:
         raise ConnectionNotFoundError("banking connection was not found")
+    if value == StoredConnectionStatus.DISCONNECTED.value:
+        raise SyncConflictError(
+            "disconnected banking connection cannot be synchronized"
+        )
 
 
 def _lock_external_account(
