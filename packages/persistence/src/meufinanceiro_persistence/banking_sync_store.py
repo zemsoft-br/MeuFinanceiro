@@ -14,6 +14,10 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from meufinanceiro_persistence.banking_connection_gate import (
+    acquire_connection_advisory_xact_gate,
+    connection_advisory_lock_key,
+)
 from meufinanceiro_persistence.banking_models import (
     BankingPersistenceError,
     ConnectionNotFoundError,
@@ -119,7 +123,7 @@ class BankingManualSyncStoreMixin:
                     installation_id=installation_id,
                     residence_id=residence_id,
                 )
-                _acquire_connection_sync_gate(
+                acquire_connection_advisory_xact_gate(
                     connection,
                     connection_id=connection_id,
                 )
@@ -456,7 +460,10 @@ class BankingManualSyncStoreMixin:
                     installation_id=installation_id,
                     residence_id=residence_id,
                 )
-                _require_connection(
+                acquire_connection_advisory_xact_gate(
+                    connection, connection_id=connection_id
+                )
+                _require_writable_connection(
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
@@ -595,7 +602,10 @@ class BankingManualSyncStoreMixin:
                     installation_id=installation_id,
                     residence_id=residence_id,
                 )
-                _require_connection(
+                acquire_connection_advisory_xact_gate(
+                    connection, connection_id=connection_id
+                )
+                _require_writable_connection(
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
@@ -703,19 +713,6 @@ def _set_context(
     )
 
 
-def _connection_advisory_lock_key(connection_id: UUID) -> int:
-    """Fold a UUID into PostgreSQL's signed 64-bit advisory-lock key space."""
-
-    upper = connection_id.int >> 64
-    lower = connection_id.int & ((1 << 64) - 1)
-    value = upper ^ lower
-
-    if value >= 1 << 63:
-        value -= 1 << 64
-
-    return value
-
-
 @contextmanager
 def _connection_advisory_guard(
     engine: Engine,
@@ -723,7 +720,7 @@ def _connection_advisory_guard(
 ) -> Iterator[Connection]:
     """Hold a session advisory lock while allowing short SQL transactions."""
 
-    lock_key = _connection_advisory_lock_key(connection_id)
+    lock_key = connection_advisory_lock_key(connection_id)
 
     with engine.connect() as connection:
         lock_acquired = False
@@ -778,18 +775,6 @@ def _connection_advisory_guard(
                         raise BankingPersistenceError(
                             "banking connection guard could not be released"
                         ) from None
-
-
-def _acquire_connection_sync_gate(
-    connection: Connection,
-    *,
-    connection_id: UUID,
-) -> None:
-    """Serialize sync creation against an explicit disconnect operation."""
-
-    connection.execute(
-        select(func.pg_advisory_xact_lock(_connection_advisory_lock_key(connection_id)))
-    )
 
 
 def _finalize_connection_disconnection(
@@ -891,6 +876,26 @@ def _require_connection(
     if value is None:
         raise ConnectionNotFoundError("banking connection was not found")
     return StoredConnectionStatus(value)
+
+
+def _require_writable_connection(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    connection_id: UUID,
+) -> None:
+    status = _require_connection(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        connection_id=connection_id,
+        for_update=True,
+    )
+    if status is StoredConnectionStatus.DISCONNECTED:
+        raise SyncConflictError(
+            "disconnected banking connection cannot be synchronized"
+        )
 
 
 def _require_external_account(

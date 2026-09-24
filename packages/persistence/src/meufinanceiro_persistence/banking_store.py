@@ -12,6 +12,9 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
+from meufinanceiro_persistence.banking_connection_gate import (
+    acquire_connection_advisory_xact_gate,
+)
 from meufinanceiro_persistence.banking_models import (
     BankingConnectionRecord,
     BankingPersistenceError,
@@ -28,6 +31,7 @@ from meufinanceiro_persistence.banking_models import (
     StoredCapabilitySource,
     StoredCapabilityState,
     StoredConnectionStatus,
+    SyncConflictError,
     clean_external_id,
     clean_provider,
     clean_reason_code,
@@ -380,6 +384,18 @@ class BankingIntegrationStore:
                 if configuration["state"] != ProviderConfigurationState.ENABLED.value:
                     raise ProviderNotEnabledError("provider is not enabled")
 
+                scoped_connection = select(connections.c.id).where(
+                    connections.c.installation_id == installation_id,
+                    connections.c.residence_id == residence_id,
+                    connections.c.provider == normalized_provider,
+                    connections.c.external_connection_id == normalized_external_id,
+                )
+                existing_connection_id = connection.scalar(scoped_connection)
+                if existing_connection_id is not None:
+                    acquire_connection_advisory_xact_gate(
+                        connection, connection_id=existing_connection_id
+                    )
+
                 insert_statement = postgresql_insert(connections).values(
                     id=uuid4(),
                     installation_id=installation_id,
@@ -398,12 +414,34 @@ class BankingIntegrationStore:
                     created_at=func.transaction_timestamp(),
                     updated_at=func.transaction_timestamp(),
                 )
+                conflict_columns = (
+                    connections.c.installation_id,
+                    connections.c.provider,
+                    connections.c.external_connection_id,
+                )
+                row: RowMapping | None = None
+                if existing_connection_id is None:
+                    row = (
+                        connection.execute(
+                            insert_statement.on_conflict_do_nothing(
+                                index_elements=conflict_columns
+                            ).returning(*_CONNECTION_PUBLIC_COLUMNS)
+                        )
+                        .mappings()
+                        .one_or_none()
+                    )
+                    if row is None:
+                        existing_connection_id = connection.scalar(scoped_connection)
+                        if existing_connection_id is None:
+                            raise ConnectionConflictError(
+                                "external connection is already assigned"
+                            )
+                        acquire_connection_advisory_xact_gate(
+                            connection, connection_id=existing_connection_id
+                        )
+
                 statement = insert_statement.on_conflict_do_update(
-                    index_elements=[
-                        connections.c.installation_id,
-                        connections.c.provider,
-                        connections.c.external_connection_id,
-                    ],
+                    index_elements=conflict_columns,
                     set_={
                         "provider_configuration_id": configuration["id"],
                         "status": status.value,
@@ -416,9 +454,14 @@ class BankingIntegrationStore:
                         "disconnected_at": disconnected_at,
                         "updated_at": func.transaction_timestamp(),
                     },
-                    where=connections.c.residence_id == residence_id,
+                    where=(connections.c.residence_id == residence_id)
+                    & (
+                        connections.c.status
+                        != StoredConnectionStatus.DISCONNECTED.value
+                    ),
                 ).returning(*_CONNECTION_PUBLIC_COLUMNS)
-                row = connection.execute(statement).mappings().one_or_none()
+                if row is None:
+                    row = connection.execute(statement).mappings().one_or_none()
                 if row is None:
                     raise ConnectionConflictError(
                         "external connection is already assigned"
@@ -488,15 +531,24 @@ class BankingIntegrationStore:
                     installation_id=installation_id,
                     residence_id=residence_id,
                 )
-                visible_connection = connection.scalar(
-                    select(connections.c.id).where(
+                acquire_connection_advisory_xact_gate(
+                    connection, connection_id=connection_id
+                )
+                connection_status = connection.scalar(
+                    select(connections.c.status)
+                    .where(
                         connections.c.id == connection_id,
                         connections.c.installation_id == installation_id,
                         connections.c.residence_id == residence_id,
                     )
+                    .with_for_update()
                 )
-                if visible_connection is None:
+                if connection_status is None:
                     raise ConnectionNotFoundError("banking connection was not found")
+                if connection_status == StoredConnectionStatus.DISCONNECTED.value:
+                    raise SyncConflictError(
+                        "disconnected banking connection cannot be synchronized"
+                    )
 
                 if capabilities:
                     connection.execute(
