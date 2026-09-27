@@ -1,5 +1,12 @@
 """Provider-neutral bounded manual banking synchronization."""
 
+from .consent_lifecycle import (
+    ConsentClock,
+    ConsentLifecycleEvaluator,
+    ConsentLifecyclePolicy,
+    ConsentLifecycleResult,
+    ConsentLifecycleState,
+)
 from .disconnection import (
     BankingConnectionDisconnectionService,
     ConnectionDisconnectionError,
@@ -30,6 +37,11 @@ from .service import (
 
 __all__ = [
     "BankingConnectionDisconnectionService",
+    "ConsentClock",
+    "ConsentLifecycleEvaluator",
+    "ConsentLifecyclePolicy",
+    "ConsentLifecycleResult",
+    "ConsentLifecycleState",
     "ConnectionDisconnectionError",
     "ConnectionDisconnectionErrorCode",
     "ConnectionDisconnectionOutcome",

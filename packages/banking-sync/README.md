@@ -29,6 +29,28 @@ begin_manual_sync
 
 O pacote não conhece SDK, transporte HTTP, credencial, Item ID ou payload específico de provider.
 
+## Lifecycle local do consentimento
+
+`ConsentLifecycleEvaluator` classifica `StoredConnectionStatus` e
+`consent_expires_at` já obtidos pelo chamador, usando `ConsentLifecyclePolicy` e
+um clock injetado. Ele não consulta o store nem chama o provider. A política exige
+uma `warning_window` explícita e não define duração global. Timestamps devem
+conter timezone; a comparação é feita em UTC.
+
+Estado operacional da conexão e lifecycle temporal do consentimento são eixos
+separados. `DISCONNECTED` permanece terminal, mas não equivale a `EXPIRED`:
+o resultado preserva `UNKNOWN`, `VALID`, `EXPIRING` ou `EXPIRED` conforme os fatos
+temporais disponíveis e sempre retorna `renewal_required=false` para essa conexão.
+Sem timestamp, `DISCONNECTED` sozinho produz `UNKNOWN`, pois uma conexão ainda
+pendente também pode ser desconectada.
+
+`REAUTHENTICATION_REQUIRED` com expiração ausente produz `UNKNOWN`:
+reautenticação e renovação de consentimento são conceitos diferentes. A
+capability `CONSENT_RENEWAL` não entra no cálculo temporal. Nenhuma operação de
+renovação é executada aqui. Veja
+[`BANKING_CONSENT_LIFECYCLE.md`](../../docs/architecture/BANKING_CONSENT_LIFECYCLE.md)
+para as regras e boundaries completos.
+
 ## Limites padrão do sync
 
 ```text
@@ -118,5 +140,5 @@ Sync e reconciliação são transações separadas. Se a reconciliação falhar 
 - recovery automático de run órfão;
 - cartões/faturas;
 - investimentos/empréstimos;
-- desconexão/consentimento;
+- operação de desconexão e renovação de consentimento no provider;
 - webhooks.
