@@ -1,28 +1,23 @@
 name: Quality
 
 on:
-  pull_request:
-    branches:
-      - develop
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
   workflow_dispatch:
-
+    inputs:
+      base_ref:
+        description: Base branch/ref for DCO comparison
+        required: true
+        default: develop
+        type: string
 permissions:
   contents: read
 
 concurrency:
-  group: quality-${{ github.event.pull_request.number || github.ref }}
+  group: quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   quality:
     name: Mandatory quality gates
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -44,10 +39,10 @@ jobs:
           --health-retries 20
 
     steps:
-      - name: Checkout pull request head
+      - name: Checkout selected ref
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -120,12 +115,14 @@ jobs:
             pub-${{ runner.os }}-
 
       - name: Validate DCO sign-offs
-        if: github.event_name == 'pull_request'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ inputs.base_ref }}
+          HEAD_SHA: ${{ github.sha }}
+        shell: bash
         run: |
-          git fetch --no-tags origin "$BASE_SHA"
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+          BASE_SHA="$(git rev-parse FETCH_HEAD)"
           python infra/scripts/check-dco.py "$BASE_SHA" "$HEAD_SHA"
 
       - name: Require Flutter lockfile

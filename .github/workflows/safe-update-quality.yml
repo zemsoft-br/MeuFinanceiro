@@ -1,47 +1,31 @@
 name: Safe Update Quality
 
 on:
-  pull_request:
-    branches:
-      - develop
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
-    paths:
-      - compose.yaml
-      - infra/scripts/update-foundation.sh
-      - infra/scripts/update-foundation.ps1
-      - infra/scripts/backup-create.sh
-      - infra/scripts/backup-create.ps1
-      - infra/scripts/backup-verify.sh
-      - infra/scripts/backup-verify.ps1
-      - tests/smoke/**
-      - tests/quality/test_safe_update_contract.py
-      - .github/workflows/safe-update-quality.yml
   workflow_dispatch:
-
+    inputs:
+      base_ref:
+        description: Base branch/ref used as the source installation
+        required: true
+        default: develop
+        type: string
 permissions:
   contents: read
 
 concurrency:
-  group: safe-update-quality-${{ github.event.pull_request.number || github.ref }}
+  group: safe-update-quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   safe-update-quality:
     name: Source update and rollback integration
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 95
 
     steps:
-      - name: Checkout pull request head
+      - name: Checkout selected ref
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -68,12 +52,14 @@ jobs:
       - name: Prepare source installation
         shell: bash
         env:
-          UPDATE_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          UPDATE_BASE_REF: ${{ inputs.base_ref }}
         run: |
           set -euo pipefail
+          git fetch --no-tags origin "$UPDATE_BASE_REF"
+          update_base_sha="$(git rev-parse FETCH_HEAD)"
           source_root="$RUNNER_TEMP/meufinanceiro-update-source"
           rm -rf "$source_root"
-          git worktree add --detach "$source_root" "$UPDATE_BASE_SHA"
+          git worktree add --detach "$source_root" "$update_base_sha"
           cp .env "$source_root/.env"
           mkdir -p "$source_root/.secrets"
           cp .secrets/keyring.json "$source_root/.secrets/keyring.json"
@@ -88,7 +74,7 @@ jobs:
         id: safe_update
         shell: bash
         env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          UPDATE_TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           source_root="$RUNNER_TEMP/meufinanceiro-update-source"
@@ -121,7 +107,7 @@ jobs:
       - name: Validate idempotent target
         shell: bash
         env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          UPDATE_TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           state_path="$(bash infra/scripts/update-foundation.sh \
@@ -144,7 +130,7 @@ jobs:
       - name: Validate rollback with unchanged schema
         shell: bash
         env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          UPDATE_TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           source_root="$RUNNER_TEMP/meufinanceiro-update-source"
@@ -177,7 +163,7 @@ jobs:
       - name: Validate schema-change rollback block
         shell: bash
         env:
-          UPDATE_TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          UPDATE_TARGET_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           source_root="$RUNNER_TEMP/meufinanceiro-update-source"

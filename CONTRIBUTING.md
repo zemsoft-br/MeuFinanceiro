@@ -59,7 +59,7 @@ Marque como pronta somente quando:
 - a descrição explicar decisões e riscos;
 - todos os commits possuírem o sign-off exigido pelo DCO.
 
-Para economizar minutos de GitHub Actions, os workflows principais devem ser configurados para executar automaticamente quando a PR sair de draft e ficar pronta para revisão. Execução manual pode permanecer disponível para diagnóstico.
+Os workflows de GitHub Actions permanecem disponíveis como gates remotos sob demanda, mas não devem possuir disparos automáticos por eventos de Pull Request. Os testes e gates locais continuam obrigatórios conforme o escopo da mudança. Quando o mantenedor solicitar validação remota, o workflow indicado deve ser disparado manualmente contra o ref alvo; workflows que exigem comparação também recebem a `base_ref` explícita definida para aquele gate.
 
 PRs de `feature/*`, `fix/*`, `docs/*`, `chore/*` e `legal/*` usam squash merge por padrão. Releases podem usar merge commit quando isso preservar melhor o histórico de promoção.
 
