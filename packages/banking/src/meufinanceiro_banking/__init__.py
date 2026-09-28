@@ -1,0 +1,73 @@
+"""Provider-neutral banking integration contracts for MeuFinanceiro."""
+
+from .fake import FakeBankingProvider
+from .models import (
+    AccountType,
+    Capability,
+    CapabilitySource,
+    CapabilityState,
+    ConnectionCapability,
+    ConnectionIntent,
+    ConnectionIntentKind,
+    ConnectionState,
+    ConnectionStatus,
+    CreditCardBillStatus,
+    ExternalAccount,
+    ExternalCreditCardBill,
+    ExternalInvestment,
+    ExternalLoan,
+    ExternalPage,
+    ExternalTransaction,
+    InstallmentMetadata,
+    RefreshRequest,
+    RefreshStatus,
+    TransactionStatus,
+)
+from .provider import BankingProvider, BankingProviderError, ProviderErrorCategory
+from .registry import (
+    BankingProviderRegistry,
+    ProviderAlreadyRegisteredError,
+    ProviderFactory,
+    ProviderFactoryError,
+    ProviderNotRegisteredError,
+    ProviderRegistryError,
+    ProviderRegistryFrozenError,
+    normalize_provider_name,
+)
+
+__all__ = [
+    "AccountType",
+    "BankingProvider",
+    "BankingProviderError",
+    "BankingProviderRegistry",
+    "Capability",
+    "CapabilitySource",
+    "CapabilityState",
+    "ConnectionCapability",
+    "ConnectionIntent",
+    "ConnectionIntentKind",
+    "ConnectionState",
+    "ConnectionStatus",
+    "CreditCardBillStatus",
+    "ExternalAccount",
+    "ExternalCreditCardBill",
+    "ExternalInvestment",
+    "ExternalLoan",
+    "ExternalPage",
+    "ExternalTransaction",
+    "FakeBankingProvider",
+    "InstallmentMetadata",
+    "ProviderAlreadyRegisteredError",
+    "ProviderErrorCategory",
+    "ProviderFactory",
+    "ProviderFactoryError",
+    "ProviderNotRegisteredError",
+    "ProviderRegistryError",
+    "ProviderRegistryFrozenError",
+    "RefreshRequest",
+    "RefreshStatus",
+    "TransactionStatus",
+    "normalize_provider_name",
+]
+
+__version__ = "0.1.0"

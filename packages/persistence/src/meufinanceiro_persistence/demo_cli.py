@@ -1,0 +1,114 @@
+"""Operational CLI for the isolated demonstration fixture."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from dataclasses import asdict
+from pathlib import Path
+
+from pydantic import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from meufinanceiro_persistence.database import Database
+from meufinanceiro_persistence.demo import (
+    DemoFixtureStore,
+    DemoModeDisabledError,
+)
+
+
+class DemoCliSettings(BaseSettings):
+    database_url: SecretStr
+    admin_database_url: SecretStr | None = None
+    demo_operator_password: SecretStr | None = None
+    demo_operator_password_file: Path | None = None
+    app_demo_mode: bool = False
+
+    model_config = SettingsConfigDict(case_sensitive=False, extra="ignore")
+
+
+def _read_operator_password_file(password_file: Path) -> str:
+    try:
+        raw = password_file.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError("demo operator password file could not be read") from exc
+
+    if raw.endswith("\r\n"):
+        value = raw[:-2]
+    elif raw.endswith(("\n", "\r")):
+        value = raw[:-1]
+    else:
+        value = raw
+
+    if "\r" in value or "\n" in value:
+        raise ValueError("demo operator password file must contain a single line")
+    if not value:
+        raise ValueError("demo operator password file is empty")
+    return value
+
+
+def _resolve_operator_password(settings: DemoCliSettings) -> str | None:
+    direct = settings.demo_operator_password
+    password_file = settings.demo_operator_password_file
+    if direct is not None and password_file is not None:
+        raise ValueError(
+            "configure only one of DEMO_OPERATOR_PASSWORD or "
+            "DEMO_OPERATOR_PASSWORD_FILE"
+        )
+    if password_file is not None:
+        return _read_operator_password_file(password_file)
+    if direct is not None:
+        value = direct.get_secret_value()
+        if not value:
+            raise ValueError("demo operator password is empty")
+        return value
+    return None
+
+
+def _serialize(value: object) -> str:
+    return json.dumps(value, default=str, sort_keys=True)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Manage the isolated demo fixture")
+    parser.add_argument("command", choices=("load", "status", "reset"))
+    args = parser.parse_args()
+
+    settings = DemoCliSettings()  # type: ignore[call-arg]
+    database = Database(settings.database_url.get_secret_value())
+    reset_database = (
+        Database(settings.admin_database_url.get_secret_value())
+        if settings.admin_database_url is not None
+        else None
+    )
+    try:
+        operator_password = _resolve_operator_password(settings)
+    except ValueError as exc:
+        parser.error(str(exc))
+    store = DemoFixtureStore(
+        database.engine,
+        enabled=settings.app_demo_mode,
+        operator_password=operator_password,
+        reset_engine=(reset_database.engine if reset_database is not None else None),
+    )
+    try:
+        if args.command == "load":
+            print(_serialize(asdict(store.load())))
+            return
+        if args.command == "status":
+            if not settings.app_demo_mode:
+                raise DemoModeDisabledError("demo mode is not enabled")
+            print(_serialize(asdict(store.status())))
+            return
+        removed = store.reset()
+        print(_serialize({"fixture_id": store.status().fixture_id, "removed": removed}))
+    except DemoModeDisabledError as exc:
+        parser.error(str(exc))
+    finally:
+        database.dispose()
+        if reset_database is not None:
+            reset_database.dispose()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,79 @@
+name: Relatório de problema
+description: Comportamento incorreto, regressão ou falha reproduzível
+title: "[BUG] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Não publique credenciais, arquivos bancários reais ou dados financeiros pessoais. Vulnerabilidades devem seguir SECURITY.md.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Resumo
+      description: Descreva objetivamente o comportamento incorreto.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Passos para reproduzir
+      placeholder: |
+        1. Acesse...
+        2. Informe dados fictícios...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Comportamento esperado
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Comportamento atual
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versão ou commit
+      placeholder: v0.1.0 ou SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Ambiente
+      options:
+        - Docker Compose em Windows
+        - Docker Compose em Linux
+        - Docker Compose em macOS
+        - Ambiente de desenvolvimento
+        - Outro
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidência sanitizada
+      description: Logs, mensagens ou capturas sem informações financeiras, pessoais ou segredos.
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impacto
+      description: Informe se há risco de dados incorretos, duplicidade, perda, autorização indevida ou indisponibilidade.
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmações
+      options:
+        - label: Removi credenciais e dados pessoais/financeiros da evidência.
+          required: true
+        - label: Procurei issues abertas equivalentes.
+          required: true
+        - label: O relato não descreve uma vulnerabilidade que deveria ser privada.
+          required: true

@@ -1,0 +1,209 @@
+name: Container Quality
+
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+
+concurrency:
+  group: container-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  container-quality:
+    name: Docker Compose integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+
+    steps:
+      - name: Checkout selected ref
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Create disposable environment and keyring
+        shell: bash
+        run: |
+          umask 077
+          demo_secret="container-demo-$(openssl rand -hex 24)"
+          echo "::add-mask::$demo_secret"
+          cat > .env <<EOF_ENV
+          POSTGRES_DB=meufinanceiro_ci
+          POSTGRES_USER=meufinanceiro_admin_ci
+          POSTGRES_PASSWORD=$(openssl rand -hex 32)
+          APP_DATABASE_USER=meufinanceiro_app_ci
+          APP_DATABASE_PASSWORD=$(openssl rand -hex 32)
+          APP_HTTP_PORT=8080
+          APP_KEYRING_FILE_HOST=.secrets/keyring.json
+          DEMO_OPERATOR_PASSWORD=$demo_secret
+          EOF_ENV
+          python3 infra/scripts/manage-secrets.py init --path .secrets/keyring.json
+
+      - name: Validate Compose contract
+        run: docker compose config --quiet
+
+      - name: Pull PostgreSQL image
+        run: docker compose pull postgres
+
+      - name: Build API image
+        run: docker compose build --pull api
+
+      - name: Build Worker image
+        run: docker compose build --pull worker
+
+      - name: Build Flutter Web image
+        run: docker compose build --pull web
+
+      - name: Validate generated Flutter Web artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          build_dir="$RUNNER_TEMP/meufinanceiro-flutter-web"
+          rm -rf "$build_dir"
+          mkdir -p "$build_dir"
+          container_id="$(docker create meufinanceiro-web:local)"
+          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+          docker cp "$container_id:/srv/." "$build_dir"
+          docker rm "$container_id" >/dev/null
+          trap - EXIT
+          python3 infra/scripts/check-flutter-web-contract.py \
+            --build-dir "$build_dir"
+
+      - name: Build Caddy image
+        run: docker compose build --pull caddy
+
+      - name: Start healthy stack
+        run: docker compose up --detach --wait --wait-timeout 180
+
+      - name: Run smoke test
+        run: bash tests/smoke/compose-smoke.sh
+
+      - name: Verify runtime role is unprivileged
+        shell: bash
+        run: |
+          docker compose exec -T api python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as connection:
+              row = connection.execute(text(
+                  "SELECT current_user AS name, rolsuper, rolcreatedb, rolcreaterole, "
+                  "rolreplication, rolbypassrls FROM pg_roles WHERE rolname = current_user"
+              )).mappings().one()
+          assert not row["rolsuper"]
+          assert not row["rolcreatedb"]
+          assert not row["rolcreaterole"]
+          assert not row["rolreplication"]
+          assert not row["rolbypassrls"]
+          with engine.connect() as connection:
+              can_create = connection.scalar(text(
+                  "SELECT has_schema_privilege(current_user, 'infra', 'CREATE')"
+              ))
+          assert can_create is False
+          print(f"runtime role validated: {row['name']}")
+          PY
+
+      - name: Validate restart
+        shell: bash
+        run: |
+          docker compose restart postgres api worker web caddy
+          docker compose up --detach --wait --wait-timeout 120
+          bash tests/smoke/compose-smoke.sh
+
+      - name: Create and verify coordinated backup
+        id: backup_verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          backup_log="$RUNNER_TEMP/backup-verify.log"
+          exec > >(tee "$backup_log") 2>&1
+          backup_root="$RUNNER_TEMP/meufinanceiro-backups"
+          echo "Creating coordinated backup bundle"
+          bundle_path="$(
+            bash infra/scripts/backup-create.sh \
+              --acknowledge-sensitive \
+              --output-dir "$backup_root"
+          )"
+          echo "Verifying disposable restore"
+          bash infra/scripts/backup-verify.sh "$bundle_path"
+          if docker ps --all --quiet \
+            --filter name=meufinanceiro-backup-verify- | grep -q .; then
+            echo "Container temporário de restore permaneceu após a verificação." >&2
+            exit 1
+          fi
+          echo "Revalidating original common stack"
+          bash tests/smoke/compose-smoke.sh
+          rm -rf "$backup_root"
+
+      - name: Upload backup verification diagnostics
+        if: failure() && steps.backup_verify.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-backup-verify-${{ github.run_id }}
+          path: ${{ runner.temp }}/backup-verify.log
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Start isolated demo environment
+        id: demo_start
+        shell: bash
+        run: |
+          set -o pipefail
+          bash infra/scripts/demo-up.sh up \
+            2>&1 | tee "$RUNNER_TEMP/demo-start.log"
+
+      - name: Validate demo fixture lifecycle
+        shell: bash
+        run: |
+          DEMO_ENV_FILE="$PWD/.demo/.env" \
+            DEMO_PROJECT_NAME=meufinanceiro-demo \
+            bash tests/smoke/demo-compose-smoke.sh
+
+      - name: Revalidate common environment isolation
+        run: bash tests/smoke/compose-smoke.sh
+
+      - name: Capture diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          diagnostics="$RUNNER_TEMP/demo-diagnostics"
+          mkdir -p "$diagnostics"
+          cp "$RUNNER_TEMP/demo-start.log" "$diagnostics/start.log" 2>/dev/null || true
+          docker compose ps --all > "$diagnostics/common-ps.log" 2>&1 || true
+          docker compose logs --no-color --tail 200 \
+            > "$diagnostics/common-compose.log" 2>&1 || true
+          if [[ -f .demo/.env ]]; then
+            docker compose \
+              --project-name meufinanceiro-demo \
+              --env-file .demo/.env \
+              --profile demo \
+              ps --all > "$diagnostics/demo-ps.log" 2>&1 || true
+            docker compose \
+              --project-name meufinanceiro-demo \
+              --env-file .demo/.env \
+              --profile demo \
+              logs --no-color --tail 200 \
+              > "$diagnostics/demo-compose.log" 2>&1 || true
+          fi
+
+      - name: Upload demo startup diagnostics
+        if: failure() && steps.demo_start.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-demo-start-${{ github.run_id }}
+          path: ${{ runner.temp }}/demo-diagnostics
+          retention-days: 3
+          if-no-files-found: error
+
+      - name: Stop stacks gracefully
+        if: always()
+        shell: bash
+        run: |
+          docker ps --all --quiet \
+            --filter name=meufinanceiro-backup-verify- \
+            | xargs --no-run-if-empty docker rm --force || true
+          rm -rf "$RUNNER_TEMP/meufinanceiro-backups"
+          bash infra/scripts/demo-up.sh purge || true
+          docker compose down --volumes --remove-orphans --timeout 40

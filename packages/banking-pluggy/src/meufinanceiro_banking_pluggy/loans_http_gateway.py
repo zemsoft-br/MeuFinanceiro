@@ -1,0 +1,276 @@
+"""Strict read-only Pluggy loan pagination and payload normalization."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from datetime import date
+from typing import Protocol, runtime_checkable
+
+from .gateway import PluggyGatewayError, PluggyGatewayErrorCategory
+from .http_gateway import (
+    PluggyGatewayHttpTransport,
+    PluggyHttpReadOnlyGateway,
+    PluggyPayloadTransport,
+    _PayloadError,
+    _decimal,
+    _effective_date,
+    _mapping,
+    _optional_datetime,
+    _raise_payload_error,
+    _raise_transport_error,
+    _required_text,
+    _sequence,
+    _transport_text,
+)
+from .loans import PluggyLoanSnapshot
+from .transport import JsonObject, PluggyTransportError
+
+_MAX_IDENTIFIER_LENGTH = 512
+_PAGE_SIZE = 500
+_DEFAULT_MAX_PAGES = 20
+_DEFAULT_MAX_RECORDS = 10_000
+
+
+@runtime_checkable
+class PluggyLoansPayloadTransport(PluggyPayloadTransport, Protocol):
+    """JSON transport contract including paged loan reads."""
+
+    def get_loans_page(
+        self,
+        item_id: str,
+        *,
+        page: int,
+        page_size: int,
+    ) -> JsonObject: ...
+
+
+class PluggyLoansGatewayHttpTransport(PluggyGatewayHttpTransport):
+    """HTTP transport specialization for GET /loans by Item."""
+
+    def get_loans_page(
+        self,
+        item_id: str,
+        *,
+        page: int,
+        page_size: int,
+    ) -> JsonObject:
+        identifier = _transport_text(
+            item_id,
+            "item_id",
+            max_length=_MAX_IDENTIFIER_LENGTH,
+        )
+        if isinstance(page, bool) or not isinstance(page, int) or page < 0:
+            raise ValueError("page must be a non-negative integer")
+        if (
+            isinstance(page_size, bool)
+            or not isinstance(page_size, int)
+            or not 1 <= page_size <= _PAGE_SIZE
+        ):
+            raise ValueError("page_size is outside the supported range")
+        return self._authenticated_get(
+            "loans",
+            params={
+                "itemId": identifier,
+                "page": str(page),
+                "pageSize": str(page_size),
+            },
+        )
+
+
+def _non_negative_integer(value: object, reason_code: str) -> int:
+    if isinstance(value, bool):
+        raise _PayloadError(reason_code)
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float) and value.is_integer():
+        parsed = int(value)
+    else:
+        raise _PayloadError(reason_code)
+    if parsed < 0:
+        raise _PayloadError(reason_code)
+    return parsed
+
+
+def _optional_date(value: object, reason_code: str) -> date | None:
+    if value is None:
+        return None
+    return _effective_date(value, reason_code)
+
+
+def _parse_loan(
+    value: object,
+    expected_item_id: str,
+) -> PluggyLoanSnapshot:
+    record: Mapping[str, object] = _mapping(value, "INVALID_LOAN_RECORD")
+    item_id = _required_text(
+        record,
+        "itemId",
+        "INVALID_LOAN_ITEM_ID",
+        max_length=_MAX_IDENTIFIER_LENGTH,
+    )
+    if item_id != expected_item_id:
+        raise _PayloadError("LOAN_ASSOCIATION_MISMATCH")
+
+    payments = _mapping(record.get("payments"), "INVALID_LOAN_PAYMENTS")
+    outstanding_balance = _decimal(
+        payments.get("contractOutstandingBalance"),
+        "INVALID_LOAN_OUTSTANDING_BALANCE",
+    )
+    if outstanding_balance < 0:
+        raise _PayloadError("INVALID_LOAN_OUTSTANDING_BALANCE")
+
+    as_of = _optional_datetime(record.get("date"), "INVALID_LOAN_DATE")
+    if as_of is None:
+        raise _PayloadError("MISSING_LOAN_DATE")
+
+    return PluggyLoanSnapshot(
+        loan_id=_required_text(
+            record,
+            "id",
+            "INVALID_LOAN_ID",
+            max_length=_MAX_IDENTIFIER_LENGTH,
+        ),
+        item_id=item_id,
+        kind=_required_text(
+            record,
+            "kind",
+            "INVALID_LOAN_KIND",
+            max_length=128,
+        ),
+        outstanding_balance=outstanding_balance,
+        currency=_required_text(
+            record,
+            "currencyCode",
+            "INVALID_LOAN_CURRENCY",
+            max_length=3,
+        ),
+        as_of=as_of,
+        contracted_at=_optional_date(
+            record.get("contractDate"),
+            "INVALID_LOAN_CONTRACT_DATE",
+        ),
+        due_date=_optional_date(record.get("dueDate"), "INVALID_LOAN_DUE_DATE"),
+    )
+
+
+def _parse_page(
+    payload: JsonObject,
+    expected_item_id: str,
+) -> tuple[int, int, int, tuple[PluggyLoanSnapshot, ...]]:
+    try:
+        page = _non_negative_integer(payload.get("page"), "INVALID_LOAN_PAGE")
+        total = _non_negative_integer(payload.get("total"), "INVALID_LOAN_TOTAL")
+        total_pages = _non_negative_integer(
+            payload.get("totalPages"),
+            "INVALID_LOAN_TOTAL_PAGES",
+        )
+        records = _sequence(payload.get("results"), "INVALID_LOANS_COLLECTION")
+        parsed = tuple(_parse_loan(record, expected_item_id) for record in records)
+        if total_pages == 0:
+            if page not in {0, 1} or total != 0 or parsed:
+                raise _PayloadError("INCONSISTENT_LOAN_PAGINATION")
+        elif page < 1 or page > total_pages:
+            raise _PayloadError("INCONSISTENT_LOAN_PAGINATION")
+        return page, total, total_pages, parsed
+    except _PayloadError:
+        raise
+    except (TypeError, ValueError, AttributeError):
+        raise _PayloadError("INVALID_LOANS_PAYLOAD") from None
+
+
+class PluggyLoansHttpReadOnlyGateway(PluggyHttpReadOnlyGateway):
+    """Read-only gateway that normalizes bounded loan pages."""
+
+    def __init__(
+        self,
+        transport: PluggyLoansPayloadTransport,
+        *,
+        max_pages: int = _DEFAULT_MAX_PAGES,
+        max_records: int = _DEFAULT_MAX_RECORDS,
+    ) -> None:
+        if not isinstance(transport, PluggyLoansPayloadTransport):
+            raise TypeError("transport must satisfy PluggyLoansPayloadTransport")
+        if (
+            isinstance(max_pages, bool)
+            or not isinstance(max_pages, int)
+            or max_pages < 1
+        ):
+            raise ValueError("max_pages must be a positive integer")
+        if (
+            isinstance(max_records, bool)
+            or not isinstance(max_records, int)
+            or max_records < 1
+        ):
+            raise ValueError("max_records must be a positive integer")
+        super().__init__(transport)
+        self._loans_transport = transport
+        self._max_pages = max_pages
+        self._max_records = max_records
+
+    def list_loans(self, item_id: str) -> tuple[PluggyLoanSnapshot, ...]:
+        try:
+            page_index = 1
+            expected_total: int | None = None
+            expected_total_pages: int | None = None
+            records: list[PluggyLoanSnapshot] = []
+            identifiers: set[str] = set()
+
+            while True:
+                if page_index > self._max_pages:
+                    raise _PayloadError("LOAN_PAGE_LIMIT_EXCEEDED")
+                payload = self._loans_transport.get_loans_page(
+                    item_id,
+                    page=page_index,
+                    page_size=_PAGE_SIZE,
+                )
+                page, total, total_pages, page_records = _parse_page(
+                    payload,
+                    item_id,
+                )
+                if total_pages == 0:
+                    return ()
+                if page != page_index:
+                    raise _PayloadError("LOAN_PAGE_MISMATCH")
+
+                if expected_total is None:
+                    expected_total = total
+                    expected_total_pages = total_pages
+                    if total > self._max_records:
+                        raise _PayloadError("LOAN_RECORD_LIMIT_EXCEEDED")
+                    if total_pages > self._max_pages:
+                        raise _PayloadError("LOAN_PAGE_LIMIT_EXCEEDED")
+                elif total != expected_total or total_pages != expected_total_pages:
+                    raise _PayloadError("INCONSISTENT_LOAN_PAGINATION")
+
+                for record in page_records:
+                    if record.loan_id in identifiers:
+                        raise _PayloadError("DUPLICATE_LOAN_ID")
+                    identifiers.add(record.loan_id)
+                    records.append(record)
+                    if len(records) > self._max_records:
+                        raise _PayloadError("LOAN_RECORD_LIMIT_EXCEEDED")
+
+                if page_index >= total_pages:
+                    if expected_total is None or len(records) != expected_total:
+                        raise _PayloadError("INCOMPLETE_LOAN_COLLECTION")
+                    return tuple(records)
+                page_index += 1
+        except PluggyTransportError as error:
+            _raise_transport_error(error)
+        except _PayloadError as error:
+            _raise_payload_error(error)
+        except PluggyGatewayError:
+            raise
+        except Exception:
+            raise PluggyGatewayError(
+                PluggyGatewayErrorCategory.INTERNAL,
+                retryable=False,
+                provider_reason_code="UNEXPECTED_LOANS_GATEWAY_FAILURE",
+            ) from None
+
+
+__all__ = [
+    "PluggyLoansGatewayHttpTransport",
+    "PluggyLoansHttpReadOnlyGateway",
+    "PluggyLoansPayloadTransport",
+]

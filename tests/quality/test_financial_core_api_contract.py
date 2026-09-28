@@ -1,0 +1,113 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+ROUTE = (ROOT / "apps/api/app/api/routes/finance.py").read_text(encoding="utf-8")
+SERVICE = (ROOT / "apps/api/app/services/financial_core.py").read_text(encoding="utf-8")
+AUTH = (ROOT / "apps/api/app/api/auth.py").read_text(encoding="utf-8")
+MAIN = (ROOT / "apps/api/app/main.py").read_text(encoding="utf-8")
+
+
+def test_financial_api_exposes_only_semantic_financial_writers() -> None:
+    assert '@router.post("/movements"' not in ROUTE
+    assert "manual-entries" not in ROUTE
+    assert '"/accounts/{account_id}/income"' in ROUTE
+    assert '"/accounts/{account_id}/expense"' in ROUTE
+    assert '"/movements/{movement_id}/reversal"' in ROUTE
+    assert '"/transfers"' in ROUTE
+    assert '"/accounts/{account_id}/transfers"' in ROUTE
+    assert '"/transfers/{transfer_id}/reversal"' in ROUTE
+    assert "FinancialManualEntryDraft" in ROUTE
+    assert "FinancialManualEntryService" in SERVICE
+
+
+def test_financial_api_derives_scope_from_authenticated_primary_residence() -> None:
+    assert "Depends(require_primary_residence)" in ROUTE
+    assert "authenticated.principal.installation_id" in ROUTE
+    assert "authenticated.principal.primary_residence_id" in ROUTE
+    assert "authenticated.principal.operator_id" in ROUTE
+    for client_scope in (
+        "residence_id",
+        "installation_id",
+        "operator_id",
+    ):
+        assert (
+            re.search(
+                rf"\b{client_scope}\s*:\s*UUID\s*=",
+                ROUTE,
+            )
+            is None
+        )
+
+
+def test_financial_money_wire_never_uses_float() -> None:
+    assert "amount: str" in ROUTE
+    assert "Decimal(payload.amount)" in ROUTE
+    assert "money.canonical_amount" in ROUTE
+    assert "float(" not in ROUTE
+    assert "double" not in ROUTE.lower()
+
+
+def test_financial_routes_are_no_store_and_validation_is_sanitized() -> None:
+    assert '"/api/v1/finance/"' in AUTH
+    assert '_FINANCE_VALIDATION_PREFIX = "/api/v1/finance/"' in MAIN
+    assert '"invalid financial request"' in MAIN
+
+
+def test_financial_service_is_store_protocol_orchestration_only() -> None:
+    assert "class FinancialAccountStoreBoundary(Protocol)" in SERVICE
+    assert "class FinancialOpeningBalanceStoreBoundary(Protocol)" in SERVICE
+    assert "class FinancialMovementStoreBoundary(Protocol)" in SERVICE
+    assert "class FinancialTransferStoreBoundary(Protocol)" in SERVICE
+    assert "def list_transfers(" in SERVICE
+    assert "self._transfers.list_transfers(" in SERVICE
+    assert "class FinancialBalanceQueryBoundary(Protocol)" in SERVICE
+    assert "FinancialManualEntryService" in SERVICE
+    assert "sqlalchemy" not in SERVICE.lower()
+    assert "pluggy" not in SERVICE.lower()
+    assert "fastapi" not in SERVICE.lower()
+
+
+def test_financial_route_is_provider_neutral() -> None:
+    lowered = ROUTE.lower()
+    for forbidden in (
+        "pluggy",
+        "provider_item_id",
+        "external_resource_id",
+        "external_account_id",
+        "clientuser",
+    ):
+        assert forbidden not in lowered
+
+
+def test_financial_api_exposes_derived_balance_and_statement_without_mutable_balance() -> (
+    None
+):
+    assert '"/accounts/{account_id}/balance"' in ROUTE
+    assert '"/accounts/{account_id}/statement"' in ROUTE
+    assert "FinancialBalanceQueryService" in MAIN
+    assert "current_balance" in ROUTE
+    assert "closing_balance" in ROUTE
+    assert "UPDATE " not in ROUTE.upper()
+
+
+def test_semantic_financial_operations_require_explicit_idempotency() -> None:
+    assert 'alias="idempotencyKey"' in ROUTE
+    assert "validate_financial_idempotency_key" in ROUTE
+    assert "idempotency_key=_idempotency_key(payload.idempotency_key)" in ROUTE
+
+
+def test_financial_api_exposes_provider_neutral_transfer_read_model() -> None:
+    assert '"/accounts/{account_id}/transfers"' in ROUTE
+    assert "response_model=FinancialTransfersResponse" in ROUTE
+    assert (
+        re.search(
+            r"account_id\s*=\s*_validated_resource_id\(account_id\)",
+            ROUTE,
+        )
+        is not None
+    )
+    assert "records = _service(request).list_transfers(" in ROUTE
+    assert "account_id=account_id" in ROUTE

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meufinanceiro-worker"
+version = "0.1.0"
+description = "Worker foundation for MeuFinanceiro"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "meufinanceiro-persistence==0.1.0",
+  "meufinanceiro-security==0.1.0",
+  "pydantic-settings==2.14.2",
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest==9.1.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["worker*"]

@@ -1,0 +1,84 @@
+name: Tarefa de implementação
+description: Trabalho refinado e pronto para desenvolvimento
+title: "[TASK] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use este formulário somente quando o problema e o contrato já estiverem suficientemente definidos.
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexto e problema
+      description: Explique por que esta mudança é necessária e qual comportamento atual precisa mudar.
+      placeholder: Hoje... Isso causa...
+    validations:
+      required: true
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objetivo observável
+      description: Descreva o resultado que deve ser percebido pelo usuário ou pelo sistema.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Escopo incluído
+      description: Liste exatamente o que faz parte desta issue.
+      placeholder: |
+        - ...
+        - ...
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Fora do escopo
+      description: Liste o que não deve ser implementado nesta issue.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependências e bloqueios
+      description: Informe issues, ADRs, contratos ou decisões necessárias. Escreva "Nenhuma" quando aplicável.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critérios de aceite
+      description: Use itens verificáveis.
+      placeholder: |
+        - [ ] Dado...
+        - [ ] Quando...
+        - [ ] Então...
+    validations:
+      required: true
+  - type: textarea
+    id: tests
+    attributes:
+      label: Testes esperados
+      description: Inclua testes unitários, integração, autorização, migração ou interface necessários.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Segurança, privacidade e auditoria
+      description: Explique impactos ou declare que não existem impactos identificados.
+    validations:
+      required: true
+  - type: textarea
+    id: migration
+    attributes:
+      label: Banco de dados e migração
+      description: Informe alterações de schema, dados existentes e reversibilidade.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notas técnicas
+      description: Módulos prováveis, contratos, wireframes ou referências úteis.

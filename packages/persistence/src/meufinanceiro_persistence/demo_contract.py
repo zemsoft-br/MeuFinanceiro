@@ -1,0 +1,39 @@
+"""Versioned deterministic contract for the isolated residencia-ipe fixture."""
+
+from __future__ import annotations
+
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from typing import Final
+from uuid import UUID
+
+DEMO_FIXTURE_ID: Final = "residencia-ipe-v1"
+DEMO_FIXTURE_VERSION: Final = 2
+DEMO_REFERENCE_DATE: Final = date(2026, 11, 1)
+DEMO_TIMEZONE: Final = "America/Sao_Paulo"
+DEMO_CURRENCY: Final = "BRL"
+DEMO_SCOPE: Final = "finance_phase1"
+DEMO_CONTRACT_CHECKSUM: Final = (
+    "a819b4913e35cabff3f20617b3e7837a6042b0c9243031a65b3f53fa7086d091"
+)
+
+DEMO_LOGIN_NAME: Final = "demo"
+DEMO_RESIDENCE_NAME: Final = "Residência Ipê"
+
+DEMO_INSTALLATION_ID: Final = UUID("11111111-1111-4111-8111-111111111111")
+DEMO_RESIDENCE_ID: Final = UUID("22222222-2222-4222-8222-222222222222")
+DEMO_OPERATOR_ID: Final = UUID("33333333-3333-4333-8333-333333333333")
+DEMO_MEMBERSHIP_ID: Final = UUID("44444444-4444-4444-8444-444444444444")
+DEMO_CHECKING_ACCOUNT_ID: Final = UUID("55555555-5555-4555-8555-555555555551")
+DEMO_CASH_ACCOUNT_ID: Final = UUID("55555555-5555-4555-8555-555555555552")
+DEMO_HOUSING_CATEGORY_ID: Final = UUID("66666666-6666-4666-8666-666666666661")
+DEMO_FOOD_CATEGORY_ID: Final = UUID("66666666-6666-4666-8666-666666666662")
+DEMO_OPENING_BALANCE_ID: Final = UUID("77777777-7777-4777-8777-777777777771")
+
+DEMO_CREATED_AT: Final = datetime(2026, 10, 31, 12, 0, tzinfo=UTC)
+DEMO_OPENING_DATE: Final = DEMO_REFERENCE_DATE - timedelta(days=1)
+DEMO_OPENING_AMOUNT: Final = Decimal("2500")
+DEMO_EXPECTED_MOVEMENT_NET: Final = Decimal("2479.25")
+DEMO_EXPECTED_CHECKING_BALANCE: Final = Decimal("4979.25")
+
+__all__ = [name for name in globals() if name.startswith("DEMO_")]

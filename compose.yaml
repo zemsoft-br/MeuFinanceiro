@@ -1,0 +1,245 @@
+name: meufinanceiro
+
+services:
+  caddy:
+    build:
+      context: ./infra/caddy
+    image: meufinanceiro-caddy:local
+    user: "65534:65534"
+    environment:
+      XDG_CONFIG_HOME: /tmp/caddy-config
+      XDG_DATA_HOME: /tmp/caddy-data
+    ports:
+      - "127.0.0.1:${APP_HTTP_PORT:-8080}:8080"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+    tmpfs:
+      - /tmp
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    networks:
+      - edge
+    restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/web/Dockerfile
+    image: meufinanceiro-web:local
+    init: true
+    environment:
+      XDG_CONFIG_HOME: /tmp/caddy-config
+      XDG_DATA_HOME: /tmp/caddy-data
+    expose:
+      - "5173"
+    tmpfs:
+      - /tmp
+    networks:
+      - edge
+    restart: unless-stopped
+    stop_grace_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:5173/"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: meufinanceiro-api:local
+    init: true
+    environment:
+      APP_ENV: local
+      APP_LOG_LEVEL: INFO
+      APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
+      APP_BANKING_ENABLED: ${APP_BANKING_ENABLED:-false}
+      APP_BANKING_PLUGGY_ENABLED: ${APP_BANKING_PLUGGY_ENABLED:-false}
+      APP_KEYRING_FILE: /run/secrets/app_keyring
+      DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
+    secrets:
+      - app_keyring
+    expose:
+      - "8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - backend
+    restart: unless-stopped
+    stop_grace_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    image: meufinanceiro-worker:local
+    init: true
+    environment:
+      APP_ENV: local
+      APP_LOG_LEVEL: INFO
+      APP_KEYRING_FILE: /run/secrets/app_keyring
+      DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
+      WORKER_HEALTH_PORT: "8081"
+      WORKER_LEASE_SECONDS: "30"
+      WORKER_POLL_INTERVAL_SECONDS: "1"
+      WORKER_RETRY_BASE_SECONDS: "2"
+      WORKER_RETRY_MAX_SECONDS: "60"
+    secrets:
+      - app_keyring
+    expose:
+      - "8081"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - backend
+    restart: unless-stopped
+    stop_grace_period: 40s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health/ready', timeout=2)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 15s
+
+  db-bootstrap:
+    image: meufinanceiro-api:local
+    command: ["python", "-m", "meufinanceiro_persistence.bootstrap"]
+    environment:
+      ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?run infra/scripts/dev-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
+      APP_DATABASE_USER: ${APP_DATABASE_USER:-meufinanceiro_app}
+      APP_DATABASE_PASSWORD: ${APP_DATABASE_PASSWORD:?run infra/scripts/dev-up.sh first}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  migrate:
+    image: meufinanceiro-api:local
+    command: ["python", "-m", "meufinanceiro_persistence.migrate", "upgrade"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?run infra/scripts/dev-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/dev-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro}
+      APP_DATABASE_USER: ${APP_DATABASE_USER:-meufinanceiro_app}
+    depends_on:
+      db-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - backend
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  demo-fixture:
+    profiles: ["demo"]
+    image: meufinanceiro-api:local
+    command: ["python", "-m", "meufinanceiro_persistence.demo_cli", "load"]
+    environment:
+      APP_DEMO_MODE: ${APP_DEMO_MODE:-false}
+      DATABASE_URL: postgresql+psycopg://${APP_DATABASE_USER:-meufinanceiro_app}:${APP_DATABASE_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
+      ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:?run infra/scripts/demo-up.sh first}:${POSTGRES_PASSWORD:?run infra/scripts/demo-up.sh first}@postgres:5432/${POSTGRES_DB:-meufinanceiro_demo}
+      DEMO_OPERATOR_PASSWORD_FILE: /run/secrets/demo_operator_password
+    secrets:
+      - demo_operator_password
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - backend
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  postgres:
+    image: postgres:18.4-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-meufinanceiro}
+      POSTGRES_USER: ${POSTGRES_USER:?run infra/scripts/dev-up.sh first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run infra/scripts/dev-up.sh first}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - backend
+    restart: unless-stopped
+    stop_grace_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+networks:
+  edge:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_data:
+
+secrets:
+  app_keyring:
+    file: ${APP_KEYRING_FILE_HOST:-./.secrets/keyring.json}
+  demo_operator_password:
+    file: ./.demo/secrets/operator_password.txt

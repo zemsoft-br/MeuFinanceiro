@@ -1,0 +1,132 @@
+"""FastAPI dependencies and cache policy for operator-protected APIs."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Annotated
+
+from fastapi import Depends, Header, HTTPException, Request, status
+from meufinanceiro_persistence import OperatorRole, OperatorSessionPrincipal
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.responses import Response
+
+from app.services.operator_auth import (
+    InvalidOperatorSessionError,
+    OperatorAuthenticationService,
+    OperatorAuthenticationUnavailableError,
+)
+
+_NO_STORE_PREFIXES = (
+    "/api/v1/auth/",
+    "/api/v1/admin/banking/",
+    "/api/v1/banking/",
+    "/api/v1/finance/",
+)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class AuthenticatedOperatorRequest:
+    token: str
+    principal: OperatorSessionPrincipal
+
+    def __repr__(self) -> str:
+        return (
+            "AuthenticatedOperatorRequest("
+            f"principal={self.principal!r}, token=<redacted>)"
+        )
+
+
+class AuthenticationNoStoreMiddleware(BaseHTTPMiddleware):
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path.startswith(_NO_STORE_PREFIXES):
+            response.headers["Cache-Control"] = "no-store"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
+
+def _unauthorized() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="operator authentication is required",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def _forbidden() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="operator permission is required",
+    )
+
+
+def _primary_residence_required() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="primary residence is required",
+    )
+
+
+def _unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="operator authentication is unavailable",
+    )
+
+
+def require_operator_session(
+    request: Request,
+    authorization: Annotated[str | None, Header(alias="Authorization")] = None,
+) -> AuthenticatedOperatorRequest:
+    if not isinstance(authorization, str):
+        raise _unauthorized()
+    scheme, separator, token = authorization.partition(" ")
+    if separator != " " or scheme.lower() != "bearer" or not token:
+        raise _unauthorized()
+    if token != token.strip() or " " in token:
+        raise _unauthorized()
+    service: OperatorAuthenticationService = request.app.state.operator_authentication
+    try:
+        principal = service.resolve(token)
+    except InvalidOperatorSessionError:
+        raise _unauthorized() from None
+    except OperatorAuthenticationUnavailableError:
+        raise _unavailable() from None
+    return AuthenticatedOperatorRequest(token=token, principal=principal)
+
+
+def require_installation_admin(
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_operator_session),
+    ],
+) -> AuthenticatedOperatorRequest:
+    if authenticated.principal.role is not OperatorRole.INSTALLATION_ADMIN:
+        raise _forbidden()
+    return authenticated
+
+
+def require_primary_residence(
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_operator_session),
+    ],
+) -> AuthenticatedOperatorRequest:
+    if authenticated.principal.primary_residence_id is None:
+        raise _primary_residence_required()
+    return authenticated
+
+
+def require_installation_admin_primary_residence(
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_installation_admin),
+    ],
+) -> AuthenticatedOperatorRequest:
+    if authenticated.principal.primary_residence_id is None:
+        raise _primary_residence_required()
+    return authenticated

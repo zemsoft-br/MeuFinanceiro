@@ -1,0 +1,16 @@
+.git
+.github
+.env
+.env.*
+.secrets
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.venv
+**/.dart_tool
+**/.pub-cache
+**/build
+**/node_modules
+**/dist
+.vscode
+.idea
