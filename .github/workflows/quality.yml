@@ -69,7 +69,7 @@ jobs:
           node-version: '24.18.0'
 
       - name: Cache Flutter SDK
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/meufinanceiro/flutter
           key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.flutter-version', '.flutter-revision') }}
@@ -107,7 +107,7 @@ jobs:
           "$FLUTTER_ROOT/bin/flutter" precache --web
 
       - name: Cache Dart and Flutter packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.pub-cache
           key: pub-${{ runner.os }}-${{ hashFiles('apps/app/pubspec.lock') }}
