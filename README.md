@@ -2,7 +2,7 @@
 
 Gestor financeiro pessoal e familiar, open-source e autohospedado, voltado exclusivamente ao contexto brasileiro.
 
-> **Status:** fundação do projeto. Ainda não utilize com dados financeiros reais.
+> **Status:** Primeiro Alpha. Ainda não utilize com dados financeiros reais.
 
 ## Objetivo
 
