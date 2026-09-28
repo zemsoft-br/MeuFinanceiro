@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "API foundation for MeuFinanceiro"
 requires-python = ">=3.13,<3.14"
 dependencies = [
-  "fastapi==0.139.2",
+  "fastapi==0.141.1",
   "meufinanceiro-banking==0.1.0",
   "meufinanceiro-banking-pluggy-execution==0.1.0",
   "meufinanceiro-persistence==0.1.0",
