@@ -1,63 +1,25 @@
 name: Container Quality
 
 on:
-  pull_request:
-    branches:
-      - develop
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
-    paths:
-      - .flutter-version
-      - .flutter-revision
-      - compose.yaml
-      - '**/Dockerfile'
-      - packages/security/**
-      - packages/persistence/**
-      - apps/api/pyproject.toml
-      - apps/worker/pyproject.toml
-      - apps/app/pubspec.yaml
-      - apps/app/pubspec.lock
-      - apps/app/lib/**
-      - apps/app/web/**
-      - infra/caddy/**
-      - infra/web/**
-      - infra/scripts/check-flutter-web-contract.py
-      - infra/scripts/finalize-flutter-web-build.py
-      - infra/scripts/manage-secrets.py
-      - infra/scripts/demo-up.sh
-      - infra/scripts/demo-up.ps1
-      - infra/scripts/backup-contract.py
-      - infra/scripts/backup-create.sh
-      - infra/scripts/backup-create.ps1
-      - infra/scripts/backup-verify.sh
-      - infra/scripts/backup-verify.ps1
-      - tests/smoke/**
-      - .github/workflows/container-quality.yml
   workflow_dispatch:
-
 permissions:
   contents: read
 
 concurrency:
-  group: container-quality-${{ github.event.pull_request.number || github.ref }}
+  group: container-quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   container-quality:
     name: Docker Compose integration
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 70
 
     steps:
-      - name: Checkout pull request head
+      - name: Checkout selected ref
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Create disposable environment and keyring

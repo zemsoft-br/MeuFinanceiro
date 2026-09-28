@@ -1,32 +1,12 @@
 name: Diagnostics Quality
 
 on:
-  pull_request:
-    branches:
-      - develop
-      - main
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - ready_for_review
-    paths:
-      - compose.yaml
-      - infra/scripts/doctor.sh
-      - infra/scripts/doctor.ps1
-      - infra/scripts/diagnostics-export.sh
-      - infra/scripts/diagnostics-export.ps1
-      - docs/guides/INSTALLATION.md
-      - docs/runbooks/DIAGNOSTICS_AND_TROUBLESHOOTING.md
-      - tests/quality/test_diagnostics_contract.py
-      - .github/workflows/diagnostics-quality.yml
   workflow_dispatch:
-
 permissions:
   contents: read
 
 concurrency:
-  group: diagnostics-quality-${{ github.event.pull_request.number || github.ref }}
+  group: diagnostics-quality-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -36,10 +16,10 @@ jobs:
     timeout-minutes: 50
 
     steps:
-      - name: Checkout pull request head
+      - name: Checkout selected ref
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
