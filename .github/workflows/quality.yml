@@ -64,7 +64,7 @@ jobs:
             infra/scripts/run-quality.py
 
       - name: Set up Node.js for PWA contract tests
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: '24.18.0'
 
