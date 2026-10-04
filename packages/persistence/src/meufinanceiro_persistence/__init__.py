@@ -91,6 +91,12 @@ from meufinanceiro_persistence.financial_account_store import (
     FinancialAccountPersistenceError,
     FinancialAccountStore,
 )
+from meufinanceiro_persistence.financial_audit_store import (
+    FinancialAuditAccessError,
+    FinancialAuditNotFoundError,
+    FinancialAuditPersistenceError,
+    FinancialAuditStore,
+)
 from meufinanceiro_persistence.financial_category_store import (
     FinancialCategoryAccessError,
     FinancialCategoryNotFoundError,
@@ -174,6 +180,10 @@ __all__ = [
     "FinancialAccountNotFoundError",
     "FinancialAccountPersistenceError",
     "FinancialAccountStore",
+    "FinancialAuditAccessError",
+    "FinancialAuditNotFoundError",
+    "FinancialAuditPersistenceError",
+    "FinancialAuditStore",
     "FinancialCategoryAccessError",
     "FinancialCategoryNotFoundError",
     "FinancialCategoryParentNotFoundError",
