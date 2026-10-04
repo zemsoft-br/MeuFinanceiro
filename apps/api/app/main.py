@@ -22,6 +22,10 @@ from meufinanceiro_persistence.financial_account_store import FinancialAccountSt
 from meufinanceiro_persistence.financial_balance_query import (
     FinancialBalanceQueryService,
 )
+from meufinanceiro_persistence.financial_category_store import FinancialCategoryStore
+from meufinanceiro_persistence.financial_movement_allocation_store import (
+    FinancialMovementAllocationStore,
+)
 from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
 from meufinanceiro_persistence.financial_opening_balance_store import (
     FinancialOpeningBalanceStore,
@@ -78,6 +82,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         financial_opening_balance_store = FinancialOpeningBalanceStore(database.engine)
         financial_movement_store = FinancialMovementStore(database.engine)
         financial_transfer_store = FinancialTransferStore(database.engine)
+        financial_category_store = FinancialCategoryStore(database.engine)
+        financial_allocation_store = FinancialMovementAllocationStore(database.engine)
         financial_balance_query = FinancialBalanceQueryService(
             financial_account_store,
             financial_opening_balance_store,
@@ -131,6 +137,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             financial_movement_store,
             financial_transfer_store,
             financial_balance_query,
+            financial_category_store,
+            financial_allocation_store,
         )
         app.state.banking_administration = BankingAdministrationService(
             banking_store,

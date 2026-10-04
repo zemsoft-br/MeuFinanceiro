@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from uuid import UUID
 
 from meufinanceiro_finance import (
@@ -23,7 +24,7 @@ from meufinanceiro_finance import (
     validate_financial_idempotency_key,
     validate_financial_resource_id,
 )
-from sqlalchemy import Connection, Engine, func, select
+from sqlalchemy import Connection, Engine, and_, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -75,10 +76,26 @@ class FinancialMovementAllocationConflictError(
     """Allocation revision or idempotency state conflicts with the request."""
 
 
+class FinancialMovementAllocationInvalidShapeError(
+    FinancialMovementAllocationPersistenceError
+):
+    """Allocation total, currency, or sign does not match the target Movement.
+
+    A defect of the request itself, independent of canonical state; it is a
+    sibling of, not a kind of, a revision/idempotency conflict.
+    """
+
+
 class FinancialMovementAllocationNotFoundError(
     FinancialMovementAllocationPersistenceError
 ):
     """No visible allocation set exists for the requested Movement."""
+
+
+class FinancialMovementAllocationAccountNotFoundError(
+    FinancialMovementAllocationPersistenceError
+):
+    """Requested account is missing or outside the actor's visible audience."""
 
 
 class FinancialMovementAllocationStore:
@@ -201,6 +218,103 @@ class FinancialMovementAllocationStore:
             raise FinancialMovementAllocationPersistenceError(
                 "financial Movement allocation could not be read"
             ) from None
+
+    def list_current_allocation_sets(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> tuple[FinancialMovementAllocationSetRecord, ...]:
+        """Return the current allocation set of every classified Movement of an account.
+
+        The read costs one set-plus-shares statement regardless of how many
+        Movements are classified: the current version is the chain node without
+        a successor and its shares are joined in the same round trip. RLS keeps
+        Movement audience and residence scoping. No history, Movement amount, or
+        balance data is read.
+        """
+        _require_uuid(installation_id, "installation_id")
+        _require_uuid(residence_id, "residence_id")
+        _require_uuid(operator_id, "operator_id")
+        validate_financial_resource_id(account_id)
+        sets = financial_movement_allocation_sets
+        shares = financial_movement_allocations
+        successor = sets.alias("successor")
+        try:
+            with self._engine.begin() as connection:
+                _prepare_connection(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                )
+                visible_account = connection.scalar(
+                    select(financial_accounts.c.id).where(
+                        financial_accounts.c.id == account_id,
+                        financial_accounts.c.installation_id == installation_id,
+                        financial_accounts.c.residence_id == residence_id,
+                    )
+                )
+                if visible_account is None:
+                    raise FinancialMovementAllocationAccountNotFoundError(
+                        "financial account was not found"
+                    )
+                rows = (
+                    connection.execute(
+                        select(
+                            *(column.label(f"set_{column.name}") for column in sets.c),
+                            *(
+                                column.label(f"share_{column.name}")
+                                for column in shares.c
+                            ),
+                        )
+                        .select_from(
+                            sets.join(
+                                financial_movements,
+                                and_(
+                                    financial_movements.c.id == sets.c.movement_id,
+                                    financial_movements.c.installation_id
+                                    == sets.c.installation_id,
+                                    financial_movements.c.residence_id
+                                    == sets.c.residence_id,
+                                ),
+                            ).join(shares, shares.c.allocation_set_id == sets.c.id)
+                        )
+                        .where(
+                            sets.c.installation_id == installation_id,
+                            sets.c.residence_id == residence_id,
+                            financial_movements.c.account_id == account_id,
+                            ~select(successor.c.id)
+                            .where(successor.c.supersedes_id == sets.c.id)
+                            .exists(),
+                        )
+                        .order_by(
+                            financial_movements.c.effective_date,
+                            financial_movements.c.created_at,
+                            financial_movements.c.id,
+                            shares.c.category_id,
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
+        except FinancialMovementAccessError:
+            raise FinancialMovementAllocationAccessError(
+                "financial Movement allocation access denied"
+            ) from None
+        except (
+            FinancialMovementAllocationAccessError,
+            FinancialMovementAllocationAccountNotFoundError,
+        ):
+            raise
+        except DBAPIError:
+            raise FinancialMovementAllocationPersistenceError(
+                "financial Movement allocations could not be read"
+            ) from None
+
+        return _grouped_set_records(rows)
 
     def list_allocation_history(
         self,
@@ -417,6 +531,7 @@ class FinancialMovementAllocationStore:
             FinancialMovementAllocationAccessError,
             FinancialMovementAllocationCategoryNotFoundError,
             FinancialMovementAllocationConflictError,
+            FinancialMovementAllocationInvalidShapeError,
             FinancialMovementAllocationMovementNotFoundError,
             FinancialMovementAllocationPersistenceError,
         ):
@@ -533,16 +648,16 @@ def _validate_economic_shape(
     for item in allocations[1:]:
         total = total + item.amount
     if total != movement_money:
-        raise FinancialMovementAllocationConflictError(
+        raise FinancialMovementAllocationInvalidShapeError(
             "financial Movement allocation total does not match Movement"
         )
     if any(item.amount.currency != movement_money.currency for item in allocations):
-        raise FinancialMovementAllocationConflictError(
+        raise FinancialMovementAllocationInvalidShapeError(
             "financial Movement allocation currency does not match Movement"
         )
     movement_positive = movement_money.amount > 0
     if any((item.amount.amount > 0) != movement_positive for item in allocations):
-        raise FinancialMovementAllocationConflictError(
+        raise FinancialMovementAllocationInvalidShapeError(
             "financial Movement allocation sign does not match Movement"
         )
 
@@ -664,6 +779,40 @@ def _set_record(
     )
 
 
+def _grouped_set_records(
+    rows: Sequence[RowMapping],
+) -> tuple[FinancialMovementAllocationSetRecord, ...]:
+    """Fold joined set/share rows into records, preserving row order."""
+    heads: dict[UUID, RowMapping] = {}
+    shares: dict[UUID, list[FinancialMovementAllocationRecord]] = {}
+    for row in rows:
+        set_id = row["set_id"]
+        if set_id not in heads:
+            heads[set_id] = row
+            shares[set_id] = []
+        shares[set_id].append(
+            FinancialMovementAllocationRecord(
+                id=row["share_id"],
+                allocation_set_id=set_id,
+                category_id=row["share_category_id"],
+                amount=Money(row["share_amount"], row["share_currency"]),
+                created_at=row["share_created_at"],
+            )
+        )
+    return tuple(
+        FinancialMovementAllocationSetRecord(
+            id=set_id,
+            movement_id=head["set_movement_id"],
+            revision=int(head["set_revision"]),
+            supersedes_id=head["set_supersedes_id"],
+            created_by_operator_id=head["set_created_by_operator_id"],
+            created_at=head["set_created_at"],
+            allocations=tuple(shares[set_id]),
+        )
+        for set_id, head in heads.items()
+    )
+
+
 def _require_replay(
     connection: Connection, row: RowMapping, request_digest: str
 ) -> FinancialMovementAllocationSetRecord:
@@ -700,8 +849,10 @@ def _require_uuid(value: UUID, field_name: str) -> None:
 
 __all__ = [
     "FinancialMovementAllocationAccessError",
+    "FinancialMovementAllocationAccountNotFoundError",
     "FinancialMovementAllocationCategoryNotFoundError",
     "FinancialMovementAllocationConflictError",
+    "FinancialMovementAllocationInvalidShapeError",
     "FinancialMovementAllocationMovementNotFoundError",
     "FinancialMovementAllocationNotFoundError",
     "FinancialMovementAllocationPersistenceError",

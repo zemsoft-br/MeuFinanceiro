@@ -37,6 +37,7 @@ from meufinanceiro_persistence.financial_movement_allocation_schema import (
 from meufinanceiro_persistence.financial_movement_allocation_store import (
     FinancialMovementAllocationCategoryNotFoundError,
     FinancialMovementAllocationConflictError,
+    FinancialMovementAllocationInvalidShapeError,
     FinancialMovementAllocationMovementNotFoundError,
     FinancialMovementAllocationNotFoundError,
     FinancialMovementAllocationStore,
@@ -470,7 +471,7 @@ def test_total_currency_and_idempotency_conflicts_fail_closed(
     )
     store = FinancialMovementAllocationStore(runtime_engine)
 
-    with pytest.raises(FinancialMovementAllocationConflictError):
+    with pytest.raises(FinancialMovementAllocationInvalidShapeError):
         store.create_allocation_set(
             installation_id=installation_id,
             residence_id=residence_id,
@@ -487,7 +488,7 @@ def test_total_currency_and_idempotency_conflicts_fail_closed(
             ),
         )
 
-    with pytest.raises(FinancialMovementAllocationConflictError):
+    with pytest.raises(FinancialMovementAllocationInvalidShapeError):
         store.create_allocation_set(
             installation_id=installation_id,
             residence_id=residence_id,
