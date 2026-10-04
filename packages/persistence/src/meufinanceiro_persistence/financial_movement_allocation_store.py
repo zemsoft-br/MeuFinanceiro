@@ -6,6 +6,8 @@ import hashlib
 from uuid import UUID
 
 from meufinanceiro_finance import (
+    FinancialAuditEventDraft,
+    FinancialAuditEventType,
     FinancialCategoryStatus,
     FinancialMovementAllocationDraft,
     FinancialMovementAllocationRecord,
@@ -27,6 +29,9 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_audit_store import (
+    _append_financial_audit_event,
+)
 from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
@@ -388,6 +393,21 @@ class FinancialMovementAllocationStore:
                             created_at=func.transaction_timestamp(),
                         )
                     )
+                _append_financial_audit_event(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    actor_operator_id=operator_id,
+                    draft=FinancialAuditEventDraft(
+                        event_type=(
+                            FinancialAuditEventType.ALLOCATION_SET_CREATED
+                            if supersedes_id is None
+                            else FinancialAuditEventType.ALLOCATION_SET_REVISED
+                        ),
+                        subject_id=set_id,
+                        related_subject_id=supersedes_id,
+                    ),
+                )
                 return _set_record(connection, inserted)
         except FinancialMovementAccessError:
             raise FinancialMovementAllocationAccessError(
