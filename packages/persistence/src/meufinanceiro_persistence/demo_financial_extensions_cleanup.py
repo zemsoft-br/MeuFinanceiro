@@ -8,6 +8,10 @@ from meufinanceiro_persistence.demo_contract import (
     DEMO_RESIDENCE_ID,
 )
 from meufinanceiro_persistence.financial_audit_schema import financial_audit_events
+from meufinanceiro_persistence.financial_categorization_rule_schema import (
+    financial_categorization_rules,
+    financial_movement_allocation_rule_origins,
+)
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
     financial_movement_allocations,
@@ -15,7 +19,7 @@ from meufinanceiro_persistence.financial_movement_allocation_schema import (
 
 
 def reset_demo_financial_extensions(connection: Connection) -> bool:
-    """Delete audit/allocation rows before their referenced demo resources."""
+    """Delete audit/allocation/rule rows before their referenced demo resources."""
     changed = False
 
     audit_result = connection.execute(
@@ -25,6 +29,16 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
         )
     )
     changed |= bool(audit_result.rowcount)
+
+    origin_result = connection.execute(
+        delete(financial_movement_allocation_rule_origins).where(
+            financial_movement_allocation_rule_origins.c.installation_id
+            == DEMO_INSTALLATION_ID,
+            financial_movement_allocation_rule_origins.c.residence_id
+            == DEMO_RESIDENCE_ID,
+        )
+    )
+    changed |= bool(origin_result.rowcount)
 
     allocation_result = connection.execute(
         delete(financial_movement_allocations).where(
@@ -50,6 +64,14 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
             )
         )
         changed |= bool(result.rowcount)
+
+    rule_result = connection.execute(
+        delete(financial_categorization_rules).where(
+            financial_categorization_rules.c.installation_id == DEMO_INSTALLATION_ID,
+            financial_categorization_rules.c.residence_id == DEMO_RESIDENCE_ID,
+        )
+    )
+    changed |= bool(rule_result.rowcount)
 
     return changed
 
