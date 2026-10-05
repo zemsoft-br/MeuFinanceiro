@@ -304,6 +304,32 @@ def _transfer_record(
     )
 
 
+class UnusedCategoryStore:
+    """Satisfies the boundary; the semantic ledger tests never classify."""
+
+    def create_category(self, **_: object) -> object:
+        raise AssertionError("category store must not be used by ledger operations")
+
+    def list_categories(self, **_: object) -> tuple[()]:
+        raise AssertionError("category store must not be used by ledger operations")
+
+
+class UnusedAllocationStore:
+    """Satisfies the boundary; the semantic ledger tests never classify."""
+
+    def create_allocation_set(self, **_: object) -> object:
+        raise AssertionError("allocation store must not be used by ledger operations")
+
+    def revise_allocation_set(self, **_: object) -> object:
+        raise AssertionError("allocation store must not be used by ledger operations")
+
+    def get_current_allocation_set(self, **_: object) -> object:
+        raise AssertionError("allocation store must not be used by ledger operations")
+
+    def list_current_allocation_sets(self, **_: object) -> object:
+        raise AssertionError("allocation store must not be used by ledger operations")
+
+
 def _service() -> tuple[FinancialCoreService, MovementStore, TransferStore]:
     movements = MovementStore()
     transfers = TransferStore()
@@ -313,6 +339,8 @@ def _service() -> tuple[FinancialCoreService, MovementStore, TransferStore]:
         movements,
         transfers,
         BalanceQuery(),
+        UnusedCategoryStore(),  # type: ignore[arg-type]
+        UnusedAllocationStore(),  # type: ignore[arg-type]
     )
     return service, movements, transfers
 

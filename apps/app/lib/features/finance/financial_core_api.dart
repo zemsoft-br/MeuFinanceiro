@@ -78,6 +78,29 @@ const _statementKeys = <String>{
   'calculatedAt',
 };
 const _statementEntryKeys = <String>{'movement', 'balanceAfter'};
+const _categoryKeys = <String>{
+  'categoryId',
+  'ownerOperatorId',
+  'visibilityScope',
+  'parentId',
+  'name',
+  'status',
+  'createdAt',
+  'updatedAt',
+  'disabledAt',
+};
+const _categoriesKeys = <String>{'categories'};
+const _allocationKeys = <String>{
+  'allocationSetId',
+  'movementId',
+  'revision',
+  'supersedesId',
+  'allocations',
+  'createdAt',
+};
+const _allocationShareKeys = <String>{'categoryId', 'money'};
+const _allocationsKeys = <String>{'accountId', 'movementAllocations'};
+const _maxAllocationShares = 50;
 
 enum FinancialAccountType {
   checking('CHECKING'),
@@ -150,6 +173,17 @@ enum FinancialTransferRole {
 
   static FinancialTransferRole parse(Object? value) =>
       _enumByWire(values, value, 'role', (item) => item.wireValue);
+}
+
+enum FinancialCategoryStatus {
+  active('ACTIVE'),
+  disabled('DISABLED');
+
+  const FinancialCategoryStatus(this.wireValue);
+  final String wireValue;
+
+  static FinancialCategoryStatus parse(Object? value) =>
+      _enumByWire(values, value, 'status', (item) => item.wireValue);
 }
 
 enum FinancialManualEntryKind { income, expense }
@@ -314,6 +348,62 @@ class FinancialStatement {
   final List<FinancialStatementEntry> entries;
   final FinancialMoneyWire closingBalance;
   final DateTime calculatedAt;
+}
+
+class FinancialCategory {
+  const FinancialCategory({
+    required this.categoryId,
+    required this.ownerOperatorId,
+    required this.visibilityScope,
+    required this.parentId,
+    required this.name,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.disabledAt,
+  });
+
+  final String categoryId;
+  final String ownerOperatorId;
+  final FinancialVisibilityScope visibilityScope;
+  final String? parentId;
+  final String name;
+  final FinancialCategoryStatus status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+  final DateTime? disabledAt;
+
+  bool get isActive => status == FinancialCategoryStatus.active;
+}
+
+class FinancialAllocationShare {
+  const FinancialAllocationShare({
+    required this.categoryId,
+    required this.money,
+  });
+
+  final String categoryId;
+  final FinancialMoneyWire money;
+}
+
+class FinancialMovementAllocation {
+  const FinancialMovementAllocation({
+    required this.allocationSetId,
+    required this.movementId,
+    required this.revision,
+    required this.supersedesId,
+    required this.allocations,
+    required this.createdAt,
+  });
+
+  final String allocationSetId;
+  final String movementId;
+  final int revision;
+  final String? supersedesId;
+  final List<FinancialAllocationShare> allocations;
+  final DateTime createdAt;
+
+  String get currency => allocations.first.money.currency;
 }
 
 class FinancialAccountCreateInput {
@@ -502,6 +592,136 @@ class FinancialTransferReversalInput {
     'effectiveDate': effectiveDate,
     'competenceDate': competenceDate,
     'reason': reason,
+  };
+}
+
+class FinancialCategoryCreateInput {
+  FinancialCategoryCreateInput({
+    required String name,
+    required this.visibilityScope,
+    String? parentId,
+  }) : name = _boundedText(name.trim(), 'name', maxLength: 96),
+       parentId = parentId == null
+           ? null
+           : _financialResourceId(parentId, 'parentId') {
+    if (visibilityScope == FinancialVisibilityScope.shared) {
+      throw const FormatException('visibilityScope is not supported.');
+    }
+  }
+
+  final String name;
+  final FinancialVisibilityScope visibilityScope;
+  final String? parentId;
+
+  Map<String, Object?> toJson() => {
+    'name': name,
+    'visibilityScope': visibilityScope.wireValue,
+    if (parentId != null) 'parentId': parentId,
+  };
+}
+
+class FinancialAllocationShareInput {
+  FinancialAllocationShareInput({
+    required String categoryId,
+    required String amount,
+    required String currency,
+  }) : categoryId = _financialResourceId(categoryId, 'categoryId'),
+       amount = _nonZeroDecimalAmount(amount, 'amount'),
+       currency = _currency(currency, 'currency');
+
+  final String categoryId;
+  final String amount;
+  final String currency;
+
+  Map<String, Object?> toJson() => {
+    'categoryId': categoryId,
+    'amount': amount,
+    'currency': currency,
+  };
+}
+
+class FinancialMovementAllocationCreateInput {
+  FinancialMovementAllocationCreateInput({
+    required List<FinancialAllocationShareInput> allocations,
+    String? idempotencyKey,
+  }) : idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       allocations = List<FinancialAllocationShareInput>.unmodifiable(
+         allocations,
+       ) {
+    if (this.allocations.isEmpty ||
+        this.allocations.length > _maxAllocationShares) {
+      throw const FormatException('allocations are invalid.');
+    }
+    final categories = this.allocations.map((item) => item.categoryId).toSet();
+    if (categories.length != this.allocations.length) {
+      throw const FormatException('allocation categories must be unique.');
+    }
+    final currencies = this.allocations.map((item) => item.currency).toSet();
+    if (currencies.length != 1) {
+      throw const FormatException('allocation currencies must match.');
+    }
+  }
+
+  /// Classifies 100% of a Movement in one category, reusing the exact
+  /// canonical Movement money: sign and decimal text are never recomputed.
+  factory FinancialMovementAllocationCreateInput.single({
+    required String categoryId,
+    required FinancialMoneyWire movementMoney,
+    String? idempotencyKey,
+  }) => FinancialMovementAllocationCreateInput(
+    allocations: [
+      FinancialAllocationShareInput(
+        categoryId: categoryId,
+        amount: movementMoney.amount,
+        currency: movementMoney.currency,
+      ),
+    ],
+    idempotencyKey: idempotencyKey,
+  );
+
+  final String idempotencyKey;
+  final List<FinancialAllocationShareInput> allocations;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'allocations': allocations.map((item) => item.toJson()).toList(),
+  };
+}
+
+/// A new append-only revision of an existing classification. The predecessor
+/// is explicit: it is always the `allocationSetId` the editor was opened on.
+class FinancialMovementAllocationRevisionInput {
+  FinancialMovementAllocationRevisionInput({
+    required String supersedesId,
+    required List<FinancialAllocationShareInput> allocations,
+    String? idempotencyKey,
+  }) : supersedesId = _financialResourceId(supersedesId, 'supersedesId'),
+       idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       allocations = List<FinancialAllocationShareInput>.unmodifiable(
+         allocations,
+       ) {
+    if (this.allocations.isEmpty ||
+        this.allocations.length > _maxAllocationShares) {
+      throw const FormatException('allocations are invalid.');
+    }
+    final categories = this.allocations.map((item) => item.categoryId).toSet();
+    if (categories.length != this.allocations.length) {
+      throw const FormatException('allocation categories must be unique.');
+    }
+    final currencies = this.allocations.map((item) => item.currency).toSet();
+    if (currencies.length != 1) {
+      throw const FormatException('allocation currencies must match.');
+    }
+  }
+
+  final String idempotencyKey;
+  final String supersedesId;
+  final List<FinancialAllocationShareInput> allocations;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'supersedesId': supersedesId,
+    'allocations': allocations.map((item) => item.toJson()).toList(),
   };
 }
 
@@ -751,6 +971,122 @@ class FinancialCoreApi {
     }
     return statement;
   }
+
+  Future<List<FinancialCategory>> listCategories() async {
+    final response = await client.get('finance/categories');
+    final root = _strictJsonObject(
+      response.body,
+      allowedKeys: _categoriesKeys,
+      label: 'financial categories response',
+    );
+    final raw = root['categories'];
+    if (raw is! List || raw.length > 10000) {
+      throw const FormatException('categories is invalid.');
+    }
+    final categories = List<FinancialCategory>.unmodifiable(
+      raw.map(_parseCategory),
+    );
+    if (categories.map((item) => item.categoryId).toSet().length !=
+        categories.length) {
+      throw const FormatException('duplicate category identity.');
+    }
+    return categories;
+  }
+
+  Future<FinancialCategory> createCategory(
+    FinancialCategoryCreateInput input,
+  ) async {
+    final response = await client.post(
+      'finance/categories',
+      jsonBody: input.toJson(),
+    );
+    final category = _parseCategory(
+      _decodeJsonObject(response.body, 'financial category response'),
+    );
+    if (category.visibilityScope != input.visibilityScope ||
+        category.parentId != input.parentId ||
+        category.name != input.name ||
+        category.status != FinancialCategoryStatus.active) {
+      throw const FormatException('financial category response mismatch.');
+    }
+    return category;
+  }
+
+  /// One bulk read: the current allocation of every classified Movement of the
+  /// account, never one request per Movement.
+  Future<List<FinancialMovementAllocation>> listCurrentMovementAllocations(
+    String accountId,
+  ) async {
+    final id = _financialResourceId(accountId, 'accountId');
+    final response = await client.get(
+      'finance/accounts/$id/movement-allocations',
+    );
+    final root = _strictJsonObject(
+      response.body,
+      allowedKeys: _allocationsKeys,
+      label: 'financial movement allocations response',
+    );
+    if (_financialResourceId(root['accountId'], 'accountId') != id) {
+      throw const FormatException('movement allocations account mismatch.');
+    }
+    final raw = root['movementAllocations'];
+    if (raw is! List || raw.length > 10000) {
+      throw const FormatException('movementAllocations is invalid.');
+    }
+    final allocations = List<FinancialMovementAllocation>.unmodifiable(
+      raw.map(_parseMovementAllocation),
+    );
+    final movementIds = allocations.map((item) => item.movementId).toSet();
+    if (movementIds.length != allocations.length) {
+      throw const FormatException('duplicate current movement allocation.');
+    }
+    return allocations;
+  }
+
+  Future<FinancialMovementAllocation> createMovementAllocation(
+    String movementId,
+    FinancialMovementAllocationCreateInput input,
+  ) async {
+    final id = _financialResourceId(movementId, 'movementId');
+    final response = await client.post(
+      'finance/movements/$id/allocation',
+      jsonBody: input.toJson(),
+    );
+    final allocation = _parseMovementAllocation(
+      _decodeJsonObject(response.body, 'financial allocation response'),
+    );
+    if (allocation.movementId != id ||
+        allocation.revision != 1 ||
+        allocation.supersedesId != null ||
+        !_sameShares(allocation.allocations, input.allocations)) {
+      throw const FormatException('financial allocation response mismatch.');
+    }
+    return allocation;
+  }
+
+  /// Appends a revision. The movement id travels only in the path and the
+  /// predecessor only in the body; a response that is not exactly that revision
+  /// is never accepted silently.
+  Future<FinancialMovementAllocation> reviseMovementAllocation(
+    String movementId,
+    FinancialMovementAllocationRevisionInput input,
+  ) async {
+    final id = _financialResourceId(movementId, 'movementId');
+    final response = await client.post(
+      'finance/movements/$id/allocation/revisions',
+      jsonBody: input.toJson(),
+    );
+    final allocation = _parseMovementAllocation(
+      _decodeJsonObject(response.body, 'financial allocation response'),
+    );
+    if (allocation.movementId != id ||
+        allocation.revision < 2 ||
+        allocation.supersedesId != input.supersedesId ||
+        !_sameShares(allocation.allocations, input.allocations)) {
+      throw const FormatException('financial allocation response mismatch.');
+    }
+    return allocation;
+  }
 }
 
 FinancialAccount _parseAccount(Object? raw) {
@@ -987,6 +1323,135 @@ FinancialStatement _parseStatement(Object? raw) {
   );
 }
 
+FinancialCategory _parseCategory(Object? raw) {
+  final values = _strictMap(raw, allowedKeys: _categoryKeys, label: 'category');
+  final scope = FinancialVisibilityScope.parse(values['visibilityScope']);
+  if (scope == FinancialVisibilityScope.shared) {
+    throw const FormatException('category visibility is not supported.');
+  }
+  final categoryId = _financialResourceId(values['categoryId'], 'categoryId');
+  final parentId = values['parentId'] == null
+      ? null
+      : _financialResourceId(values['parentId'], 'parentId');
+  if (parentId == categoryId) {
+    throw const FormatException('category must not be its own parent.');
+  }
+  final status = FinancialCategoryStatus.parse(values['status']);
+  final createdAt = _timestamp(values['createdAt'], 'createdAt');
+  final updatedAt = _timestamp(values['updatedAt'], 'updatedAt');
+  final disabledAt = _optionalTimestamp(values['disabledAt'], 'disabledAt');
+  if (updatedAt.isBefore(createdAt)) {
+    throw const FormatException('category timestamps are invalid.');
+  }
+  if (status == FinancialCategoryStatus.active && disabledAt != null) {
+    throw const FormatException('active category disable state is invalid.');
+  }
+  if (status == FinancialCategoryStatus.disabled && disabledAt == null) {
+    throw const FormatException('disabled category timestamp is required.');
+  }
+  return FinancialCategory(
+    categoryId: categoryId,
+    ownerOperatorId: _uuid(values['ownerOperatorId'], 'ownerOperatorId'),
+    visibilityScope: scope,
+    parentId: parentId,
+    name: _boundedText(values['name'], 'name', maxLength: 96),
+    status: status,
+    createdAt: createdAt,
+    updatedAt: updatedAt,
+    disabledAt: disabledAt,
+  );
+}
+
+FinancialMovementAllocation _parseMovementAllocation(Object? raw) {
+  final values = _strictMap(
+    raw,
+    allowedKeys: _allocationKeys,
+    label: 'movement allocation',
+  );
+  final revision = values['revision'];
+  if (revision is! int || revision < 1) {
+    throw const FormatException('revision is invalid.');
+  }
+  final supersedesId = values['supersedesId'] == null
+      ? null
+      : _financialResourceId(values['supersedesId'], 'supersedesId');
+  if ((revision == 1) != (supersedesId == null)) {
+    throw const FormatException('allocation revision chain is invalid.');
+  }
+  final rawShares = values['allocations'];
+  if (rawShares is! List ||
+      rawShares.isEmpty ||
+      rawShares.length > _maxAllocationShares) {
+    throw const FormatException('allocations are invalid.');
+  }
+  final shares = List<FinancialAllocationShare>.unmodifiable(
+    rawShares.map(_parseAllocationShare),
+  );
+  if (shares.map((item) => item.categoryId).toSet().length != shares.length) {
+    throw const FormatException('allocation categories must be unique.');
+  }
+  if (shares.map((item) => item.money.currency).toSet().length != 1) {
+    throw const FormatException('allocation currencies must match.');
+  }
+  final allocationSetId = _financialResourceId(
+    values['allocationSetId'],
+    'allocationSetId',
+  );
+  if (supersedesId == allocationSetId) {
+    throw const FormatException('allocation must not supersede itself.');
+  }
+  return FinancialMovementAllocation(
+    allocationSetId: allocationSetId,
+    movementId: _financialResourceId(values['movementId'], 'movementId'),
+    revision: revision,
+    supersedesId: supersedesId,
+    allocations: shares,
+    createdAt: _timestamp(values['createdAt'], 'createdAt'),
+  );
+}
+
+FinancialAllocationShare _parseAllocationShare(Object? raw) {
+  final values = _strictMap(
+    raw,
+    allowedKeys: _allocationShareKeys,
+    label: 'allocation share',
+  );
+  return FinancialAllocationShare(
+    categoryId: _financialResourceId(values['categoryId'], 'categoryId'),
+    money: _parseMoney(values['money']),
+  );
+}
+
+bool _sameShares(
+  List<FinancialAllocationShare> actual,
+  List<FinancialAllocationShareInput> expected,
+) {
+  if (actual.length != expected.length) return false;
+  final byCategory = {for (final item in actual) item.categoryId: item.money};
+  for (final item in expected) {
+    final money = byCategory[item.categoryId];
+    if (money == null ||
+        money.currency != item.currency ||
+        _canonicalDecimal(money.amount) != _canonicalDecimal(item.amount)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Text-only decimal normalization ("-75.250" == "-75.25"); never a double.
+String _canonicalDecimal(String amount) {
+  final negative = amount.startsWith('-');
+  final unsigned = negative ? amount.substring(1) : amount;
+  final parts = unsigned.split('.');
+  var fraction = parts.length == 2 ? parts[1] : '';
+  while (fraction.endsWith('0')) {
+    fraction = fraction.substring(0, fraction.length - 1);
+  }
+  final body = fraction.isEmpty ? parts.first : '${parts.first}.$fraction';
+  return negative && body != '0' ? '-$body' : body;
+}
+
 FinancialMoneyWire _parseMoney(Object? raw) {
   final values = _strictMap(raw, allowedKeys: _moneyKeys, label: 'money');
   final amount = values['amount'];
@@ -1106,6 +1571,14 @@ String _positiveDecimalAmount(Object? value, String fieldName) {
   final normalized = _decimalAmount(value, fieldName);
   if (normalized.startsWith('-') || _zeroMoneyPattern.hasMatch(normalized)) {
     throw FormatException('$fieldName must be positive.');
+  }
+  return normalized;
+}
+
+String _nonZeroDecimalAmount(Object? value, String fieldName) {
+  final normalized = _decimalAmount(value, fieldName);
+  if (_zeroMoneyPattern.hasMatch(normalized)) {
+    throw FormatException('$fieldName must not be zero.');
   }
   return normalized;
 }
