@@ -63,7 +63,16 @@ from meufinanceiro_persistence.schema import (
     identity_operators,
 )
 from meufinanceiro_security.keyring import initialize_keyring_file
-from sqlalchemy import Engine, create_engine, event, func, insert, select, update
+from sqlalchemy import (
+    Engine,
+    create_engine,
+    event,
+    func,
+    insert,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.engine import make_url
 
 from app.core.config import Settings
@@ -1120,3 +1129,133 @@ def test_rule_lifecycle_does_not_write_the_financial_audit(
         _table_count(pg_env, financial_categorization_rules, household.residence_id)
         == 1
     )
+
+
+# --- vertical gate: privileges, audit/provenance consistency, one shape ------
+
+
+def test_runtime_is_unprivileged_and_rls_is_forced_on_rules_and_provenance(
+    pg_env: PgEnv, api: Api
+) -> None:
+    with pg_env.runtime_engine.connect() as connection:
+        superuser, bypass = connection.execute(
+            text(
+                "SELECT rolsuper, rolbypassrls FROM pg_roles "
+                "WHERE rolname = current_user"
+            )
+        ).one()
+    assert superuser is False and bypass is False
+    with pg_env.owner_engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
+                  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'finance'
+                   AND c.relname IN (
+                       'categorization_rules',
+                       'movement_allocation_rule_origins',
+                       'movement_allocation_sets',
+                       'movement_allocations',
+                       'movements', 'categories'
+                   )
+                """
+            )
+        ).all()
+    assert {row[0] for row in rows} == {
+        "categorization_rules",
+        "movement_allocation_rule_origins",
+        "movement_allocation_sets",
+        "movement_allocations",
+        "movements",
+        "categories",
+    }
+    assert all(row[1] and row[2] for row in rows), rows
+
+
+def test_audit_and_provenance_stay_consistent_and_payload_free(
+    pg_env: PgEnv, household: Household, api: Api
+) -> None:
+    category = api.category("owner")
+    account = api.account("owner")
+    rule = _create_rule(api, "owner", category, "padaria")
+    movements = [
+        api.entry("owner", account, "expense", "10.00", description=f"padaria {i}")
+        for i in range(4)
+    ]
+    assert (
+        _apply(api, "owner", account, [(m, rule) for m in movements]).status_code == 200
+    )
+
+    origins = financial_movement_allocation_rule_origins
+    events = financial_audit_events
+    with pg_env.owner_engine.connect() as connection:
+        origin_sets = {
+            row.allocation_set_id
+            for row in connection.execute(
+                select(origins.c.allocation_set_id).where(
+                    origins.c.residence_id == household.residence_id
+                )
+            )
+        }
+        audited = [
+            (row.subject_id, row.actor_operator_id, row.related_subject_id)
+            for row in connection.execute(
+                select(
+                    events.c.subject_id,
+                    events.c.actor_operator_id,
+                    events.c.related_subject_id,
+                ).where(
+                    events.c.residence_id == household.residence_id,
+                    events.c.event_type == "ALLOCATION_SET_CREATED",
+                )
+            )
+        ]
+        event_columns = {column.name for column in events.c}
+        rule_event_types = connection.scalar(
+            select(func.count())
+            .select_from(events)
+            .where(
+                events.c.residence_id == household.residence_id,
+                events.c.event_type.like("%RULE%"),
+            )
+        )
+    # Every provenance row has exactly one audited creation, by the applying operator.
+    assert origin_sets == {subject for subject, _, _ in audited}
+    assert len(audited) == len(origin_sets) == len(movements)
+    assert {actor for _, actor, _ in audited} == {household.owner_id}
+    assert {related for _, _, related in audited} == {None}
+    assert rule_event_types == 0
+    # The audit contract did not grow: no matching detail, pattern or rule id.
+    assert not event_columns & {
+        "rule_id",
+        "description",
+        "pattern",
+        "payload",
+        "amount",
+    }
+
+
+def test_a_rule_application_has_exactly_the_shape_of_a_manual_classification(
+    pg_env: PgEnv, api: Api
+) -> None:
+    category = api.category("owner")
+    account = api.account("owner")
+    rule = _create_rule(api, "owner", category, "padaria")
+    by_rule = api.entry("owner", account, "expense", "42.10", description="padaria 1")
+    by_hand = api.entry("owner", account, "expense", "42.10", description="outra coisa")
+    assert _apply(api, "owner", account, [(by_rule, rule)]).status_code == 200
+    assert api.classify("owner", by_hand, [(category, "-42.10")]).status_code == 201
+
+    def shape(movement: UUID) -> Any:
+        current = api.current("owner", movement).json()["allocation"]
+        return (
+            current["revision"],
+            current["supersedesId"],
+            current["allocations"],
+        )
+
+    assert shape(by_rule) == shape(by_hand)
+    # The only difference is evidence: one origin, for the rule-applied set.
+    origins = _origins(api, "owner", account)
+    assert [o["movementId"] for o in origins] == [str(by_rule)]
