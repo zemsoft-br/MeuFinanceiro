@@ -26,6 +26,9 @@ from meufinanceiro_persistence.financial_categorization_rule_store import (
     FinancialCategorizationRuleStore,
 )
 from meufinanceiro_persistence.financial_category_store import FinancialCategoryStore
+from meufinanceiro_persistence.financial_pending_movement_store import (
+    FinancialPendingMovementStore,
+)
 from meufinanceiro_persistence.financial_movement_allocation_store import (
     FinancialMovementAllocationStore,
 )
@@ -55,12 +58,16 @@ from app.api.routes.finance import router as finance_router
 from app.api.routes.finance_categorization import (
     router as finance_categorization_router,
 )
+from app.api.routes.finance_pending import router as finance_pending_router
 from app.api.routes.health import router as health_router
 from app.core.config import Settings, get_settings
 from app.core.database import create_database
 from app.services.banking_admin import BankingAdministrationService
 from app.services.banking_connections import BankingConnectionsService
 from app.services.financial_categorization import FinancialCategorizationService
+from app.services.financial_pending_movements import (
+    FinancialPendingMovementService,
+)
 from app.services.financial_core import FinancialCoreService
 from app.services.operator_auth import OperatorAuthenticationService
 
@@ -92,6 +99,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         financial_category_store = FinancialCategoryStore(database.engine)
         financial_allocation_store = FinancialMovementAllocationStore(database.engine)
         financial_categorization_rule_store = FinancialCategorizationRuleStore(
+            database.engine
+        )
+        financial_pending_movement_store = FinancialPendingMovementStore(
             database.engine
         )
         financial_balance_query = FinancialBalanceQueryService(
@@ -157,6 +167,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             financial_allocation_store,
             financial_category_store,
         )
+        app.state.financial_pending = FinancialPendingMovementService(
+            financial_pending_movement_store,
+            financial_categorization_rule_store,
+            financial_category_store,
+        )
         app.state.banking_administration = BankingAdministrationService(
             banking_store,
             provider_registry,
@@ -209,6 +224,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.include_router(finance_router, prefix="/api/v1")
     application.include_router(finance_categorization_router, prefix="/api/v1")
+    application.include_router(finance_pending_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application
