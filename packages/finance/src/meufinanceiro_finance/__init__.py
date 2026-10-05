@@ -96,6 +96,13 @@ from meufinanceiro_finance.operation_ids import (
     new_financial_idempotency_key,
     validate_financial_idempotency_key,
 )
+from meufinanceiro_finance.pending_movements import (
+    PENDING_PAGE_LIMIT_DEFAULT,
+    PENDING_PAGE_LIMIT_MAX,
+    FinancialPendingMovementCandidate,
+    FinancialPendingMovementCandidatePage,
+    FinancialPendingMovementKey,
+)
 from meufinanceiro_finance.transfer_records import FinancialTransferRecord
 from meufinanceiro_finance.transfers import (
     FinancialTransferDraft,
@@ -108,6 +115,8 @@ __all__ = [
     "CATEGORIZATION_PRIORITY_MAX",
     "CATEGORIZATION_PRIORITY_MIN",
     "FINANCIAL_AUDIT_EVENT_SCHEMA_VERSION",
+    "PENDING_PAGE_LIMIT_DEFAULT",
+    "PENDING_PAGE_LIMIT_MAX",
     "CurrencyMismatchError",
     "FinancialAccessDeniedError",
     "FinancialAccountBalanceSnapshot",
@@ -149,6 +158,9 @@ __all__ = [
     "FinancialMovementRole",
     "FinancialOpeningBalanceDraft",
     "FinancialOpeningBalanceRecord",
+    "FinancialPendingMovementCandidate",
+    "FinancialPendingMovementCandidatePage",
+    "FinancialPendingMovementKey",
     "FinancialResourceAudience",
     "FinancialResultEffect",
     "FinancialStatementEntry",

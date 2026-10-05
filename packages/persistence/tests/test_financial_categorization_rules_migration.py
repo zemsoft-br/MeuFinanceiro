@@ -74,8 +74,13 @@ def test_revision_id_fits_and_history_has_a_single_head() -> None:
         "postgresql+psycopg://unused:unused@localhost/unused",
         app_database_user="unused_role",
     )
-    heads = ScriptDirectory.from_config(config).get_heads()
-    assert heads == [_REVISION]
+    directory = ScriptDirectory.from_config(config)
+    heads = directory.get_heads()
+    assert len(heads) == 1
+    # Later revisions may build on this one; it must stay in the single history.
+    assert _REVISION in {
+        item.revision for item in directory.walk_revisions(base="base", head=heads[0])
+    }
     script = ScriptDirectory.from_config(config).get_revision(_REVISION)
     assert script is not None and script.down_revision == _PREVIOUS
 
@@ -96,7 +101,7 @@ def test_categorization_rules_downgrade_and_reupgrade(
         )
 
         command.upgrade(config, _REVISION)
-        assert current_revision(engine) == _head(config)
+        assert current_revision(engine) == _REVISION
 
         assert inspect(engine).has_table("categorization_rules", schema="finance")
         assert inspect(engine).has_table(
@@ -164,6 +169,6 @@ def test_categorization_rules_downgrade_and_reupgrade(
             for function in _FUNCTIONS:
                 assert connection.scalar(select(func.to_regprocedure(function))) is None
         command.upgrade(config, _REVISION)
-        assert current_revision(engine) == _head(config)
+        assert current_revision(engine) == _REVISION
     finally:
         command.upgrade(config, "head")
