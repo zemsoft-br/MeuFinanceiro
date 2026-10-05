@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
 import 'package:meufinanceiro_app/features/finance/financial_allocation_math.dart';
+import 'package:meufinanceiro_app/features/finance/financial_categorization_apply_dialog.dart';
 import 'package:meufinanceiro_app/features/finance/financial_category_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
@@ -45,6 +46,13 @@ class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
   );
   static const unknownCategoryNoticeKey = Key(
     'financial-account-detail-category-unknown',
+  );
+  static const rulesCardKey = Key('financial-account-detail-rules');
+  static const manageRulesButtonKey = Key(
+    'financial-account-detail-manage-rules',
+  );
+  static const applyRulesButtonKey = Key(
+    'financial-account-detail-apply-rules',
   );
 
   @override
@@ -163,6 +171,26 @@ class _FinancialAccountDetailScreenState
               ? 'Transferência registrada.'
               : 'Não foi possível registrar a transferência.',
         ),
+      ),
+    );
+  }
+
+  Future<void> _applyRules(
+    FinancialAccount account,
+    FinancialAccountDetailState state,
+  ) async {
+    final statement = state.statement;
+    if (statement == null) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => FinancialCategorizationApplyDialog(
+        account: account,
+        movements: {
+          for (final entry in statement.entries)
+            entry.movement.movementId: entry.movement,
+        },
+        categoryIndex: state.categoryIndex,
       ),
     );
   }
@@ -468,6 +496,21 @@ class _FinancialAccountDetailScreenState
                     ),
             ),
             const SizedBox(height: AppTokens.space16),
+            _CategorizationRulesCard(
+              canApply:
+                  account.status == FinancialAccountStatus.active &&
+                  isFinancialAccountOwner(
+                    account: account,
+                    operatorId: operatorId,
+                  ) &&
+                  state.statement != null &&
+                  !state.isBusy &&
+                  state.classificationTrusted,
+              onManage: () =>
+                  context.go(AppRoutes.financeCategorizationRulesPath),
+              onApply: () => unawaited(_applyRules(account, state)),
+            ),
+            const SizedBox(height: AppTokens.space16),
             _OpeningBalanceCard(
               account: account,
               openingBalance: state.openingBalance,
@@ -486,6 +529,7 @@ class _FinancialAccountDetailScreenState
                 account: account,
                 categoryIndex: state.categoryIndex,
                 currentAllocations: state.currentAllocations,
+                ruleOriginsBySetId: state.ruleOriginsBySetId,
                 operatorId: operatorId,
                 allowClassification:
                     !state.isBusy && state.classificationTrusted,
@@ -770,6 +814,65 @@ class _FinanceActionsCard extends StatelessWidget {
   }
 }
 
+class _CategorizationRulesCard extends StatelessWidget {
+  const _CategorizationRulesCard({
+    required this.canApply,
+    required this.onManage,
+    required this.onApply,
+  });
+
+  final bool canApply;
+  final VoidCallback onManage;
+  final VoidCallback onApply;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: FinancialAccountDetailScreen.rulesCardKey,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Regras de categorização',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: AppTokens.space8),
+            Text(
+              'Classifique em lote lançamentos ainda sem categoria. Você vê '
+              'uma pré-visualização antes de confirmar e nada é aplicado '
+              'automaticamente.',
+              style: Theme.of(
+                context,
+              ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
+            ),
+            const SizedBox(height: AppTokens.space16),
+            Wrap(
+              spacing: AppTokens.space12,
+              runSpacing: AppTokens.space12,
+              children: [
+                FilledButton.tonalIcon(
+                  key: FinancialAccountDetailScreen.applyRulesButtonKey,
+                  onPressed: canApply ? onApply : null,
+                  icon: const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('Aplicar regras'),
+                ),
+                OutlinedButton.icon(
+                  key: FinancialAccountDetailScreen.manageRulesButtonKey,
+                  onPressed: onManage,
+                  icon: const Icon(Icons.rule_rounded),
+                  label: const Text('Gerenciar regras'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _StatementCard extends StatelessWidget {
   const _StatementCard({
     required this.statement,
@@ -777,6 +880,7 @@ class _StatementCard extends StatelessWidget {
     required this.account,
     required this.categoryIndex,
     required this.currentAllocations,
+    required this.ruleOriginsBySetId,
     required this.operatorId,
     required this.allowClassification,
     required this.onClassify,
@@ -791,6 +895,7 @@ class _StatementCard extends StatelessWidget {
   final FinancialAccount account;
   final FinancialCategoryIndex categoryIndex;
   final Map<String, FinancialMovementAllocation> currentAllocations;
+  final Map<String, FinancialRuleOrigin> ruleOriginsBySetId;
   final String? operatorId;
   final bool allowClassification;
   final ValueChanged<FinancialMovement> onClassify;
@@ -881,6 +986,11 @@ class _StatementCard extends StatelessWidget {
                   child: _StatementRow(
                     entry: entry,
                     classificationLabel: classificationLabel,
+                    appliedByRule:
+                        allocation != null &&
+                        ruleOriginsBySetId.containsKey(
+                          allocation.allocationSetId,
+                        ),
                     shareLines: shareLines,
                     onClassify: canClassify ? () => onClassify(movement) : null,
                     onRevise: canRevise && allocation != null
@@ -923,6 +1033,7 @@ class _StatementRow extends StatelessWidget {
   const _StatementRow({
     required this.entry,
     required this.classificationLabel,
+    required this.appliedByRule,
     required this.shareLines,
     required this.onClassify,
     required this.onRevise,
@@ -933,6 +1044,10 @@ class _StatementRow extends StatelessWidget {
 
   final FinancialStatementEntry entry;
   final String classificationLabel;
+
+  /// The *current* classification was applied by a categorization rule.
+  /// Evidence only; "Alterar classificação" still appends a manual revision.
+  final bool appliedByRule;
   final List<_ShareLine> shareLines;
   final VoidCallback? onClassify;
   final VoidCallback? onRevise;
@@ -990,6 +1105,19 @@ class _StatementRow extends StatelessWidget {
                   ),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                if (appliedByRule)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppTokens.space4),
+                    child: Text(
+                      'Aplicada por regra',
+                      key: Key(
+                        'financial-movement-rule-origin-${movement.movementId}',
+                      ),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppTokens.forest700,
+                      ),
+                    ),
+                  ),
                 for (final line in shareLines)
                   Padding(
                     padding: const EdgeInsets.only(left: AppTokens.space12),

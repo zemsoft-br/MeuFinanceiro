@@ -86,6 +86,11 @@ void main() {
               statusCode: 200,
               body: '{"accountId":"$_accountId","movementAllocations":[]}',
             ),
+          '/api/v1/finance/accounts/$_accountId/categorization-rules/origins' =>
+            const AuthHttpResponse(
+              statusCode: 200,
+              body: '{"accountId":"$_accountId","origins":[]}',
+            ),
           _ => const AuthHttpResponse(statusCode: 404, body: '{}'),
         };
       });

@@ -10,6 +10,7 @@ import 'package:meufinanceiro_app/features/banking/pluggy/connect/pluggy_connect
 import 'package:meufinanceiro_app/features/banking/pluggy/reauthentication/pluggy_reauthentication_screen.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_account_create_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_categorization_rules_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_account_detail_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_accounts_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
@@ -78,6 +79,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) {
               return const NoTransitionPage(
                 child: FinancialAccountCreateScreen(),
+              );
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financeCategorizationRulesPath,
+            name: AppRoutes.financeCategorizationRules,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(
+                child: FinancialCategorizationRulesScreen(),
               );
             },
           ),

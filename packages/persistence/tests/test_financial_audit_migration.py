@@ -365,7 +365,8 @@ def test_banking_audit_bridge_downgrade_and_reupgrade(
     banking_trigger = "trg_banking_ledger_import_audit"
 
     try:
-        command.upgrade(config, _BANKING_BRIDGE_REVISION)
+        # Later migrations may already be applied: step back to the bridge first.
+        command.downgrade(config, _BANKING_BRIDGE_REVISION)
 
         assert current_revision(engine) == _BANKING_BRIDGE_REVISION
         assert _rls_state(engine) == (True, False)

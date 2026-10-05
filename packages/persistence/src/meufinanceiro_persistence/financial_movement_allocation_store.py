@@ -33,6 +33,9 @@ from meufinanceiro_persistence.financial_account_schema import financial_account
 from meufinanceiro_persistence.financial_audit_store import (
     _append_financial_audit_event,
 )
+from meufinanceiro_persistence.financial_categorization_rule_schema import (
+    financial_movement_allocation_rule_origins,
+)
 from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
@@ -454,32 +457,18 @@ class FinancialMovementAllocationStore:
                         )
                     revision = int(current["revision"]) + 1
 
-                set_id = new_financial_resource_id()
-                inserted = (
-                    connection.execute(
-                        pg_insert(financial_movement_allocation_sets)
-                        .values(
-                            id=set_id,
-                            installation_id=installation_id,
-                            residence_id=residence_id,
-                            movement_id=movement_id,
-                            revision=revision,
-                            supersedes_id=supersedes_id,
-                            created_by_operator_id=operator_id,
-                            idempotency_key=idempotency_key,
-                            request_digest=request_digest,
-                            created_at=func.transaction_timestamp(),
-                        )
-                        .on_conflict_do_nothing(
-                            index_elements=[
-                                financial_movement_allocation_sets.c.installation_id,
-                                financial_movement_allocation_sets.c.idempotency_key,
-                            ]
-                        )
-                        .returning(*financial_movement_allocation_sets.c)
-                    )
-                    .mappings()
-                    .one_or_none()
+                inserted = _append_allocation_set(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    idempotency_key=idempotency_key,
+                    request_digest=request_digest,
+                    movement_id=movement_id,
+                    supersedes_id=supersedes_id,
+                    revision=revision,
+                    allocations=allocations,
+                    rule_id=None,
                 )
                 if inserted is None:
                     raced = _set_by_idempotency(
@@ -492,36 +481,6 @@ class FinancialMovementAllocationStore:
                     raise FinancialMovementAllocationConflictError(
                         "financial Movement allocation conflict"
                     )
-
-                for item in allocations:
-                    connection.execute(
-                        pg_insert(financial_movement_allocations).values(
-                            id=new_financial_resource_id(),
-                            allocation_set_id=set_id,
-                            installation_id=installation_id,
-                            residence_id=residence_id,
-                            movement_id=movement_id,
-                            category_id=item.category_id,
-                            currency=item.amount.currency,
-                            amount=item.amount.amount,
-                            created_at=func.transaction_timestamp(),
-                        )
-                    )
-                _append_financial_audit_event(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    actor_operator_id=operator_id,
-                    draft=FinancialAuditEventDraft(
-                        event_type=(
-                            FinancialAuditEventType.ALLOCATION_SET_CREATED
-                            if supersedes_id is None
-                            else FinancialAuditEventType.ALLOCATION_SET_REVISED
-                        ),
-                        subject_id=set_id,
-                        related_subject_id=supersedes_id,
-                    ),
-                )
                 return _set_record(connection, inserted)
         except FinancialMovementAccessError:
             raise FinancialMovementAllocationAccessError(
@@ -544,6 +503,99 @@ class FinancialMovementAllocationStore:
             raise FinancialMovementAllocationPersistenceError(
                 "financial Movement allocation could not be persisted"
             ) from None
+
+
+def _append_allocation_set(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    operator_id: UUID,
+    idempotency_key: UUID,
+    request_digest: str,
+    movement_id: UUID,
+    supersedes_id: UUID | None,
+    revision: int,
+    allocations: tuple[FinancialMovementAllocationDraft, ...],
+    rule_id: UUID | None,
+) -> RowMapping | None:
+    """Append one set, its shares, optional rule provenance and audit atomically.
+
+    Runs inside the caller's transaction. Returns ``None`` when the idempotency
+    key already exists (nothing is written in that case); the caller reconciles.
+    ``rule_id`` is provenance only: it never influences which set is current.
+    """
+    set_id = new_financial_resource_id()
+    inserted = (
+        connection.execute(
+            pg_insert(financial_movement_allocation_sets)
+            .values(
+                id=set_id,
+                installation_id=installation_id,
+                residence_id=residence_id,
+                movement_id=movement_id,
+                revision=revision,
+                supersedes_id=supersedes_id,
+                created_by_operator_id=operator_id,
+                idempotency_key=idempotency_key,
+                request_digest=request_digest,
+                created_at=func.transaction_timestamp(),
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    financial_movement_allocation_sets.c.installation_id,
+                    financial_movement_allocation_sets.c.idempotency_key,
+                ]
+            )
+            .returning(*financial_movement_allocation_sets.c)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if inserted is None:
+        return None
+
+    for item in allocations:
+        connection.execute(
+            pg_insert(financial_movement_allocations).values(
+                id=new_financial_resource_id(),
+                allocation_set_id=set_id,
+                installation_id=installation_id,
+                residence_id=residence_id,
+                movement_id=movement_id,
+                category_id=item.category_id,
+                currency=item.amount.currency,
+                amount=item.amount.amount,
+                created_at=func.transaction_timestamp(),
+            )
+        )
+    if rule_id is not None:
+        connection.execute(
+            pg_insert(financial_movement_allocation_rule_origins).values(
+                allocation_set_id=set_id,
+                installation_id=installation_id,
+                residence_id=residence_id,
+                movement_id=movement_id,
+                rule_id=rule_id,
+                created_at=func.transaction_timestamp(),
+            )
+        )
+    _append_financial_audit_event(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        actor_operator_id=operator_id,
+        draft=FinancialAuditEventDraft(
+            event_type=(
+                FinancialAuditEventType.ALLOCATION_SET_CREATED
+                if supersedes_id is None
+                else FinancialAuditEventType.ALLOCATION_SET_REVISED
+            ),
+            subject_id=set_id,
+            related_subject_id=supersedes_id,
+        ),
+    )
+    return inserted
 
 
 def _prepare_connection(

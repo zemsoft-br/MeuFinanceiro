@@ -87,6 +87,13 @@ financial_movement_allocation_sets = Table(
         "supersedes_id",
         name="uq_finance_allocation_sets_one_successor",
     ),
+    UniqueConstraint(
+        "id",
+        "installation_id",
+        "residence_id",
+        "movement_id",
+        name="uq_finance_allocation_sets_origin_scope",
+    ),
     schema="finance",
 )
 
