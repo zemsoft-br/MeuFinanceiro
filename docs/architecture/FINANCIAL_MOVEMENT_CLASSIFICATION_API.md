@@ -49,7 +49,7 @@ Valores são texto decimal; a aritmética de UX usa `BigInt` com escala de 8 cas
 
 ## Fora do escopo desta entrega
 
-Edição/movimentação/desativação de categorias, `SHARED` para categorias, regras automáticas (entregues depois pela #247; ver `FINANCIAL_CATEGORIZATION_RULES.md`), IA, tags, orçamento, recorrências, caixa de pendências, classificação de transferências `NEUTRAL`, classificação direta de `REVERSAL`, tela de histórico de revisões e qualquer integração Pluggy/Open Finance.
+Edição/movimentação/desativação de categorias, `SHARED` para categorias, regras automáticas (entregues depois pela #247; ver `FINANCIAL_CATEGORIZATION_RULES.md`), IA, tags, orçamento, recorrências, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), classificação de transferências `NEUTRAL`, classificação direta de `REVERSAL`, tela de histórico de revisões e qualquer integração Pluggy/Open Finance.
 
 ## Evidência de fechamento
 

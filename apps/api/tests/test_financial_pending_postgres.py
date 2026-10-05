@@ -13,9 +13,11 @@ import os
 import re
 import secrets
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from threading import Barrier
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -56,15 +58,7 @@ from meufinanceiro_persistence.schema import (
     identity_operators,
 )
 from meufinanceiro_security.keyring import initialize_keyring_file
-from sqlalchemy import (
-    Engine,
-    create_engine,
-    event,
-    func,
-    insert,
-    select,
-    update,
-)
+from sqlalchemy import Engine, create_engine, event, func, insert, select, text, update
 from sqlalchemy.engine import make_url
 
 from app.core.config import Settings
@@ -1043,3 +1037,287 @@ def test_statement_count_is_constant_and_has_no_per_row_queries(
     filtered = run(limit=5, ruleStatus="NO_MATCH")
     assert filtered <= 6 + 3 * 5  # fixed scan budget, never per row
     assert run(limit=100, accountId=str(accounts[0])) == 10  # + account existence
+
+
+# --- concurrency: the canonical state always wins -------------------------------
+
+
+def test_manual_classification_between_listing_and_apply_never_recreates(
+    pg_env: PgEnv, api: Api
+) -> None:
+    category = api.category("owner")
+    other = api.category("owner", name="Outra")
+    account = api.account("owner")
+    movement = api.entry("owner", account, "expense", "10.00", description="Padaria")
+    rule = _create_rule(api, "owner", category, "padaria")
+
+    (listed,) = _items(_pending(api, "owner"))
+    assert listed["ruleStatus"] == "MATCHED" and listed["matchedRuleId"] == rule
+
+    # A manual classification lands after the listing and before the action.
+    assert api.classify("owner", movement, [(other, "-10.00")]).status_code == 201
+
+    applied = _apply(api, "owner", account, [(movement, rule)]).json()
+    assert applied["results"][0]["status"] == "ALREADY_CLASSIFIED"
+    assert applied["counts"]["classified"] == 0
+    # The next read drops the item and nothing was recreated or revised.
+    assert _items(_pending(api, "owner")) == []
+    assert _set_count(pg_env, movement) == 1
+    current = api.current("owner", movement).json()["allocation"]
+    assert current["allocations"][0]["categoryId"] == str(other)
+
+
+def test_rule_disabled_before_apply_changes_the_result_and_writes_nothing(
+    pg_env: PgEnv, api: Api
+) -> None:
+    category = api.category("owner")
+    account = api.account("owner")
+    movement = api.entry("owner", account, "expense", "10.00", description="Padaria")
+    rule = _create_rule(api, "owner", category, "padaria")
+    assert _items(_pending(api, "owner"))[0]["ruleStatus"] == "MATCHED"
+
+    disabled = api.post("owner", f"/categorization-rules/{rule}/disable", {})
+    assert disabled.status_code == 200
+    applied = _apply(api, "owner", account, [(movement, rule)]).json()
+    assert applied["results"][0]["status"] == "NO_MATCH"
+    assert applied["counts"]["classified"] == 0
+    (item,) = _items(_pending(api, "owner"))
+    assert item["ruleStatus"] == "NO_MATCH" and item["matchedRuleId"] is None
+    assert _set_count(pg_env, movement) == 0
+
+
+def test_a_stronger_rule_before_apply_is_a_conflict_and_canonical_wins(
+    pg_env: PgEnv, api: Api
+) -> None:
+    category = api.category("owner")
+    stronger_category = api.category("owner", name="Forte")
+    account = api.account("owner")
+    movement = api.entry("owner", account, "expense", "10.00", description="Padaria")
+    old = _create_rule(api, "owner", category, "padaria", priority=5)
+    assert _items(_pending(api, "owner"))[0]["matchedRuleId"] == old
+
+    newer = _create_rule(api, "owner", stronger_category, "padaria", priority=9)
+    applied = _apply(api, "owner", account, [(movement, old)]).json()
+    assert applied["results"][0]["status"] == "CONFLICT"
+    assert _set_count(pg_env, movement) == 0
+    (item,) = _items(_pending(api, "owner"))
+    assert item["ruleStatus"] == "MATCHED" and item["matchedRuleId"] == newer
+    assert item["suggestedCategoryId"] == str(stronger_category)
+
+    # An equal rule now ties: AMBIGUOUS, no rule, nothing applicable.
+    twin = _create_rule(api, "owner", category, "padaria", priority=9)
+    (item,) = _items(_pending(api, "owner"))
+    assert item["ruleStatus"] == "AMBIGUOUS" and item["matchedRuleId"] is None
+    tied = _apply(api, "owner", account, [(movement, twin)]).json()
+    assert tied["results"][0]["status"] == "AMBIGUOUS"
+    assert _set_count(pg_env, movement) == 0
+
+
+def test_concurrent_apply_and_manual_classification_leave_exactly_one_set(
+    pg_env: PgEnv, api: Api
+) -> None:
+    category = api.category("owner")
+    other = api.category("owner", name="Outra")
+    account = api.account("owner")
+    rule = _create_rule(api, "owner", category, "padaria")
+    movements = [
+        api.entry("owner", account, "expense", "10.00", description=f"padaria {i}")
+        for i in range(6)
+    ]
+    barrier = Barrier(2)
+
+    def apply_all() -> int:
+        barrier.wait()
+        response = _apply(api, "owner", account, [(m, rule) for m in movements])
+        assert response.status_code == 200, response.text
+        return int(response.json()["counts"]["classified"])
+
+    def classify_all() -> int:
+        barrier.wait()
+        created = 0
+        for movement in movements:
+            response = api.classify("owner", movement, [(other, "-10.00")])
+            assert response.status_code in (201, 409), response.text
+            created += response.status_code == 201
+        return created
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        by_rule = pool.submit(apply_all)
+        by_hand = pool.submit(classify_all)
+        classified_by_rule, classified_by_hand = by_rule.result(), by_hand.result()
+
+    # Every Movement has exactly one winner and the two writers never overlap.
+    assert classified_by_rule + classified_by_hand == len(movements)
+    for movement in movements:
+        assert _set_count(pg_env, movement) == 1
+    assert _items(_pending(api, "owner")) == []
+
+
+def test_reads_do_not_block_or_alter_concurrent_writes(pg_env: PgEnv, api: Api) -> None:
+    category = api.category("owner")
+    account = api.account("owner")
+    movements = [
+        api.entry("owner", account, "expense", "5.00", description=f"item {i}")
+        for i in range(8)
+    ]
+    barrier = Barrier(3)
+
+    def writer() -> int:
+        barrier.wait()
+        done = 0
+        for movement in movements:
+            done += (
+                api.classify("owner", movement, [(category, "-5.00")]).status_code
+                == 201
+            )
+        return done
+
+    def reader() -> int:
+        barrier.wait()
+        pages = 0
+        for _ in range(15):
+            response = _pending(api, "owner", limit=3)
+            assert response.status_code == 200, response.text
+            pages += 1
+        return pages
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = [pool.submit(writer), pool.submit(reader), pool.submit(reader)]
+        results = [future.result() for future in futures]
+    assert results == [len(movements), 15, 15]
+    assert _items(_pending(api, "owner")) == []
+
+
+# --- vertical smoke from the issue ----------------------------------------------
+
+
+def test_vertical_smoke_from_inbox_to_empty_with_the_ledger_untouched(
+    pg_env: PgEnv, api: Api
+) -> None:
+    mercado = api.category("owner", "HOUSEHOLD", "Mercado")
+    lazer = api.category("owner", "HOUSEHOLD", "Lazer")
+    outros = api.category("owner", "HOUSEHOLD", "Outros")
+    account = api.account("owner")
+    destination = api.account("owner")
+    residence = _residence_of(api)
+
+    unique_rule = _create_rule(api, "owner", mercado, "Padaria", priority=5)
+    _create_rule(api, "owner", lazer, "Cinema", priority=5)
+    _create_rule(api, "owner", outros, "Cinema", priority=5)
+
+    matched = api.entry("owner", account, "expense", "37.45", description="Padaria Pão")
+    ambiguous = api.entry("owner", account, "expense", "12.00", description="Cinema")
+    no_match = api.entry("owner", account, "expense", "99.90", description="Oficina")
+    _transfer(api, "owner", account, destination)  # NEUTRAL legs: never listed
+
+    def snapshot() -> tuple[Any, ...]:
+        return (
+            _economic_snapshot(api, "owner", account),
+            _economic_snapshot(api, "owner", destination),
+            _ledger_rows(pg_env, residence),
+        )
+
+    before = snapshot()
+
+    items = {item["movementId"]: item for item in _items(_pending(api, "owner"))}
+    assert set(items) == {str(matched), str(ambiguous), str(no_match)}
+    assert items[str(matched)]["ruleStatus"] == "MATCHED"
+    assert items[str(matched)]["matchedRuleId"] == unique_rule
+    assert items[str(matched)]["suggestedCategoryId"] == str(mercado)
+    assert items[str(ambiguous)]["ruleStatus"] == "AMBIGUOUS"
+    assert items[str(no_match)]["ruleStatus"] == "NO_MATCH"
+    assert all(item["canClassify"] for item in items.values())
+    assert snapshot() == before
+
+    # 1. Apply the MATCHED suggestion explicitly (the #247 endpoint).
+    applied = _apply(api, "owner", account, [(matched, unique_rule)]).json()
+    assert applied["counts"]["classified"] == 1
+    assert set(_ids(_pending(api, "owner"))) == {str(ambiguous), str(no_match)}
+
+    # 2. The AMBIGUOUS one is resolved manually (the #245 endpoint).
+    assert api.classify("owner", ambiguous, [(lazer, "-12.00")]).status_code == 201
+    assert _ids(_pending(api, "owner")) == [str(no_match)]
+
+    # 3. So is the NO_MATCH one: the inbox ends empty.
+    assert api.classify("owner", no_match, [(outros, "-99.90")]).status_code == 201
+    final = _pending(api, "owner")
+    assert _items(final) == [] and final.json()["nextCursor"] is None
+
+    # The ledger, balances and statements are exactly what they were.
+    assert snapshot() == before
+    assert _set_count(pg_env, matched) == 1
+    assert _set_count(pg_env, ambiguous) == 1
+    assert _set_count(pg_env, no_match) == 1
+    assert _audit_events(pg_env, residence, "ALLOCATION_SET_CREATED") == 3
+
+
+def test_the_inbox_persists_no_pending_state(pg_env: PgEnv, api: Api) -> None:
+    account = api.account("owner")
+    api.entry("owner", account, "expense", "1.00", description="Qualquer")
+    with pg_env.owner_engine.connect() as connection:
+        tables = {
+            row.table_name
+            for row in connection.execute(
+                text(
+                    "SELECT table_name FROM information_schema.tables "
+                    "WHERE table_schema = 'finance'"
+                )
+            )
+        }
+        movement_columns = {
+            row.column_name
+            for row in connection.execute(
+                text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_schema = 'finance' AND table_name = 'movements'"
+                )
+            )
+        }
+    assert not {name for name in tables if "pending" in name or "inbox" in name}
+    for column in movement_columns:
+        for forbidden in ("pending", "inbox", "reviewed", "category", "dismiss"):
+            assert forbidden not in column, column
+    assert len(_items(_pending(api, "owner"))) == 1
+
+
+def test_runtime_is_unprivileged_and_rls_is_forced_on_every_inbox_source(
+    pg_env: PgEnv, api: Api
+) -> None:
+    with pg_env.runtime_engine.connect() as connection:
+        superuser, bypass = connection.execute(
+            text(
+                "SELECT rolsuper, rolbypassrls FROM pg_roles "
+                "WHERE rolname = current_user"
+            )
+        ).one()
+    assert superuser is False and bypass is False
+    sources = {
+        "movements",
+        "accounts",
+        "movement_allocation_sets",
+        "categorization_rules",
+        "categories",
+    }
+    with pg_env.owner_engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity
+                  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                 WHERE n.nspname = 'finance' AND c.relname = ANY(:names)
+                """
+            ),
+            {"names": sorted(sources)},
+        ).all()
+    assert {row[0] for row in rows} == sources
+    assert all(row[1] and row[2] for row in rows), rows
+    # The runtime role has no way to write a pending state: it only reads here.
+    with pg_env.runtime_engine.connect() as connection:
+        can_insert_into_movements_pending = connection.scalar(
+            text(
+                "SELECT count(*) FROM information_schema.columns "
+                "WHERE table_schema = 'finance' AND table_name = 'movements' "
+                "AND column_name ILIKE '%pending%'"
+            )
+        )
+    assert can_insert_into_movements_pending == 0

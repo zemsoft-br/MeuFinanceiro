@@ -200,16 +200,29 @@ void main() {
       expect(backend.pendingReads[1].uri.queryParameters['cursor'], isNotNull);
     });
 
-    test('a duplicate from the server is never listed twice', () async {
-      final backend = many();
-      final container = await _loaded(backend);
-      // The first item is classified elsewhere and re-inserted at the same key:
-      // the next page must not repeat what is already listed.
-      backend.pageSize = 3;
-      await _controller(container).loadMore();
-      final ids = _ids(container);
-      expect(ids.toSet(), hasLength(ids.length));
-    });
+    test(
+      'a row the server repeats on a later page is never listed twice',
+      () async {
+        final backend = many();
+        final container = await _loaded(backend);
+        final repeated = backend.items.firstWhere(
+          (item) => item.id == _ids(container).first,
+        );
+        final fresh = FakePendingItem(index: 77, date: '2026-09-01');
+        backend.pendingBodyOverride = jsonEncode({
+          'items': [
+            jsonDecode(repeated.json(financeTestOwnerId)),
+            jsonDecode(fresh.json(financeTestOwnerId)),
+          ],
+          'nextCursor': null,
+        });
+        await _controller(container).loadMore();
+        final ids = _ids(container);
+        expect(ids.toSet(), hasLength(ids.length));
+        expect(ids, hasLength(3));
+        expect(ids.last, fresh.id);
+      },
+    );
 
     test('a failed next page keeps the items and retry is explicit', () async {
       final backend = many();
@@ -559,11 +572,18 @@ void main() {
       expect(_state(container).trusted, isFalse);
       expect(_ids(container), contains(pendingTestMovementId(1)));
 
+      // A write that is otherwise allowed (owned item, eligible category) is
+      // refused only because the list can no longer be trusted.
+      final blockedClassify = await _controller(
+        container,
+      ).classify(pendingTestMovementId(2), _lazer);
+      expect(blockedClassify.outcome, FinancialPendingActionOutcome.notAllowed);
       final blocked = await _controller(
         container,
-      ).applySuggestion(pendingTestMovementId(2));
+      ).applySuggestion(pendingTestMovementId(1));
       expect(blocked.outcome, FinancialPendingActionOutcome.notAllowed);
       expect(backend.applyPosts, 1);
+      expect(backend.allocationPosts, 0);
 
       await _controller(container).refresh();
       expect(_state(container).trusted, isTrue);

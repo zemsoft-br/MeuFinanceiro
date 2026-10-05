@@ -445,6 +445,16 @@ def test_order_is_effective_date_desc_then_id_desc(world: World) -> None:
     assert dates == sorted(dates, reverse=True)
 
 
+def test_a_page_that_exactly_fits_has_no_next_page(world: World) -> None:
+    for index in range(3):
+        _movement(world, f"m{index}", day=index)
+    exact = world.page(limit=3)
+    assert len(exact.candidates) == 3 and not exact.has_more
+    shorter = world.page(limit=2)
+    assert len(shorter.candidates) == 2 and shorter.has_more
+    assert world.page(limit=100).has_more is False
+
+
 def test_keyset_pages_never_repeat_or_skip(world: World) -> None:
     created = {_movement(world, f"m{index}", day=index % 4) for index in range(11)}
     seen: list[UUID] = []
