@@ -146,6 +146,7 @@ class FinancialAccountDetailState {
     this.categories = const [],
     this.categoryIndex = FinancialCategoryIndex.empty,
     this.currentAllocations = const {},
+    this.ruleOriginsBySetId = const {},
     this.refreshFailure = FinancialRefreshFailure.none,
     this.openingBalanceMutationInFlight = false,
     this.operationMutationInFlight = false,
@@ -169,6 +170,7 @@ class FinancialAccountDetailState {
     List<FinancialCategory> categories = const [],
     FinancialCategoryIndex? categoryIndex,
     Map<String, FinancialMovementAllocation> currentAllocations = const {},
+    Map<String, FinancialRuleOrigin> ruleOriginsBySetId = const {},
     bool refreshing = false,
     bool openingBalanceMutationInFlight = false,
     bool operationMutationInFlight = false,
@@ -193,6 +195,9 @@ class FinancialAccountDetailState {
              Map<String, FinancialMovementAllocation>.unmodifiable(
                currentAllocations,
              ),
+         ruleOriginsBySetId: Map<String, FinancialRuleOrigin>.unmodifiable(
+           ruleOriginsBySetId,
+         ),
          refreshFailure: refreshFailure,
          openingBalanceMutationInFlight: openingBalanceMutationInFlight,
          operationMutationInFlight: operationMutationInFlight,
@@ -217,6 +222,11 @@ class FinancialAccountDetailState {
   /// Current classification by `movementId`, joined in memory with the
   /// statement. Fed by one bulk read, never one request per Movement.
   final Map<String, FinancialMovementAllocation> currentAllocations;
+
+  /// Rule provenance by `allocationSetId`, from one bulk read. Evidence only:
+  /// a classification counts as "applied by a rule" solely when its *current*
+  /// allocation set has an origin here; it never decides what is current.
+  final Map<String, FinancialRuleOrigin> ruleOriginsBySetId;
   final FinancialRefreshFailure refreshFailure;
   final bool openingBalanceMutationInFlight;
   final bool operationMutationInFlight;
@@ -257,6 +267,7 @@ class FinancialAccountDetailState {
     List<FinancialCategory>? categories,
     FinancialCategoryIndex? categoryIndex,
     Map<String, FinancialMovementAllocation>? currentAllocations,
+    Map<String, FinancialRuleOrigin>? ruleOriginsBySetId,
   }) {
     return FinancialAccountDetailState.loaded(
       account: account!,
@@ -270,6 +281,7 @@ class FinancialAccountDetailState {
           ? (categoryIndex ?? this.categoryIndex)
           : categoryIndex,
       currentAllocations: currentAllocations ?? this.currentAllocations,
+      ruleOriginsBySetId: ruleOriginsBySetId ?? this.ruleOriginsBySetId,
       refreshing: refreshing,
       openingBalanceMutationInFlight: openingBalanceMutationInFlight,
       operationMutationInFlight: operationMutationInFlight,
@@ -1137,10 +1149,11 @@ class FinancialAccountDetailController
       final statement = await api.getStatement(accountId);
       final transfers = await api.listTransfers(accountId);
       final accounts = await api.listAccounts();
-      // Fixed cost: one categories read and one bulk allocations read,
-      // independent of the number of statement rows.
+      // Fixed cost: one categories read, one bulk allocations read and one
+      // bulk rule-origin read, independent of the number of statement rows.
       final categories = await api.listCategories();
       final allocations = await api.listCurrentMovementAllocations(accountId);
+      final origins = await api.listRuleOrigins(accountId);
 
       if (openingBalance != null &&
           openingBalance.money.currency != account.currency) {
@@ -1200,6 +1213,9 @@ class FinancialAccountDetailController
         categories: categories,
         categoryIndex: categoryIndex,
         currentAllocations: currentAllocations,
+        ruleOriginsBySetId: {
+          for (final origin in origins) origin.allocationSetId: origin,
+        },
       );
     } catch (error) {
       if (!_isCurrent(generation)) return;
