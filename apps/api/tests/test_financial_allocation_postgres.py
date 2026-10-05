@@ -1558,3 +1558,223 @@ def test_persistence_unavailability_is_a_sanitized_503(
         )
     finally:
         broken.dispose()
+
+
+# --- Issue #245 final vertical gate ---------------------------------------
+
+
+def _allocation_rows(pg_env: PgEnv, movement_id: UUID) -> dict[str, list[Any]]:
+    """Every physical column of every set and share, grouped by set id."""
+    sets = financial_movement_allocation_sets
+    shares = financial_movement_allocations
+    grouped: dict[str, list[Any]] = {}
+    with pg_env.owner_engine.connect() as connection:
+        for row in connection.execute(
+            select(sets).where(sets.c.movement_id == movement_id)
+        ):
+            grouped.setdefault(str(row.id), []).append(("set", *row))
+        for row in connection.execute(
+            select(shares)
+            .where(shares.c.movement_id == movement_id)
+            .order_by(shares.c.category_id)
+        ):
+            grouped.setdefault(str(row.allocation_set_id), []).append(("share", *row))
+    return grouped
+
+
+def _economic_view(api: Api, account: UUID, movement: UUID) -> dict[str, Any]:
+    moved = api.get("owner", f"/movements/{movement}").json()
+    balance = api.get("owner", f"/accounts/{account}/balance").json()
+    statement = api.get("owner", f"/accounts/{account}/statement").json()
+    balance.pop("calculatedAt")
+    return {
+        "movementId": moved["movementId"],
+        "accountId": moved["accountId"],
+        "amount": moved["money"]["amount"],
+        "currency": moved["money"]["currency"],
+        "resultEffect": moved["resultEffect"],
+        "role": moved["role"],
+        "effectiveDate": moved["effectiveDate"],
+        "competenceDate": moved["competenceDate"],
+        "balance": balance,
+        "statementEntries": statement["entries"],
+    }
+
+
+def _event_counts(pg_env: PgEnv, household: Household) -> tuple[int, int]:
+    residence = household.residence_id
+    return (
+        len(_audit_rows(pg_env, residence, "ALLOCATION_SET_CREATED")),
+        len(_audit_rows(pg_env, residence, "ALLOCATION_SET_REVISED")),
+    )
+
+
+def test_issue_245_vertical_smoke_from_category_to_stale_reconciliation(
+    pg_env: PgEnv, household: Household, api: Api
+) -> None:
+    # categories: list -> create -> list again, outside any Demo data.
+    assert api.get("owner", "/categories").json() == {"categories": []}
+    market = api.category("owner", name="Mercado")
+    transport = api.category("owner", name="Transporte")
+    listed = api.get("owner", "/categories").json()["categories"]
+    assert {item["name"] for item in listed} == {"Mercado", "Transporte"}
+
+    # manual expense + income; both show up unclassified.
+    account = api.account("owner", opening="1000.00")
+    expense = api.entry("owner", account, "expense", "75.25")
+    income = api.entry("owner", account, "income", "10.00")
+    entries = api.get("owner", f"/accounts/{account}/statement").json()["entries"]
+    assert {e["movement"]["movementId"] for e in entries} == {
+        str(expense),
+        str(income),
+    }
+    assert api.bulk("owner", account).json() == {
+        "accountId": str(account),
+        "movementAllocations": [],
+    }
+    assert api.current("owner", expense).json() == {"allocation": None}
+    before = _economic_view(api, account, expense)
+    income_before = _economic_view(api, account, income)
+
+    # simple classification (100% in one category).
+    first = api.classify("owner", expense, [(market, "-75.25")])
+    assert first.status_code == 201, first.text
+    r1 = first.json()
+    assert r1["revision"] == 1 and r1["supersedesId"] is None
+    assert api.current("owner", expense).json() == {"allocation": r1}
+    bulk = api.bulk("owner", account).json()["movementAllocations"]
+    assert [item["movementId"] for item in bulk] == [str(expense)]
+    assert bulk[0]["allocationSetId"] == r1["allocationSetId"]
+    assert _economic_view(api, account, expense) == before
+    r1_rows = _allocation_rows(pg_env, expense)[r1["allocationSetId"]]
+    assert len(r1_rows) == 2  # the set row and its single share
+
+    # revise to a split: a NEW current revision appended after R1.
+    second = api.revise(
+        "owner",
+        expense,
+        r1["allocationSetId"],
+        [(market, "-50.00"), (transport, "-25.25")],
+    )
+    assert second.status_code == 201, second.text
+    r2 = second.json()
+    assert r2["revision"] == r1["revision"] + 1
+    assert r2["supersedesId"] == r1["allocationSetId"]
+    assert {s["categoryId"] for s in r2["allocations"]} == {
+        str(market),
+        str(transport),
+    }
+    assert api.current("owner", expense).json() == {"allocation": r2}
+    bulk = api.bulk("owner", account).json()["movementAllocations"]
+    assert [item["allocationSetId"] for item in bulk] == [r2["allocationSetId"]]
+    assert _economic_view(api, account, expense) == before
+    # R1 is still physically there, byte-for-byte: neither UPDATE nor DELETE.
+    after_revision = _allocation_rows(pg_env, expense)
+    assert after_revision[r1["allocationSetId"]] == r1_rows
+
+    # an income can be split as well, with positive shares.
+    income_split = api.classify(
+        "owner", income, [(market, "4.00"), (transport, "6.00")]
+    )
+    assert income_split.status_code == 201, income_split.text
+    assert _economic_view(api, account, income) == income_before
+    both = api.bulk("owner", account).json()["movementAllocations"]
+    assert {item["movementId"] for item in both} == {str(expense), str(income)}
+
+    # stale predecessor: writer A still holds R1 while writer B already wrote R2.
+    events_before = _event_counts(pg_env, household)
+    stale_draft = [(market, "-20.00"), (transport, "-55.25")]
+    stale = api.revise("owner", expense, r1["allocationSetId"], stale_draft)
+    _clean(stale, 409, "financial operation conflicts with canonical state")
+    # The client reconciles by re-reading; the stale draft was NOT applied.
+    assert api.current("owner", expense).json() == {"allocation": r2}
+    assert [(rev, sup) for rev, _, sup in _chain(pg_env, expense)] == [
+        (1, None),
+        (2, UUID(r1["allocationSetId"])),
+    ]
+    assert _event_counts(pg_env, household) == events_before
+    assert _economic_view(api, account, expense) == before
+    stale_rows = _allocation_rows(pg_env, expense)
+    assert stale_rows[r1["allocationSetId"]] == r1_rows
+    assert stale_rows == after_revision
+
+    # only an explicit review against the real current set creates R3.
+    third = api.revise("owner", expense, r2["allocationSetId"], stale_draft)
+    assert third.status_code == 201, third.text
+    r3 = third.json()
+    assert (r3["revision"], r3["supersedesId"]) == (3, r2["allocationSetId"])
+    assert [(rev, sup) for rev, _, sup in _chain(pg_env, expense)] == [
+        (1, None),
+        (2, UUID(r1["allocationSetId"])),
+        (3, UUID(r2["allocationSetId"])),
+    ]
+    final_rows = _allocation_rows(pg_env, expense)
+    assert final_rows[r1["allocationSetId"]] == r1_rows
+    assert final_rows[r2["allocationSetId"]] == after_revision[r2["allocationSetId"]]
+    assert _economic_view(api, account, expense) == before
+    assert before["balance"]["currentBalance"]["amount"] == "934.75"
+
+
+def test_runtime_role_is_unprivileged_and_rls_is_forced_where_it_matters(
+    pg_env: PgEnv,
+) -> None:
+    with pg_env.runtime_engine.connect() as connection:
+        role = connection.exec_driver_sql(
+            "SELECT rolsuper, rolbypassrls, rolcreaterole, rolcreatedb "
+            "FROM pg_roles WHERE rolname = current_user"
+        ).one()
+        assert tuple(role) == (False, False, False, False)
+        flags = {
+            row[0]: (row[1], row[2])
+            for row in connection.exec_driver_sql(
+                "SELECT c.relname, c.relrowsecurity, c.relforcerowsecurity "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'finance'"
+            )
+        }
+    for table in (
+        financial_movements,
+        financial_categories,
+        financial_movement_allocation_sets,
+        financial_movement_allocations,
+    ):
+        assert flags[table.name] == (True, True), table.name
+    # The audit trail is written only through its owner-run append function
+    # (ADR-0023): RLS is enabled but deliberately not forced on that table.
+    assert flags[financial_audit_events.name] == (True, False)
+
+
+def test_bulk_statement_count_is_constant_for_zero_one_and_many_movements(
+    pg_env: PgEnv, api: Api
+) -> None:
+    category = api.category("owner")
+    accounts = {count: api.account("owner") for count in (0, 1, 25)}
+    for count, account in accounts.items():
+        for _ in range(count):
+            api.classify(
+                "owner",
+                api.entry("owner", account, "expense", "10.00"),
+                [(category, "-10.00")],
+            )
+
+    statements: list[str] = []
+
+    def record(_conn: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+        statements.append(statement)
+
+    observed: dict[int, tuple[int, int]] = {}
+    event.listen(pg_env.runtime_engine, "before_cursor_execute", record)
+    try:
+        for count, account in accounts.items():
+            statements[:] = []
+            response = api.bulk("owner", account)
+            observed[count] = (
+                len(response.json()["movementAllocations"]),
+                len(statements),
+            )
+    finally:
+        event.remove(pg_env.runtime_engine, "before_cursor_execute", record)
+
+    assert [observed[count][0] for count in (0, 1, 25)] == [0, 1, 25]
+    assert len({observed[count][1] for count in (0, 1, 25)}) == 1
+    assert observed[25][1] <= 6

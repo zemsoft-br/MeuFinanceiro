@@ -261,6 +261,7 @@ A implementação deve cobrir:
 
 - #124
 - #170
+- #245 — exposição em API e Flutter (`docs/architecture/FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`)
 - ADR-0015
 - ADR-0016
 - ADR-0017

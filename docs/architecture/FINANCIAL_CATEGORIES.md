@@ -138,7 +138,7 @@ A migration é simétrica por downgrade e não altera `finance.accounts`.
 - rateios;
 - Movement/ledger;
 - saldo de abertura;
-- API/Flutter;
+- API/Flutter (a API mínima de categorias, o seletor e a criação inline foram entregues depois pela #245; ver `FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`);
 - Pluggy/importadores;
 - deploy/HML/produção.
 

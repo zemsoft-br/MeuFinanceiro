@@ -93,6 +93,11 @@ Critério de saída:
 - movimentações sem classificação são revisáveis;
 - confirmações geram sugestões futuras explicáveis.
 
+Estado da fase:
+
+- **entregue em implementação (#245, aguardando revisão de PR):** classificação e rateio manual de Movements em API e Flutter, com categorias mínimas, leitura bulk, revisão append-only e reconciliação de conflito — ver `docs/architecture/FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`;
+- pendente: tags, regras de categorização, caixa de pendências, aprendizado, orçamentos, recorrências, metas e dashboard.
+
 ## Fase 3 — Importação e conciliação
 
 **Objetivo:** reduzir lançamento manual sem depender de Open Finance.
