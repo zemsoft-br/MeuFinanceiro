@@ -171,6 +171,22 @@ void main() {
     });
 
     test(
+      'the server pattern is accepted as persisted but never with controls',
+      () async {
+        final rule = fakeRuleJson(id: _rule, pattern: 'Padaria X');
+        final rules = await _api(
+          _ok('{"rules":[$rule]}'),
+        ).listCategorizationRules();
+        expect(rules.single.pattern, 'Padaria X');
+        final control = rule.replaceFirst('Padaria X', 'Pad\u0007aria');
+        await expectLater(
+          _api(_ok('{"rules":[$control]}')).listCategorizationRules(),
+          throwsA(isA<FormatException>()),
+        );
+      },
+    );
+
+    test(
       'create must be echoed exactly, active, and never invents semantics',
       () async {
         final input = _input(key: financeTestRuleId(9));

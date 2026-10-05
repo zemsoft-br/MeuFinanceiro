@@ -530,6 +530,19 @@ String _categorizationPattern(String value) {
   return trimmed;
 }
 
+/// The pattern as persisted by the backend. Its trimming follows the server's
+/// Unicode whitespace definition, which can differ from Dart's `trim()` on rare
+/// code points, so only emptiness, size and control characters are enforced here.
+String _serverPattern(Object? value) {
+  if (value is! String ||
+      value.isEmpty ||
+      value.runes.length > financialCategorizationPatternMaxLength ||
+      value.codeUnits.any((unit) => unit < 32 || unit == 127)) {
+    throw const FormatException('descriptionPattern is invalid.');
+  }
+  return value;
+}
+
 FinancialCategorizationRule _parseCategorizationRule(Object? raw) {
   final values = _strictMap(raw, allowedKeys: _ruleKeys, label: 'rule');
   final status = FinancialCategorizationRuleStatus.parse(values['status']);
@@ -554,11 +567,7 @@ FinancialCategorizationRule _parseCategorizationRule(Object? raw) {
       priority > financialCategorizationPriorityMax) {
     throw const FormatException('priority is invalid.');
   }
-  final pattern = _boundedText(
-    values['descriptionPattern'],
-    'descriptionPattern',
-    maxLength: financialCategorizationPatternMaxLength * 2,
-  );
+  final pattern = _serverPattern(values['descriptionPattern']);
   return FinancialCategorizationRule(
     ruleId: _financialResourceId(values['ruleId'], 'ruleId'),
     createdByOperatorId: _uuid(

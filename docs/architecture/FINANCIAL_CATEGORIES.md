@@ -134,7 +134,7 @@ A migration é simétrica por downgrade e não altera `finance.accounts`.
 - carga inicial/fixture de categorias;
 - edição/movimentação/desativação/exclusão;
 - tags;
-- regras e aprendizado;
+- regras e aprendizado (regras determinísticas foram entregues depois pela #247; ver `FINANCIAL_CATEGORIZATION_RULES.md`);
 - rateios;
 - Movement/ledger;
 - saldo de abertura;

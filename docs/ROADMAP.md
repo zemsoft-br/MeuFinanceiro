@@ -96,7 +96,8 @@ Critério de saída:
 Estado da fase:
 
 - **entregue em implementação (#245, aguardando revisão de PR):** classificação e rateio manual de Movements em API e Flutter, com categorias mínimas, leitura bulk, revisão append-only e reconciliação de conflito — ver `docs/architecture/FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`;
-- pendente: tags, regras de categorização, caixa de pendências, aprendizado, orçamentos, recorrências, metas e dashboard.
+- **entregue em implementação (#247, aguardando revisão de PR):** regras determinísticas de categorização (EXACT/CONTAINS, prioridade com empate fail-closed, preview e apply explícitos, proveniência append-only) em API e Flutter, sobre a mesma autoridade de classificação — ver `docs/architecture/FINANCIAL_CATEGORIZATION_RULES.md` e ADR-0024;
+- pendente: tags, caixa de pendências, aprendizado, orçamentos, recorrências, metas e dashboard.
 
 ## Fase 3 — Importação e conciliação
 
