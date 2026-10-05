@@ -187,8 +187,9 @@ void main() {
     backend.previewBody =
         '{"accountId":"$financeTestAccountId","totalMovements":2,'
         '"counts":{"matched":0,"noMatch":0,"ambiguous":1,"ineligible":0,"alreadyClassified":1},'
-        '"items":[{"movementId":"$tied","status":"AMBIGUOUS","ruleId":null,"targetCategoryId":null}],'
-        '"itemsTruncated":false}';
+        '"items":[{"movementId":"$movementId","status":"ALREADY_CLASSIFIED","ruleId":null,"targetCategoryId":null},'
+        '{"movementId":"$tied","status":"AMBIGUOUS","ruleId":null,"targetCategoryId":null}],'
+        '"applicableTruncated":false}';
     await apply.preview();
     applyState = container.read(_apply);
     expect(applyState.preview!.counts.ambiguous, 1);

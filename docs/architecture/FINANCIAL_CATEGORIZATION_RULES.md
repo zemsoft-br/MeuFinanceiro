@@ -38,7 +38,7 @@ Fora do recorte: regex, fuzzy, faixas de valor/data, merchant/provider, múltipl
 
 ### Preview
 
-`MATCHED` (exatamente uma regra vencedora), `NO_MATCH`, `AMBIGUOUS`, `INELIGIBLE` (`NEUTRAL`/`REVERSAL`) e `ALREADY_CLASSIFIED`, em contagens, mais os candidatos `MATCHED`/`AMBIGUOUS` (até 200; `itemsTruncated` indica que há mais). Número constante de leituras (conta, Movements, classificações correntes, regras, categorias), independente do número de Movements. Nunca escreve nem garante o apply.
+Cada Movement da conta aparece em `items`, em ordem de ledger, com o seu próprio estado: `MATCHED` (exatamente uma regra vencedora), `NO_MATCH`, `AMBIGUOUS`, `INELIGIBLE` (`NEUTRAL`/`REVERSAL`) e `ALREADY_CLASSIFIED`. `ruleId` e `targetCategoryId` só existem em `MATCHED`, onde são semanticamente válidos. `counts` traz os cinco totais e `totalMovements`; `applicableTruncated` indica que mais de 200 Movements casaram (um apply carrega no máximo 200 pares: confirme os primeiros e pré-visualize de novo). Não há limite de detalhe: o preview tem o tamanho do extrato. Número constante de leituras (conta, Movements, classificações correntes, regras, categorias), independente do número de Movements. Nunca escreve, não toma lock e não garante o apply.
 
 ### Apply
 
@@ -75,7 +75,8 @@ RLS habilitada e forçada em ambas. A regra só é visível se a categoria-alvo 
 
 ## Concorrência e idempotência
 
-- O lock de linha do Movement (o mesmo da classificação manual) serializa regra × manual e regra × regra: exatamente uma classificação vence, sem revisão automática.
+- **Lock do conjunto de regras:** `create_rule`, `disable_rule` e `apply_rule_to_movement` adquirem o mesmo `pg_advisory_xact_lock`, namespace-específico e com escopo de residência (`categorization_rule_set_lock_key`, derivado de `(namespace, installation, residence)`; regras globais afetam qualquer conta, então um lock por conta não bastaria). O apply o adquire **antes** de ler regras e **antes** do lock de linha do Movement; criar/desabilitar só precisam dele. Assim o apply é linearizável contra qualquer mutação do conjunto: ou a regra maior/empatada commitou antes (o apply reavalia e devolve `CONFLICT`/`AMBIGUOUS`) ou o apply commitou antes (a regra só é criada depois). Preview e leituras não tomam o lock; a classificação manual continua serializada só pelo lock do Movement.
+- O lock de linha do Movement (o mesmo da classificação manual) serializa regra × manual: exatamente uma classificação vence, sem revisão automática.
 - Chave por Movement derivada de `(rule_id, movement_id)`; replay de apply nunca cria revisão.
 - `disable` concorrente com apply se serializa pelo `FOR SHARE` da origin: ou a regra foi desabilitada antes (CONFLICT) ou a aplicação commitou antes.
 - Se a proveniência falhar, allocation, shares e auditoria sofrem rollback juntos (testado).
@@ -97,7 +98,8 @@ O lifecycle da regra **não** entra no audit financeiro fechado (`FinancialAudit
 - A releitura de regras/categorias por Movement dentro do apply é intencional (revalidação canônica), não um N+1 de leitura de tela.
 - A chave pendente de criação de regra vive no controller do Flutter; se a tela for fechada antes do retry explícito, uma nova tentativa gera nova chave (possível regra duplicada, que empata e falha fechado até uma ser desabilitada).
 - Após reconciliação de um conflito de classificação manual (#245) o mapa de proveniência só é recarregado no próximo refresh completo; como a origin é indexada por allocation set, o pior efeito é a ausência do rótulo, nunca um rótulo errado.
-- `FOR SHARE` na regra durante a aplicação bloqueia brevemente um `disable` concorrente (por desenho).
+- O lock do conjunto de regras é por residência: applies de contas diferentes da mesma residência, e criar/desabilitar regra, se serializam brevemente (cada apply é uma transação curta por Movement). É o recorte v1; um lock mais fino exigiria saber quais regras globais afetam qual conta.
+- `FOR SHARE` na regra durante a aplicação permanece como segunda barreira (defesa em profundidade) para um `disable`.
 
 ## Fora do escopo desta entrega
 
@@ -110,9 +112,10 @@ ML/LLM, aprendizado, sugestão de regras, fuzzy/regex, condições arbitrárias,
 | 1 | `5baebc8` | domínio, schema, migration `0021`, stores, RLS e proveniência |
 | 2 | `f6efa59` | serviço e API: CRUD mínimo, preview, apply e leitura de origens |
 | 3 | `0d9d2ec` | Flutter: regras, preview, confirmação, resumo real e refresh bulk |
-| 4 | `b6810e8` e commit deste documento | gate vertical, correção de lint do teste, hardening do parse do padrão e documentação |
+| 4 | `b6810e8`, `87dc29b` | gate vertical, correção de lint do teste, hardening do parse do padrão e documentação |
+| 5 | commit corretivo pré-PR | preview por Movement (todos os cinco estados) e lock transacional do conjunto de regras |
 
-Gates executados localmente sobre `b6810e8` (sem GitHub Actions, HML ou PROD), com PostgreSQL 18.4 descartável, role de runtime não-superuser sem `BYPASSRLS`:
+Gates executados localmente sobre `b6810e8` e reexecutados por completo sobre as correções do commit corretivo (mesmo resultado) (sem GitHub Actions, HML ou PROD), com PostgreSQL 18.4 descartável, role de runtime não-superuser sem `BYPASSRLS`:
 
 - repository safety, DCO (`2f0c8df..HEAD`), `git diff --check`: PASS;
 - `ruff check`, `ruff format --check`, `mypy --strict` (167 arquivos): PASS;
@@ -122,4 +125,4 @@ Gates executados localmente sobre `b6810e8` (sem GitHub Actions, HML ou PROD), c
 - `flutter analyze` apontou um import não usado em um teste novo; corrigido no commit seguinte e reexecutado limpo (sem issues) junto com a suíte Flutter completa e `dart format`;
 - suíte Python completa: **uma** falha, preexistente no `develop` e rastreada pela #240 (`tests/quality/test_safe_update_contract.py::test_update_contract_is_linked_and_ignored`), sem relação com esta issue — **PASS_WITH_PROVEN_BASELINE_EXCEPTION**.
 
-Provas relevantes: manual vence a corrida preview→apply e applies concorrentes criam exatamente uma classificação; origin e allocation são atômicos (falha de proveniência reverte allocation e auditoria); `disable` concorrente se serializa com a aplicação (`FOR SHARE`); Movement, saldo e extrato idênticos antes/depois; preview sem escrita; leituras constantes para 0/1/N Movements; nenhum retry automático de escrita ambígua no Flutter. Os caminhos críticos foram verificados por mutação dirigida (20 mutantes no backend/serviço e no Flutter, todos detectados).
+Provas relevantes: manual vence a corrida preview→apply e applies concorrentes criam exatamente uma classificação; origin e allocation são atômicos (falha de proveniência reverte allocation e auditoria); `disable` concorrente se serializa com a aplicação (`FOR SHARE`); Movement, saldo e extrato idênticos antes/depois; preview sem escrita; leituras constantes para 0/1/N Movements; nenhum retry automático de escrita ambígua no Flutter. Os caminhos críticos foram verificados por mutação dirigida (26 mutantes no backend, serviço, lock e Flutter, todos detectados; dois mutantes equivalentes por redundância de validação foram descartados).

@@ -60,7 +60,22 @@ String _previewJson({
     '"totalMovements":${total ?? matched + ambiguous + noMatch + ineligible + already},'
     '"counts":{"matched":$matched,"noMatch":$noMatch,"ambiguous":$ambiguous,'
     '"ineligible":$ineligible,"alreadyClassified":$already},'
-    '"items":[$items],"itemsTruncated":$truncated}';
+    '"items":[$items],"applicableTruncated":$truncated}';
+
+String _item(String movement, String status) =>
+    '{"movementId":"$movement","status":"$status","ruleId":null,'
+    '"targetCategoryId":null}';
+
+String _statusItems(Map<String, int> byStatus) {
+  var index = 100;
+  return [
+    for (final entry in byStatus.entries)
+      for (var i = 0; i < entry.value; i += 1)
+        entry.key == 'MATCHED'
+            ? _matchedItem(financeTestMovementId(index++))
+            : _item(financeTestMovementId(index++), entry.key),
+  ].join(',');
+}
 
 String _matchedItem(String movement) =>
     '{"movementId":"$movement","status":"MATCHED","ruleId":"$_rule",'
@@ -259,7 +274,7 @@ void main() {
 
   group('preview', () {
     test(
-      'parses counts and candidates; applicable items are only MATCHED',
+      'reports every Movement with its own state; only MATCHED carries a rule',
       () async {
         final body = _previewJson(
           matched: 1,
@@ -267,9 +282,13 @@ void main() {
           noMatch: 2,
           ineligible: 1,
           already: 3,
-          items:
-              '${_matchedItem(_movementA)},'
-              '{"movementId":"$_movementB","status":"AMBIGUOUS","ruleId":null,"targetCategoryId":null}',
+          items: _statusItems({
+            'MATCHED': 1,
+            'AMBIGUOUS': 1,
+            'NO_MATCH': 2,
+            'INELIGIBLE': 1,
+            'ALREADY_CLASSIFIED': 3,
+          }),
         );
         final transport = _ok(body);
         final preview = await _api(
@@ -280,43 +299,77 @@ void main() {
           transport.calls.single.uri.path,
           '/api/v1/finance/accounts/$financeTestAccountId/categorization-rules/preview',
         );
-        expect(preview.counts.matched, 1);
-        expect(preview.counts.ambiguous, 1);
+        expect(preview.items, hasLength(8));
         expect(preview.counts.total, 8);
-        expect(preview.applicableItems.map((item) => item.movementId), [
-          _movementA,
-        ]);
+        for (final status in FinancialCategorizationPreviewStatus.values) {
+          final listed = preview.itemsWithStatus(status);
+          expect(
+            listed.every(
+              (item) =>
+                  (item.ruleId != null) ==
+                  (status == FinancialCategorizationPreviewStatus.matched),
+            ),
+            isTrue,
+          );
+        }
+        expect(
+          preview.itemsWithStatus(FinancialCategorizationPreviewStatus.noMatch),
+          hasLength(2),
+        );
+        expect(
+          preview.itemsWithStatus(
+            FinancialCategorizationPreviewStatus.alreadyClassified,
+          ),
+          hasLength(3),
+        );
+        expect(
+          preview.itemsWithStatus(
+            FinancialCategorizationPreviewStatus.ineligible,
+          ),
+          hasLength(1),
+        );
+        expect(preview.applicableItems, hasLength(1));
         expect(preview.applicableItems.single.ruleId, _rule);
+        expect(preview.applicableTruncated, isFalse);
       },
     );
 
     test('rejects inconsistent previews', () async {
+      final one = _matchedItem(_movementA);
       for (final bad in [
-        _previewJson(matched: 1, total: 5, items: _matchedItem(_movementA)),
+        // total disagrees with counts / items
+        _previewJson(matched: 1, total: 5, items: one),
+        // listed items disagree with the counts
         _previewJson(matched: 1, items: ''),
-        _previewJson(matched: 0, items: _matchedItem(_movementA)),
-        _previewJson(
-          matched: 2,
-          items: '${_matchedItem(_movementA)},${_matchedItem(_movementA)}',
-        ),
+        _previewJson(matched: 0, noMatch: 1, items: one),
+        _previewJson(matched: 2, items: '$one,$one'),
+        // semantic validity of rule/target per state
         _previewJson(
           matched: 1,
           items:
               '{"movementId":"$_movementA","status":"MATCHED","ruleId":null,"targetCategoryId":null}',
         ),
         _previewJson(
-          ambiguous: 1,
           matched: 0,
+          noMatch: 1,
           items:
-              '{"movementId":"$_movementA","status":"AMBIGUOUS","ruleId":"$_rule","targetCategoryId":"$_category"}',
+              '{"movementId":"$_movementA","status":"NO_MATCH","ruleId":"$_rule","targetCategoryId":"$_category"}',
         ),
-        _previewJson(matched: 1, items: _matchedItem(_movementA)).replaceFirst(
-          '"itemsTruncated":false',
-          '"itemsTruncated":false,"providerItem":"x"',
+        // truncation flag must follow the apply limit
+        _previewJson(matched: 1, items: one, truncated: true),
+        // unknown state / extra key / wrong account
+        _previewJson(
+          matched: 0,
+          noMatch: 1,
+          items: _item(_movementA, 'PENDING'),
+        ),
+        _previewJson(matched: 1, items: one).replaceFirst(
+          '"applicableTruncated":false',
+          '"applicableTruncated":false,"providerItem":"x"',
         ),
         _previewJson(
           matched: 1,
-          items: _matchedItem(_movementA),
+          items: one,
         ).replaceFirst(financeTestAccountId, financeTestMovementId(7)),
       ]) {
         await expectLater(
@@ -328,20 +381,25 @@ void main() {
     });
 
     test(
-      'a truncated preview may list fewer candidates than counted',
+      'flags when more Movements matched than one apply can carry',
       () async {
+        final matched = financialCategorizationMaxApplyItems + 25;
         final preview = await _api(
           _ok(
             _previewJson(
-              matched: 500,
-              items: _matchedItem(_movementA),
+              matched: matched,
+              items: _statusItems({'MATCHED': matched}),
               truncated: true,
             ),
           ),
         ).previewCategorizationRules(financeTestAccountId);
-        expect(preview.itemsTruncated, isTrue);
-        expect(preview.counts.matched, 500);
-        expect(preview.applicableItems, hasLength(1));
+        expect(preview.items, hasLength(matched));
+        expect(preview.counts.matched, matched);
+        expect(preview.applicableTruncated, isTrue);
+        expect(
+          preview.applicableItems,
+          hasLength(financialCategorizationMaxApplyItems),
+        );
       },
     );
   });

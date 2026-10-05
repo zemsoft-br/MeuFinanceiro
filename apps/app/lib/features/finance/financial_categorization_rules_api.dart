@@ -24,7 +24,7 @@ const _previewKeys = <String>{
   'totalMovements',
   'counts',
   'items',
-  'itemsTruncated',
+  'applicableTruncated',
 };
 const _previewCountKeys = <String>{
   'matched',
@@ -100,7 +100,10 @@ enum FinancialCategorizationRuleStatus {
 /// Per-Movement result of a preview. Never a promise: apply re-evaluates.
 enum FinancialCategorizationPreviewStatus {
   matched('MATCHED'),
-  ambiguous('AMBIGUOUS');
+  noMatch('NO_MATCH'),
+  ambiguous('AMBIGUOUS'),
+  ineligible('INELIGIBLE'),
+  alreadyClassified('ALREADY_CLASSIFIED');
 
   const FinancialCategorizationPreviewStatus(this.wireValue);
   final String wireValue;
@@ -256,29 +259,40 @@ class FinancialCategorizationPreview {
     required this.totalMovements,
     required this.counts,
     required this.items,
-    required this.itemsTruncated,
+    required this.applicableTruncated,
   });
 
   final String accountId;
   final int totalMovements;
   final FinancialCategorizationPreviewCounts counts;
+
+  /// One entry per Movement of the account, in ledger order, each with its own
+  /// state. The rule and target category are set only for MATCHED.
   final List<FinancialCategorizationPreviewItem> items;
 
-  /// More candidates exist than the preview lists: apply what is shown, then
-  /// preview again.
-  final bool itemsTruncated;
+  /// More Movements matched than one apply request can carry: apply the first
+  /// ones, then preview again.
+  final bool applicableTruncated;
 
-  /// Exactly the pairs a confirmation may send, in preview order.
+  /// Exactly the pairs a confirmation may send: the first
+  /// [financialCategorizationMaxApplyItems] MATCHED Movements, in preview order.
   List<FinancialCategorizationApplyItem> get applicableItems =>
-      List.unmodifiable([
-        for (final item in items)
-          if (item.status == FinancialCategorizationPreviewStatus.matched &&
-              item.ruleId != null)
-            FinancialCategorizationApplyItem(
-              movementId: item.movementId,
-              ruleId: item.ruleId!,
-            ),
-      ]);
+      List.unmodifiable(
+        [
+          for (final item in items)
+            if (item.status == FinancialCategorizationPreviewStatus.matched &&
+                item.ruleId != null)
+              FinancialCategorizationApplyItem(
+                movementId: item.movementId,
+                ruleId: item.ruleId!,
+              ),
+        ].take(financialCategorizationMaxApplyItems),
+      );
+
+  /// Movements in the given preview state.
+  List<FinancialCategorizationPreviewItem> itemsWithStatus(
+    FinancialCategorizationPreviewStatus status,
+  ) => List.unmodifiable(items.where((item) => item.status == status));
 }
 
 /// One Movement/rule pair the operator confirmed after a preview.
@@ -620,9 +634,9 @@ FinancialCategorizationPreview _parseCategorizationPreview(Object? raw) {
     throw const FormatException('preview counts do not add up.');
   }
   final rawItems = values['items'];
-  final truncated = values['itemsTruncated'];
+  final truncated = values['applicableTruncated'];
   if (rawItems is! List ||
-      rawItems.length > financialCategorizationMaxApplyItems ||
+      rawItems.length != totalMovements ||
       truncated is! bool) {
     throw const FormatException('preview items are invalid.');
   }
@@ -657,17 +671,15 @@ FinancialCategorizationPreview _parseCategorizationPreview(Object? raw) {
   if (items.map((item) => item.movementId).toSet().length != items.length) {
     throw const FormatException('duplicate preview movement.');
   }
-  final listedMatched = items
-      .where(
-        (item) => item.status == FinancialCategorizationPreviewStatus.matched,
-      )
-      .length;
-  final listedAmbiguous = items.length - listedMatched;
-  if (listedMatched > counts.matched ||
-      listedAmbiguous > counts.ambiguous ||
-      (!truncated &&
-          (listedMatched != counts.matched ||
-              listedAmbiguous != counts.ambiguous))) {
+  int listed(FinancialCategorizationPreviewStatus status) =>
+      items.where((item) => item.status == status).length;
+  const kinds = FinancialCategorizationPreviewStatus.values;
+  if (listed(kinds[0]) != counts.matched ||
+      listed(kinds[1]) != counts.noMatch ||
+      listed(kinds[2]) != counts.ambiguous ||
+      listed(kinds[3]) != counts.ineligible ||
+      listed(kinds[4]) != counts.alreadyClassified ||
+      truncated != (counts.matched > financialCategorizationMaxApplyItems)) {
     throw const FormatException('preview items do not match the counts.');
   }
   return FinancialCategorizationPreview(
@@ -675,7 +687,7 @@ FinancialCategorizationPreview _parseCategorizationPreview(Object? raw) {
     totalMovements: totalMovements,
     counts: counts,
     items: items,
-    itemsTruncated: truncated,
+    applicableTruncated: truncated,
   );
 }
 

@@ -184,17 +184,14 @@ class _FinancialCategorizationApplyDialogState
     FinancialCategorizationPreview preview,
   ) {
     final counts = preview.counts;
-    final candidates = preview.items
-        .where(
-          (item) => item.status == FinancialCategorizationPreviewStatus.matched,
-        )
+    // Only what a confirmation would actually send is listed.
+    final candidates = preview
+        .itemsWithStatus(FinancialCategorizationPreviewStatus.matched)
+        .take(financialCategorizationMaxApplyItems)
         .toList(growable: false);
-    final ambiguous = preview.items
-        .where(
-          (item) =>
-              item.status == FinancialCategorizationPreviewStatus.ambiguous,
-        )
-        .toList(growable: false);
+    final ambiguous = preview.itemsWithStatus(
+      FinancialCategorizationPreviewStatus.ambiguous,
+    );
     return [
       _CountRow(
         key: FinancialCategorizationApplyDialog.previewCountKey('matched'),
@@ -232,13 +229,13 @@ class _FinancialCategorizationApplyDialogState
           icon: Icons.info_outline_rounded,
           message: 'Nenhum lançamento seria classificado por regras agora.',
         ),
-      if (preview.itemsTruncated)
+      if (preview.applicableTruncated)
         const _Notice(
           key: FinancialCategorizationApplyDialog.truncatedNoticeKey,
           icon: Icons.info_outline_rounded,
           message:
-              'Há mais lançamentos do que os listados. Aplique estes e faça '
-              'uma nova pré-visualização para os demais.',
+              'Há mais lançamentos do que podem ser aplicados de uma vez. Aplique '
+              'os listados e faça uma nova pré-visualização para os demais.',
         ),
       for (final item in candidates)
         Padding(

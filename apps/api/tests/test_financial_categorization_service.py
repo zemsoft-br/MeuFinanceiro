@@ -35,7 +35,6 @@ from meufinanceiro_persistence.financial_categorization_rule_store import (
 
 from app.services.financial_categorization import (
     MAX_APPLY_ITEMS,
-    MAX_PREVIEW_ITEMS,
     CategorizationApplyRequestItem,
     FinancialCategorizationService,
 )
@@ -266,10 +265,23 @@ def test_preview_classifies_every_movement_and_never_writes() -> None:
         Status.INELIGIBLE: 2,
         Status.ALREADY_CLASSIFIED: 1,
     }
+    # Every Movement is distinguishable, in ledger order; the rule and target are
+    # present only where they are semantically valid (MATCHED).
     assert [(i.movement_id, i.status, i.rule_id) for i in preview.items] == [
-        (matched.id, Status.MATCHED, rule.id)
+        (matched.id, Status.MATCHED, rule.id),
+        (no_match.id, Status.NO_MATCH, None),
+        (already.id, Status.ALREADY_CLASSIFIED, None),
+        (neutral.id, Status.INELIGIBLE, None),
+        (reversal.id, Status.INELIGIBLE, None),
     ]
-    assert preview.items[0].target_category_id == category.id
+    assert [i.target_category_id for i in preview.items] == [
+        category.id,
+        None,
+        None,
+        None,
+        None,
+    ]
+    assert not preview.applicable_truncated
     assert world.apply.calls == []
     assert world.rules.create_rule.calls == []
     assert world.rules.disable_rule.calls == []
@@ -316,9 +328,9 @@ def test_preview_ignores_disabled_rules_other_accounts_and_unusable_categories()
     assert preview.items[0].rule_id == rules[0].id
 
 
-def test_preview_truncates_the_candidate_list_but_counts_everything() -> None:
+def test_preview_reports_every_movement_and_flags_when_apply_must_be_split() -> None:
     category = _category()
-    total = MAX_PREVIEW_ITEMS + 25
+    total = MAX_APPLY_ITEMS + 25
     world = World(
         movements=tuple(_movement(f"padaria {i}") for i in range(total)),
         rules=(_rule(category),),
@@ -326,7 +338,8 @@ def test_preview_truncates_the_candidate_list_but_counts_everything() -> None:
     )
     preview = world.service().preview(account_id=ACCOUNT_ID, **SCOPE)
     assert preview.counts[Status.MATCHED] == total
-    assert len(preview.items) == MAX_PREVIEW_ITEMS and preview.items_truncated
+    assert len(preview.items) == total, "no detail limit: every Movement listed"
+    assert preview.applicable_truncated
 
 
 @pytest.mark.parametrize(

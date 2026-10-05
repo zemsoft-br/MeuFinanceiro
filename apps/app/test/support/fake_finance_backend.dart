@@ -593,42 +593,44 @@ class FakeFinanceBackend {
     if (override != null) {
       return AuthHttpResponse(statusCode: 200, body: override);
     }
-    final candidates = movements
-        .where(
-          (spec) =>
-              spec.role == 'STANDARD' &&
-              spec.effect != 'NEUTRAL' &&
-              !allocations.containsKey(spec.id) &&
-              rules.isNotEmpty,
-        )
-        .toList();
-    final ruleId =
-        (jsonDecode(rules.first) as Map<String, dynamic>)['ruleId'] as String;
-    final categoryId =
-        (jsonDecode(rules.first) as Map<String, dynamic>)['targetCategoryId']
-            as String;
-    final items = candidates
-        .map(
-          (spec) =>
-              '{"movementId":"${spec.id}","status":"MATCHED",'
-              '"ruleId":"$ruleId","targetCategoryId":"$categoryId"}',
-        )
-        .join(',');
-    final already = movements
-        .where((spec) => allocations.containsKey(spec.id))
-        .length;
-    final ineligible = movements
-        .where((spec) => spec.role != 'STANDARD' || spec.effect == 'NEUTRAL')
-        .length;
-    final noMatch = movements.length - candidates.length - already - ineligible;
+    final first = rules.isEmpty
+        ? null
+        : jsonDecode(rules.first) as Map<String, dynamic>;
+    var matched = 0;
+    var noMatch = 0;
+    var ineligible = 0;
+    var already = 0;
+    final items = <String>[];
+    for (final spec in movements) {
+      String status;
+      if (spec.role != 'STANDARD' || spec.effect == 'NEUTRAL') {
+        status = 'INELIGIBLE';
+        ineligible += 1;
+      } else if (allocations.containsKey(spec.id)) {
+        status = 'ALREADY_CLASSIFIED';
+        already += 1;
+      } else if (first != null) {
+        status = 'MATCHED';
+        matched += 1;
+      } else {
+        status = 'NO_MATCH';
+        noMatch += 1;
+      }
+      final matchedItem = status == 'MATCHED';
+      items.add(
+        '{"movementId":"${spec.id}","status":"$status",'
+        '"ruleId":${matchedItem ? '"${first!['ruleId']}"' : 'null'},'
+        '"targetCategoryId":${matchedItem ? '"${first!['targetCategoryId']}"' : 'null'}}',
+      );
+    }
     return AuthHttpResponse(
       statusCode: 200,
       body:
           '{"accountId":"$financeTestAccountId",'
-          '"totalMovements":${movements.length},"counts":{"matched":${candidates.length},'
+          '"totalMovements":${movements.length},"counts":{"matched":$matched,'
           '"noMatch":$noMatch,"ambiguous":0,"ineligible":$ineligible,'
-          '"alreadyClassified":$already},"items":[$items],'
-          '"itemsTruncated":false}',
+          '"alreadyClassified":$already},"items":[${items.join(',')}],'
+          '"applicableTruncated":${matched > 200}}',
     );
   }
 

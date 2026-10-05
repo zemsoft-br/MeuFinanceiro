@@ -103,3 +103,24 @@ def test_apply_reevaluates_canonical_state_under_the_movement_lock() -> None:
     assert "categorization_apply_idempotency_key(" in body
     assert "supersedes_id=None" in body and "revision=1" in body
     assert "revise_allocation_set" not in body
+
+
+def test_rule_set_lock_is_one_contract_taken_in_a_fixed_order() -> None:
+    assert "pg_advisory_xact_lock" in STORE
+    assert "_RULE_SET_LOCK_NAMESPACE" in STORE
+    for method, end in (
+        ("def create_rule(", "def list_rules("),
+        ("def disable_rule(", "def list_current_rule_origins("),
+        ("def apply_rule_to_movement(", "def _create_digest("),
+    ):
+        body = STORE.split(method)[1].split(end)[0]
+        assert body.count("_acquire_rule_set_lock(") == 1, method
+    apply = STORE.split("def apply_rule_to_movement(")[1]
+    assert apply.index("_acquire_rule_set_lock(") < apply.index("_active_rules(")
+    assert apply.index("_acquire_rule_set_lock(") < apply.index(
+        "_lock_eligible_movement("
+    )
+    # reads and preview never block on the rule-set lock
+    for reader in ("def list_rules(", "def list_current_rule_origins("):
+        body = STORE.split(reader)[1].split("    def ")[0]
+        assert "_acquire_rule_set_lock(" not in body, reader

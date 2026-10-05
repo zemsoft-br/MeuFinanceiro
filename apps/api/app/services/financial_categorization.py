@@ -35,7 +35,6 @@ from meufinanceiro_persistence.financial_categorization_rule_store import (
     FinancialCategorizationRulePersistenceError,
 )
 
-MAX_PREVIEW_ITEMS = 200
 MAX_APPLY_ITEMS = 200
 
 
@@ -161,7 +160,9 @@ class CategorizationPreview:
     total_movements: int
     counts: dict[FinancialCategorizationEvaluationStatus, int]
     items: tuple[CategorizationPreviewItem, ...]
-    items_truncated: bool
+    # More Movements matched than one apply request can carry
+    # (``MAX_APPLY_ITEMS``): confirm the first ones, then preview again.
+    applicable_truncated: bool
 
     def __repr__(self) -> str:
         return f"CategorizationPreview(total_movements={self.total_movements})"
@@ -284,7 +285,9 @@ class FinancialCategorizationService:
         """Evaluate every Movement of an owned account without writing anything.
 
         A constant number of reads regardless of Movement count: account,
-        Movements, current classifications, rules and categories.
+        Movements, current classifications, rules and categories. The preview is
+        advisory: it takes no lock, and apply re-evaluates under the rule-set and
+        Movement locks.
         """
         scope = {
             "installation_id": installation_id,
@@ -317,7 +320,6 @@ class FinancialCategorizationService:
         status = FinancialCategorizationEvaluationStatus
         counts: Counter[FinancialCategorizationEvaluationStatus] = Counter()
         items: list[CategorizationPreviewItem] = []
-        truncated = False
         for movement in movements:
             evaluation = evaluate_movement_categorization(
                 movement,
@@ -325,11 +327,8 @@ class FinancialCategorizationService:
                 rules=usable,
             )
             counts[evaluation.status] += 1
-            if evaluation.status not in (status.MATCHED, status.AMBIGUOUS):
-                continue
-            if len(items) >= MAX_PREVIEW_ITEMS:
-                truncated = True
-                continue
+            # Every Movement is reported with its own state; the rule and target
+            # are present only for MATCHED, where they are semantically valid.
             rule = evaluation.rule
             items.append(
                 CategorizationPreviewItem(
@@ -346,7 +345,7 @@ class FinancialCategorizationService:
             total_movements=len(movements),
             counts={item: counts.get(item, 0) for item in status},
             items=tuple(items),
-            items_truncated=truncated,
+            applicable_truncated=counts[status.MATCHED] > MAX_APPLY_ITEMS,
         )
 
     def apply(
@@ -436,7 +435,6 @@ class FinancialCategorizationService:
 
 __all__ = [
     "MAX_APPLY_ITEMS",
-    "MAX_PREVIEW_ITEMS",
     "CategorizationAccountReadBoundary",
     "CategorizationAllocationReadBoundary",
     "CategorizationApplyOutcome",

@@ -289,8 +289,9 @@ void main() {
           '{"accountId":"$financeTestAccountId","totalMovements":3,'
           '"counts":{"matched":0,"noMatch":1,"ambiguous":2,"ineligible":0,"alreadyClassified":0},'
           '"items":[{"movementId":"${financeTestMovementId(1)}","status":"AMBIGUOUS","ruleId":null,"targetCategoryId":null},'
-          '{"movementId":"${financeTestMovementId(2)}","status":"AMBIGUOUS","ruleId":null,"targetCategoryId":null}],'
-          '"itemsTruncated":false}';
+          '{"movementId":"${financeTestMovementId(2)}","status":"AMBIGUOUS","ruleId":null,"targetCategoryId":null},'
+          '{"movementId":"${financeTestMovementId(3)}","status":"NO_MATCH","ruleId":null,"targetCategoryId":null}],'
+          '"applicableTruncated":false}';
       await _pumpDetail(tester, backend);
       await _openApplyDialog(tester);
 

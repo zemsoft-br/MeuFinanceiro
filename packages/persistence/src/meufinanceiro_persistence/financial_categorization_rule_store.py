@@ -72,6 +72,41 @@ from meufinanceiro_persistence.financial_movement_store import (
 )
 
 _REQUEST_DIGEST_NAMESPACE = "meufinanceiro:categorization-rule-create:v1"
+_RULE_SET_LOCK_NAMESPACE = "meufinanceiro:categorization-rule-set-lock:v1"
+
+
+def categorization_rule_set_lock_key(installation_id: UUID, residence_id: UUID) -> int:
+    """Fold (namespace, installation, residence) into a signed 64-bit advisory key.
+
+    Residence-scoped on purpose: a global rule (``account_id IS NULL``) can affect
+    any account of the residence, so a per-account lock would not be enough. The
+    namespace keeps the key space apart from every other advisory lock (banking).
+    """
+    digest = hashlib.sha256(
+        f"{_RULE_SET_LOCK_NAMESPACE}:{installation_id}:{residence_id}".encode()
+    ).digest()
+    value = int.from_bytes(digest[:8], "big", signed=True)
+    return value
+
+
+def _acquire_rule_set_lock(
+    connection: Connection, *, installation_id: UUID, residence_id: UUID
+) -> None:
+    """Take the residence rule-set lock for the rest of the transaction.
+
+    One contract for every participant: ``create_rule``, ``disable_rule`` and
+    ``apply_rule_to_movement`` all acquire it first (for apply: before reading
+    rules and before the Movement row lock), so an apply is linearizable against
+    any rule-set mutation. Manual classification does not take it; it stays
+    serialized by the Movement lock alone. Preview never takes it.
+    """
+    connection.execute(
+        select(
+            func.pg_advisory_xact_lock(
+                categorization_rule_set_lock_key(installation_id, residence_id)
+            )
+        )
+    )
 
 
 class FinancialCategorizationRulePersistenceError(RuntimeError):
@@ -140,6 +175,11 @@ class FinancialCategorizationRuleStore:
                     installation_id=installation_id,
                     residence_id=residence_id,
                     operator_id=operator_id,
+                )
+                _acquire_rule_set_lock(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
                 )
                 existing = _rule_by_idempotency(
                     connection,
@@ -333,6 +373,11 @@ class FinancialCategorizationRuleStore:
                     residence_id=residence_id,
                     operator_id=operator_id,
                 )
+                _acquire_rule_set_lock(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                )
                 row = (
                     connection.execute(
                         update(rules)
@@ -515,6 +560,12 @@ class FinancialCategorizationRuleStore:
                     installation_id=installation_id,
                     residence_id=residence_id,
                     operator_id=operator_id,
+                )
+                # Lock order is fixed: rule set first, then the Movement row.
+                _acquire_rule_set_lock(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
                 )
                 account = _owned_active_account(
                     connection,

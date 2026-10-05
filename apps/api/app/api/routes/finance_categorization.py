@@ -125,7 +125,7 @@ class CategorizationPreviewResponse(BaseModel):
     total_movements: int = Field(serialization_alias="totalMovements")
     counts: CategorizationPreviewCountsResponse
     items: tuple[CategorizationPreviewItemResponse, ...]
-    items_truncated: bool = Field(serialization_alias="itemsTruncated")
+    applicable_truncated: bool = Field(serialization_alias="applicableTruncated")
 
 
 class CategorizationApplyItemRequest(BaseModel):
@@ -301,7 +301,7 @@ def _preview_response(preview: CategorizationPreview) -> CategorizationPreviewRe
             )
             for item in preview.items
         ),
-        items_truncated=preview.items_truncated,
+        applicable_truncated=preview.applicable_truncated,
     )
 
 

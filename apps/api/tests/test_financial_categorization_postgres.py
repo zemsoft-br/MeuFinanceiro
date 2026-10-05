@@ -1259,3 +1259,108 @@ def test_a_rule_application_has_exactly_the_shape_of_a_manual_classification(
     # The only difference is evidence: one origin, for the rule-applied set.
     origins = _origins(api, "owner", account)
     assert [o["movementId"] for o in origins] == [str(by_rule)]
+
+
+# --- F1: per-Movement preview and NFC end to end -----------------------------
+
+
+def test_preview_distinguishes_every_movement_and_is_read_only(
+    pg_env: PgEnv, household: Household, api: Api
+) -> None:
+    category = api.category("owner")
+    other = api.category("owner", name="Outra")
+    account = api.account("owner")
+    other_account = api.account("owner")
+    rule = _create_rule(api, "owner", category, "padaria")
+    matched = api.entry("owner", account, "expense", "10.00", description="Padaria 1")
+    no_match = api.entry("owner", account, "expense", "11.00", description="Cinema")
+    classified = api.entry(
+        "owner", account, "expense", "12.00", description="Padaria 2"
+    )
+    assert api.classify("owner", classified, [(other, "-12.00")]).status_code == 201
+    reversed_id = api.entry(
+        "owner", account, "expense", "13.00", description="Estornada"
+    )
+    reversal = api.post(
+        "owner",
+        f"/movements/{reversed_id}/reversal",
+        {
+            "idempotencyKey": str(uuid4()),
+            "effectiveDate": "2026-09-21",
+            "competenceDate": "2026-09-21",
+            "reason": "Estorno de teste",
+        },
+    )
+    assert reversal.status_code == 201, reversal.text
+    transfer = api.post(
+        "owner",
+        "/transfers",
+        {
+            "idempotencyKey": str(uuid4()),
+            "sourceAccountId": str(account),
+            "destinationAccountId": str(other_account),
+            "amount": "5.00",
+            "currency": "BRL",
+            "effectiveDate": "2026-09-21",
+            "competenceDate": "2026-09-21",
+            "description": "Padaria transferência",
+        },
+    )
+    assert transfer.status_code == 201, transfer.text
+    tied_a = _create_rule(api, "owner", other, "estornada", priority=5)
+    tied_b = _create_rule(api, "owner", category, "estornada", priority=5)
+    assert tied_a != tied_b
+
+    sets_before = _table_count(
+        pg_env, financial_movement_allocation_sets, household.residence_id
+    )
+    body = _preview(api, "owner", account).json()
+    assert (
+        _table_count(pg_env, financial_movement_allocation_sets, household.residence_id)
+        == sets_before
+    )
+
+    statuses = {item["movementId"]: item for item in body["items"]}
+    assert len(body["items"]) == body["totalMovements"] == 6
+    assert body["applicableTruncated"] is False
+    assert statuses[str(matched)]["status"] == "MATCHED"
+    assert statuses[str(matched)]["ruleId"] == rule
+    assert statuses[str(matched)]["targetCategoryId"] == str(category)
+    assert statuses[str(no_match)]["status"] == "NO_MATCH"
+    assert statuses[str(classified)]["status"] == "ALREADY_CLASSIFIED"
+    assert statuses[str(reversed_id)]["status"] == "AMBIGUOUS"
+    ineligible = [i for i in body["items"] if i["status"] == "INELIGIBLE"]
+    assert len(ineligible) == 2  # the reversal and the NEUTRAL transfer leg
+    for item in body["items"]:
+        valid_rule = item["status"] == "MATCHED"
+        assert (item["ruleId"] is not None) == valid_rule
+        assert (item["targetCategoryId"] is not None) == valid_rule
+    counts = body["counts"]
+    assert counts == {
+        "matched": 1,
+        "noMatch": 1,
+        "ambiguous": 1,
+        "ineligible": 2,
+        "alreadyClassified": 1,
+    }
+    # the per-Movement state agrees with what apply would then do
+    applied = _apply(api, "owner", account, [(matched, rule)]).json()
+    assert applied["results"][0]["status"] == "CLASSIFIED"
+
+
+def test_nfc_and_casefold_match_end_to_end(api: Api) -> None:
+    category = api.category("owner")
+    account = api.account("owner")
+    composed = _create_rule(api, "owner", category, "Pão quente")
+    decomposed_upper = api.entry(
+        "owner", account, "expense", "9.00", description="PÃO QUENTE do bairro"
+    )
+    plain_accent_less = api.entry(
+        "owner", account, "expense", "9.00", description="Pao quente"
+    )
+    body = _preview(api, "owner", account).json()
+    by_id = {item["movementId"]: item["status"] for item in body["items"]}
+    assert by_id[str(decomposed_upper)] == "MATCHED"
+    assert by_id[str(plain_accent_less)] == "NO_MATCH", "accents are never stripped"
+    result = _apply(api, "owner", account, [(decomposed_upper, composed)]).json()
+    assert result["results"][0]["status"] == "CLASSIFIED"

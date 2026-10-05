@@ -6,10 +6,11 @@ Everything runs under the non-superuser runtime role with forced RLS.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from threading import Barrier
+from threading import Barrier, Event
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -40,6 +41,9 @@ from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import DBAPIError, IntegrityError
 
 from meufinanceiro_persistence import financial_categorization_rule_store as rule_module
+from meufinanceiro_persistence.banking_connection_gate import (
+    connection_advisory_lock_key,
+)
 from meufinanceiro_persistence.financial_account_store import FinancialAccountStore
 from meufinanceiro_persistence.financial_audit_schema import financial_audit_events
 from meufinanceiro_persistence.financial_categorization_rule_schema import (
@@ -53,6 +57,7 @@ from meufinanceiro_persistence.financial_categorization_rule_store import (
     FinancialCategorizationRuleNotFoundError,
     FinancialCategorizationRulePersistenceError,
     FinancialCategorizationRuleStore,
+    categorization_rule_set_lock_key,
 )
 from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.financial_category_store import FinancialCategoryStore
@@ -1295,3 +1300,303 @@ def test_no_provider_semantics_in_the_rule_schema() -> None:
         "priority",
         "status",
     }
+
+
+# --- rule-set serialization (F2) --------------------------------------------
+
+
+class _Hold:
+    """Parks an apply transaction after its locks and checks, before the write."""
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.entered = Event()
+        self.release = Event()
+        original = rule_module._append_allocation_set
+
+        def parked(connection: Connection, **kwargs: Any) -> Any:
+            self.entered.set()
+            assert self.release.wait(20), "test never released the parked apply"
+            return original(connection, **kwargs)
+
+        monkeypatch.setattr(rule_module, "_append_allocation_set", parked)
+
+
+def _still_blocked(future: Any, seconds: float = 0.7) -> bool:
+    try:
+        future.result(timeout=seconds)
+    except FutureTimeout:
+        return True
+    return False
+
+
+def test_rule_set_lock_is_residence_scoped_and_namespace_specific() -> None:
+    installation, residence, other = uuid4(), uuid4(), uuid4()
+    key = categorization_rule_set_lock_key(installation, residence)
+    assert key == categorization_rule_set_lock_key(installation, residence)
+    assert key != categorization_rule_set_lock_key(installation, other)
+    assert -(1 << 63) <= key < 1 << 63
+    # never the same key space as the banking connection gate for the same UUID
+    assert key != connection_advisory_lock_key(residence)
+
+
+def _advisory_lock_held(world: World, key: int) -> bool:
+    with world.engine.connect() as connection:
+        rows = connection.execute(
+            text(
+                "SELECT count(*) FROM pg_locks "
+                "WHERE locktype = 'advisory' AND granted "
+                "AND ((classid::bigint << 32) | objid::bigint) = :key"
+            ),
+            {"key": key},
+        ).scalar_one()
+    return rows > 0
+
+
+def test_create_disable_and_apply_share_one_lock_contract(world: World) -> None:
+    rule = _create_rule(world, _draft(world.household_category, "padaria"))
+    movement_id = _movement(world, "padaria")
+    key = categorization_rule_set_lock_key(world.installation_id, world.residence_id)
+
+    with world.runtime.connect() as holder:
+        transaction = holder.begin()
+        try:
+            _set_context(holder, world, world.owner_id)
+            rule_module._acquire_rule_set_lock(
+                holder,
+                installation_id=world.installation_id,
+                residence_id=world.residence_id,
+            )
+            assert _advisory_lock_held(world, key)
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                create = pool.submit(
+                    _create_rule, world, _draft(world.other_category, "x", priority=3)
+                )
+                disable = pool.submit(
+                    world.rules.disable_rule, **world.scope(), rule_id=rule.id
+                )
+                apply = pool.submit(_apply, world, movement_id, rule.id)
+                assert _still_blocked(create)
+                assert _still_blocked(disable)
+                assert _still_blocked(apply)
+                # nothing was evaluated or written while the rule set was held
+                assert _count(world.engine, financial_movement_allocation_sets) == 0
+                transaction.rollback()
+                create.result(timeout=20)
+                disable.result(timeout=20)
+                # whichever of disable/apply won, the other saw the winner's state
+                outcome = apply.result(timeout=20).status
+        finally:
+            if transaction.is_active:
+                transaction.rollback()
+    assert outcome in (Applied.CLASSIFIED, Applied.NO_MATCH)
+
+
+def test_apply_waits_for_the_rule_set_before_its_movement_lock(
+    world: World,
+) -> None:
+    """Fixed order: rule set first, Movement row second (no lock inversion)."""
+    rule = _create_rule(world, _draft(world.household_category, "padaria"))
+    movement_id = _movement(world, "padaria")
+    with world.runtime.connect() as holder:
+        transaction = holder.begin()
+        try:
+            _set_context(holder, world, world.owner_id)
+            rule_module._acquire_rule_set_lock(
+                holder,
+                installation_id=world.installation_id,
+                residence_id=world.residence_id,
+            )
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                apply = pool.submit(_apply, world, movement_id, rule.id)
+                assert _still_blocked(apply)
+                # a manual classification only needs the Movement lock: not blocked
+                manual = pool.submit(
+                    world.allocations.create_allocation_set,
+                    **world.scope(),
+                    idempotency_key=new_financial_idempotency_key(),
+                    draft=FinancialMovementAllocationSetDraft(
+                        movement_id=movement_id,
+                        allocations=(
+                            FinancialMovementAllocationDraft(
+                                world.other_category, Money(Decimal("-50.00"), "BRL")
+                            ),
+                        ),
+                    ),
+                )
+                manual.result(timeout=20)
+                transaction.rollback()
+                # the parked apply then re-evaluates and finds the manual winner
+                assert apply.result(timeout=20).status is Applied.ALREADY_CLASSIFIED
+        finally:
+            if transaction.is_active:
+                transaction.rollback()
+    assert _count(world.engine, financial_movement_allocation_sets) == 1
+    assert _count(world.engine, financial_movement_allocation_rule_origins) == 0
+
+
+def test_a_rule_created_while_apply_is_in_flight_waits_and_applies_after(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A) apply commits first; the higher/tied rule is created afterwards."""
+    old = _create_rule(world, _draft(world.household_category, "padaria", priority=5))
+    movement_id = _movement(world, "padaria")
+    later = _movement(world, "padaria 2")
+    hold = _Hold(monkeypatch)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        apply = pool.submit(_apply, world, movement_id, old.id)
+        assert hold.entered.wait(20)
+        create = pool.submit(
+            _create_rule, world, _draft(world.other_category, "padaria", priority=5)
+        )
+        assert _still_blocked(create), "rule creation must wait for the apply"
+        hold.release.set()
+        assert apply.result(timeout=20).status is Applied.CLASSIFIED
+        tied = create.result(timeout=20)
+    monkeypatch.undo()
+
+    # valid serialization: the first Movement was classified before the tie existed
+    current = world.allocations.get_current_allocation_set(
+        **world.scope(), movement_id=movement_id
+    )
+    assert current.allocations[0].category_id == world.household_category
+    # the next Movement sees the new tied rule set and fails closed
+    assert _apply(world, later, old.id).status is Applied.AMBIGUOUS
+    assert _apply(world, later, tied.id).status is Applied.AMBIGUOUS
+    assert _count(world.engine, financial_movement_allocation_sets) == 1
+    assert _count(world.engine, financial_movement_allocation_rule_origins) == 1
+
+
+def test_a_higher_or_tied_rule_committed_first_is_seen_by_the_apply(
+    world: World,
+) -> None:
+    """B) the rule-set mutation commits first; apply re-evaluates canonically."""
+    old = _create_rule(world, _draft(world.household_category, "padaria", priority=5))
+    higher_movement = _movement(world, "padaria 1")
+    tie_movement = _movement(world, "padaria 2")
+    audit_before = _count(world.engine, financial_audit_events)
+
+    higher = _create_rule(world, _draft(world.other_category, "padaria 1", priority=9))
+    result = _apply(world, higher_movement, old.id)
+    assert result.status is Applied.CONFLICT and result.rule_id == higher.id
+
+    tied = _create_rule(world, _draft(world.other_category, "padaria 2", priority=5))
+    assert _apply(world, tie_movement, old.id).status is Applied.AMBIGUOUS
+    assert _apply(world, tie_movement, tied.id).status is Applied.AMBIGUOUS
+    assert _count(world.engine, financial_movement_allocation_sets) == 0
+    assert _count(world.engine, financial_movement_allocation_rule_origins) == 0
+    assert _count(world.engine, financial_audit_events) == audit_before
+
+
+def test_a_concurrent_rule_creation_never_lets_a_stale_apply_persist(
+    world: World,
+) -> None:
+    """Repeated race: whoever wins, the persisted result matches that order."""
+    for _ in range(4):
+        old = _create_rule(
+            world, _draft(world.household_category, "padaria", priority=5)
+        )
+        movement_id = _movement(world, "padaria")
+        barrier = Barrier(2)
+
+        def do_apply(old_id: UUID = old.id, movement: UUID = movement_id) -> Applied:
+            barrier.wait()
+            return _apply(world, movement, old_id).status
+
+        def do_create() -> Any:
+            barrier.wait()
+            return _create_rule(
+                world, _draft(world.other_category, "padaria", priority=5)
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            applying, creating = pool.submit(do_apply), pool.submit(do_create)
+            status, created = applying.result(timeout=30), creating.result(timeout=30)
+
+        if status is Applied.CLASSIFIED:
+            # apply serialized before the tie: the classification is the old rule's
+            origins = {
+                o.movement_id: o.rule_id
+                for o in world.rules.list_current_rule_origins(
+                    **world.scope(), account_id=world.account_id
+                )
+            }
+            assert origins[movement_id] == old.id
+        else:
+            # the tie committed first: apply must have failed closed, never written
+            assert status is Applied.AMBIGUOUS
+            written = {
+                o.movement_id
+                for o in world.rules.list_current_rule_origins(
+                    **world.scope(), account_id=world.account_id
+                )
+            }
+            assert movement_id not in written
+        # reset the rule set for the next round
+        world.rules.disable_rule(**world.scope(), rule_id=old.id)
+        world.rules.disable_rule(**world.scope(), rule_id=created.id)
+
+
+def test_disable_of_the_chosen_rule_still_serializes_with_apply(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """C) disable vs apply: disable waits, the application commits with provenance."""
+    rule = _create_rule(world, _draft(world.household_category, "padaria"))
+    movement_id = _movement(world, "padaria")
+    hold = _Hold(monkeypatch)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        apply = pool.submit(_apply, world, movement_id, rule.id)
+        assert hold.entered.wait(20)
+        disable = pool.submit(
+            world.rules.disable_rule, **world.scope(), rule_id=rule.id
+        )
+        assert _still_blocked(disable)
+        hold.release.set()
+        assert apply.result(timeout=20).status is Applied.CLASSIFIED
+        assert (
+            disable.result(timeout=20).status
+            is FinancialCategorizationRuleStatus.DISABLED
+        )
+    monkeypatch.undo()
+    assert _count(world.engine, financial_movement_allocation_sets) == 1
+    assert _count(world.engine, financial_movement_allocation_rule_origins) == 1
+    assert _apply(world, _movement(world, "padaria 2"), rule.id).status is (
+        Applied.NO_MATCH
+    )
+
+
+def test_manual_classification_still_wins_over_a_parked_apply(
+    world: World, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """D) manual vs apply stays serialized by the Movement lock: one current set."""
+    rule = _create_rule(world, _draft(world.household_category, "padaria"))
+    movement_id = _movement(world, "padaria")
+    hold = _Hold(monkeypatch)
+    manual_draft = FinancialMovementAllocationSetDraft(
+        movement_id=movement_id,
+        allocations=(
+            FinancialMovementAllocationDraft(
+                world.other_category, Money(Decimal("-50.00"), "BRL")
+            ),
+        ),
+    )
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        apply = pool.submit(_apply, world, movement_id, rule.id)
+        assert hold.entered.wait(20)  # apply holds rule set + Movement lock
+        manual = pool.submit(
+            world.allocations.create_allocation_set,
+            **world.scope(),
+            idempotency_key=new_financial_idempotency_key(),
+            draft=manual_draft,
+        )
+        assert _still_blocked(manual), "manual waits on the Movement lock"
+        hold.release.set()
+        assert apply.result(timeout=20).status is Applied.CLASSIFIED
+        with pytest.raises(FinancialMovementAllocationConflictError):
+            manual.result(timeout=20)
+    monkeypatch.undo()
+    assert _count(world.engine, financial_movement_allocation_sets) == 1
+    current = world.allocations.get_current_allocation_set(
+        **world.scope(), movement_id=movement_id
+    )
+    assert current.revision == 1
+    assert _count(world.engine, financial_movement_allocation_rule_origins) == 1

@@ -41,7 +41,7 @@ O resultado por Movement (`CLASSIFIED`, `ALREADY_CLASSIFIED`, `AMBIGUOUS`, `NO_M
 
 ### Idempotência e concorrência
 
-A chave de idempotência de cada aplicação é derivada deterministicamente de `(rule_id, movement_id)` (UUID v4-shaped), com contrato explícito e teste; não há geração aleatória em retry. Replay do apply nunca cria revisão (o Movement já classificado é `ALREADY_CLASSIFIED`). Aplicação concorrente com classificação manual ou com outra regra serializa no lock do Movement: exatamente uma classificação vence e nenhuma revisão automática é criada. A criação de regra aceita `idempotencyKey` (replay seguro; reutilização com outro material é `409`), para que um retry explícito após resultado ambíguo não duplique regras. O cliente nunca reenvia uma escrita ambígua automaticamente.
+A chave de idempotência de cada aplicação é derivada deterministicamente de `(rule_id, movement_id)` (UUID v4-shaped), com contrato explícito e teste; não há geração aleatória em retry. Replay do apply nunca cria revisão (o Movement já classificado é `ALREADY_CLASSIFIED`). O apply também é linearizável contra a criação/desabilitação de regras: as três operações adquirem o mesmo advisory lock transacional, namespace-específico e por residência (regras globais valem para qualquer conta), e o apply o adquire antes de avaliar regras e antes do lock de linha do Movement, numa ordem fixa. Preview não toma o lock. Aplicação concorrente com classificação manual ou com outra regra serializa no lock do Movement: exatamente uma classificação vence e nenhuma revisão automática é criada. A criação de regra aceita `idempotencyKey` (replay seguro; reutilização com outro material é `409`), para que um retry explícito após resultado ambíguo não duplique regras. O cliente nunca reenvia uma escrita ambígua automaticamente.
 
 ### Lifecycle de regra fica fora da auditoria financeira fechada
 
@@ -71,6 +71,7 @@ Ator e residência vêm do servidor. A regra é visível somente se a categoria-
 
 - Mudar uma regra exige criar outra; o histórico de regras desabilitadas cresce (sem histórico visual completo nesta entrega).
 - Apply faz uma transação por Movement (limite de 200 pares por requisição); listas maiores exigem aplicar e pré-visualizar de novo.
+- O lock do conjunto de regras é por residência: applies e mutações de regra da mesma residência se serializam brevemente.
 - Duas regras equivalentes ativas empatam e bloqueiam a classificação até uma ser desabilitada (efeito intencional do fail-closed).
 - A visibilidade de regras segue a audiência da categoria-alvo e da conta; operadores diferentes da mesma residência podem enxergar conjuntos de regras diferentes.
 
