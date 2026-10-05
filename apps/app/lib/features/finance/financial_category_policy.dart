@@ -175,6 +175,20 @@ bool canClassifyFinancialMovementSimply({
     isFinancialMovementClassifiableKind(movement) &&
     currentAllocation == null;
 
+/// Whether the UI may offer "Alterar classificação": same preconditions as the
+/// first classification, but the Movement must already have a current
+/// allocation (the explicit predecessor of the new revision).
+bool canReviseFinancialMovementClassification({
+  required FinancialAccount account,
+  required FinancialMovement movement,
+  required FinancialMovementAllocation? currentAllocation,
+  required String? operatorId,
+}) =>
+    account.status == FinancialAccountStatus.active &&
+    isFinancialAccountOwner(account: account, operatorId: operatorId) &&
+    isFinancialMovementClassifiableKind(movement) &&
+    currentAllocation != null;
+
 /// "Sem categoria", the category path, or "N categorias". Non-classifiable
 /// kinds (NEUTRAL/REVERSAL) are "Não se aplica", never a pending task.
 String financialMovementClassificationLabel({

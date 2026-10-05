@@ -1022,6 +1022,284 @@ void main() {
       }
     });
   });
+
+  group('revise movement allocation', () {
+    FinancialMovementAllocationRevisionInput revision({
+      String supersedesId = _allocationSetId,
+      List<FinancialAllocationShareInput>? shares,
+      String? key = _idempotencyKey,
+    }) => FinancialMovementAllocationRevisionInput(
+      supersedesId: supersedesId,
+      idempotencyKey: key,
+      allocations:
+          shares ??
+          [
+            FinancialAllocationShareInput(
+              categoryId: _categoryId,
+              amount: '-75.25',
+              currency: 'BRL',
+            ),
+          ],
+    );
+
+    String revisionResponse({
+      String movementId = _movementId,
+      int number = 2,
+      String? supersedes = _allocationSetId,
+      List<(String, String)> shares = const [(_categoryId, '-75.25')],
+    }) => _allocationObject(
+      setId: _otherAllocationSetId,
+      movementId: movementId,
+      revision: number,
+      supersedesId: supersedes,
+      shares: shares,
+    );
+
+    test(
+      'POSTs once to the revisions path with the movement only in the path',
+      () async {
+        final transport = FakeAuthTransport.response(
+          statusCode: 201,
+          body: revisionResponse(),
+        );
+
+        final created = await _api(
+          transport,
+        ).reviseMovementAllocation(_movementId, revision());
+
+        expect(transport.calls, hasLength(1));
+        final call = transport.calls.single;
+        expect(call.method, AuthHttpMethod.post);
+        expect(
+          call.uri.path,
+          '/api/v1/finance/movements/$_movementId/allocation/revisions',
+        );
+        final body = jsonDecode(call.body!) as Map<String, dynamic>;
+        expect(body.keys.toSet(), {
+          'idempotencyKey',
+          'supersedesId',
+          'allocations',
+        });
+        expect(body['idempotencyKey'], _idempotencyKey);
+        expect(body['supersedesId'], _allocationSetId);
+        expect(call.body!, isNot(contains(_movementId)));
+        expect(created.revision, 2);
+        expect(created.supersedesId, _allocationSetId);
+        expect(created.movementId, _movementId);
+      },
+    );
+
+    test('one share: amount and currency are strings', () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: revisionResponse(),
+      );
+      await _api(transport).reviseMovementAllocation(_movementId, revision());
+
+      final body = jsonDecode(transport.calls.single.body!) as Map;
+      final shares = body['allocations'] as List<dynamic>;
+      expect(shares, hasLength(1));
+      final share = shares.single as Map<String, dynamic>;
+      expect(share, {
+        'categoryId': _categoryId,
+        'amount': '-75.25',
+        'currency': 'BRL',
+      });
+      expect(share['amount'], isA<String>());
+      expect(share['currency'], isA<String>());
+    });
+
+    test('multiple shares keep every amount as an exact string', () async {
+      final transport = FakeAuthTransport.response(
+        statusCode: 201,
+        body: revisionResponse(
+          shares: const [
+            (_categoryId, '-0.10'),
+            (_childCategoryId, '-75.15000001'),
+          ],
+        ),
+      );
+      final created = await _api(transport).reviseMovementAllocation(
+        _movementId,
+        revision(
+          shares: [
+            FinancialAllocationShareInput(
+              categoryId: _categoryId,
+              amount: '-0.10',
+              currency: 'BRL',
+            ),
+            FinancialAllocationShareInput(
+              categoryId: _childCategoryId,
+              amount: '-75.15000001',
+              currency: 'BRL',
+            ),
+          ],
+        ),
+      );
+
+      final body = jsonDecode(transport.calls.single.body!) as Map;
+      expect((body['allocations'] as List).map((s) => (s as Map)['amount']), [
+        '-0.10',
+        '-75.15000001',
+      ]);
+      expect(created.allocations, hasLength(2));
+    });
+
+    test('input validates predecessor, key and share shape locally', () {
+      expect(
+        () => revision(key: 'not-a-uuid'),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => revision(supersedesId: 'not-a-uuid'),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => FinancialMovementAllocationRevisionInput(
+          supersedesId: _allocationSetId,
+          allocations: const [],
+        ),
+        throwsA(isA<FormatException>()),
+      );
+      expect(
+        () => revision(
+          shares: [
+            for (var i = 0; i < 2; i++)
+              FinancialAllocationShareInput(
+                categoryId: _categoryId,
+                amount: '-1',
+                currency: 'BRL',
+              ),
+          ],
+        ),
+        throwsA(isA<FormatException>()),
+        reason: 'duplicate category',
+      );
+      expect(
+        () => FinancialAllocationShareInput(
+          categoryId: _categoryId,
+          amount: '0.00',
+          currency: 'BRL',
+        ),
+        throwsA(isA<FormatException>()),
+        reason: 'zero share',
+      );
+    });
+
+    test('accepts 50 shares and rejects 51 locally', () {
+      List<FinancialAllocationShareInput> shares(int count) => [
+        for (var i = 0; i < count; i++)
+          FinancialAllocationShareInput(
+            categoryId:
+                'a1000000-0000-4000-8000-${i.toString().padLeft(12, '0')}',
+            amount: '-1',
+            currency: 'BRL',
+          ),
+      ];
+
+      expect(revision(shares: shares(50)).allocations, hasLength(50));
+      expect(
+        () => revision(shares: shares(51)),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('fresh key per input unless supplied', () {
+      expect(
+        revision(key: null).idempotencyKey,
+        isNot(revision(key: null).idempotencyKey),
+      );
+    });
+
+    test('rejects a response for another movement', () async {
+      await expectLater(
+        _api(
+          FakeAuthTransport.response(
+            statusCode: 201,
+            body: revisionResponse(movementId: _otherMovementId),
+          ),
+        ).reviseMovementAllocation(_movementId, revision()),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('rejects a response with another predecessor', () async {
+      await expectLater(
+        _api(
+          FakeAuthTransport.response(
+            statusCode: 201,
+            body: revisionResponse(supersedes: _disabledCategoryId),
+          ),
+        ).reviseMovementAllocation(_movementId, revision()),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('rejects revision 1 / a response without predecessor', () async {
+      await expectLater(
+        _api(
+          FakeAuthTransport.response(
+            statusCode: 201,
+            body: revisionResponse(number: 1, supersedes: null),
+          ),
+        ).reviseMovementAllocation(_movementId, revision()),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('rejects a response whose shares differ from the request', () async {
+      for (final shares in [
+        const [(_categoryId, '-75.26')],
+        const [(_childCategoryId, '-75.25')],
+        const [(_categoryId, '-75.24'), (_childCategoryId, '-0.01')],
+      ]) {
+        await expectLater(
+          _api(
+            FakeAuthTransport.response(
+              statusCode: 201,
+              body: revisionResponse(shares: shares),
+            ),
+          ).reviseMovementAllocation(_movementId, revision()),
+          throwsA(isA<FormatException>()),
+        );
+      }
+    });
+
+    test('rejects an unknown key, malformed and non-JSON bodies', () async {
+      for (final body in [
+        revisionResponse().replaceFirst(
+          '"revision":2',
+          '"revision":2,"percent":"100"',
+        ),
+        '[]',
+        'not json',
+      ]) {
+        await expectLater(
+          _api(
+            FakeAuthTransport.response(statusCode: 201, body: body),
+          ).reviseMovementAllocation(_movementId, revision()),
+          throwsA(isA<FormatException>()),
+        );
+      }
+    });
+
+    test('409, 404 and 422 surface as typed status errors', () async {
+      for (final status in [404, 409, 422]) {
+        await expectLater(
+          _api(
+            FakeAuthTransport.response(statusCode: status, body: '{}'),
+          ).reviseMovementAllocation(_movementId, revision()),
+          throwsA(
+            isA<AuthenticatedApiException>().having(
+              (error) => error.statusCode,
+              'statusCode',
+              status,
+            ),
+          ),
+        );
+      }
+    });
+  });
 }
 
 String _categoryObject({

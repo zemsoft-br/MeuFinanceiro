@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
+import 'package:meufinanceiro_app/features/finance/financial_allocation_math.dart';
 import 'package:meufinanceiro_app/features/finance/financial_category_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
@@ -169,38 +170,53 @@ class _FinancialAccountDetailScreenState
   Future<void> _classifyMovement(
     FinancialAccount account,
     FinancialMovement movement,
-    String? operatorId,
-  ) async {
-    final categoryId = await showDialog<String>(
+    String? operatorId, {
+    FinancialMovementAllocation? current,
+  }) async {
+    final submission = await showDialog<_ClassificationSubmission>(
       context: context,
       builder: (context) => _ClassifyMovementDialog(
         accountId: widget.accountId,
         account: account,
         movement: movement,
         operatorId: operatorId,
+        current: current,
       ),
     );
-    if (categoryId == null || !mounted) return;
-    final outcome = await ref
-        .read(
-          financialAccountDetailControllerProvider(widget.accountId).notifier,
-        )
-        .classifyMovement(
-          movementId: movement.movementId,
-          categoryId: categoryId,
-        );
+    if (submission == null || !mounted) return;
+    final controller = ref.read(
+      financialAccountDetailControllerProvider(widget.accountId).notifier,
+    );
+    final supersedesId = submission.supersedesId;
+    final outcome = supersedesId == null
+        ? await controller.classifyMovementShares(
+            movementId: movement.movementId,
+            shares: submission.shares,
+          )
+        : await controller.reviseMovementClassification(
+            movementId: movement.movementId,
+            supersedesId: supersedesId,
+            shares: submission.shares,
+          );
     if (!mounted) return;
-    final trusted = ref
-        .read(financialAccountDetailControllerProvider(widget.accountId))
-        .classificationTrusted;
-    final message = !trusted
+    final latest = ref.read(
+      financialAccountDetailControllerProvider(widget.accountId),
+    );
+    final revision = supersedesId != null;
+    final message = !latest.classificationTrusted
         ? 'Não foi possível confirmar o estado das classificações. '
               'Use Atualizar antes de classificar novamente.'
         : switch (outcome) {
-            FinancialMutationOutcome.success => 'Lançamento classificado.',
+            FinancialMutationOutcome.success =>
+              revision ? 'Classificação alterada.' : 'Lançamento classificado.',
             FinancialMutationOutcome.conflictReconciled =>
-              'O lançamento foi atualizado com a classificação persistida. '
-                  'Nada foi aplicado; revise e tente novamente se desejar.',
+              revision
+                  ? 'A classificação mudou antes de salvar. O lançamento foi '
+                        'atualizado com a classificação persistida e sua edição '
+                        'não foi aplicada. Abra Alterar classificação para '
+                        'revisar novamente.'
+                  : 'O lançamento foi atualizado com a classificação persistida. '
+                        'Nada foi aplicado; revise e tente novamente se desejar.',
             FinancialMutationOutcome.rejected =>
               'A classificação não foi aceita. Atualize a tela e confira a categoria.',
             FinancialMutationOutcome.temporarilyUnavailable =>
@@ -212,8 +228,16 @@ class _FinancialAccountDetailScreenState
             FinancialMutationOutcome.notAllowed =>
               'Este lançamento não pode ser classificado agora.',
             FinancialMutationOutcome.unknownOutcomeReconciled =>
-              'O estado das classificações foi reconciliado com o persistido. '
-                  'Confira o lançamento antes de classificar novamente.',
+              revision &&
+                      latest
+                              .currentAllocations[movement.movementId]
+                              ?.allocationSetId ==
+                          supersedesId
+                  ? 'Não foi possível confirmar a alteração e nada mudou na '
+                        'classificação persistida. Revise e tente novamente '
+                        'se desejar.'
+                  : 'O estado das classificações foi reconciliado com o persistido. '
+                        'Confira o lançamento antes de classificar novamente.',
           };
     ScaffoldMessenger.of(
       context,
@@ -467,6 +491,14 @@ class _FinancialAccountDetailScreenState
                     !state.isBusy && state.classificationTrusted,
                 onClassify: (movement) =>
                     unawaited(_classifyMovement(account, movement, operatorId)),
+                onRevise: (movement, current) => unawaited(
+                  _classifyMovement(
+                    account,
+                    movement,
+                    operatorId,
+                    current: current,
+                  ),
+                ),
                 allowReversal:
                     account.status == FinancialAccountStatus.active &&
                     !state.operationMutationInFlight &&
@@ -748,6 +780,7 @@ class _StatementCard extends StatelessWidget {
     required this.operatorId,
     required this.allowClassification,
     required this.onClassify,
+    required this.onRevise,
     required this.allowReversal,
     required this.onReverseMovement,
     required this.onReverseTransfer,
@@ -761,6 +794,7 @@ class _StatementCard extends StatelessWidget {
   final String? operatorId;
   final bool allowClassification;
   final ValueChanged<FinancialMovement> onClassify;
+  final void Function(FinancialMovement, FinancialMovementAllocation) onRevise;
   final bool allowReversal;
   final ValueChanged<FinancialMovement> onReverseMovement;
   final void Function(FinancialTransfer, FinancialMovement) onReverseTransfer;
@@ -812,6 +846,26 @@ class _StatementCard extends StatelessWidget {
                       currentAllocation: allocation,
                       operatorId: operatorId,
                     );
+                final canRevise =
+                    allowClassification &&
+                    canReviseFinancialMovementClassification(
+                      account: account,
+                      movement: movement,
+                      currentAllocation: allocation,
+                      operatorId: operatorId,
+                    );
+                final shareLines = <_ShareLine>[
+                  if (allocation != null && allocation.allocations.length > 1)
+                    for (final share in allocation.allocations)
+                      _ShareLine(
+                        key: Key(
+                          'financial-movement-share-${movement.movementId}-${share.categoryId}',
+                        ),
+                        text:
+                            '${_shareCategoryLabel(categoryIndex, share.categoryId)}'
+                            ' · ${formatFinancialMoney(share.money)}',
+                      ),
+                ];
                 String classificationLabel;
                 try {
                   classificationLabel = financialMovementClassificationLabel(
@@ -827,7 +881,11 @@ class _StatementCard extends StatelessWidget {
                   child: _StatementRow(
                     entry: entry,
                     classificationLabel: classificationLabel,
+                    shareLines: shareLines,
                     onClassify: canClassify ? () => onClassify(movement) : null,
+                    onRevise: canRevise && allocation != null
+                        ? () => onRevise(movement, allocation)
+                        : null,
                     transferId: reversibleTransfer?.transferId,
                     onReverseMovement: reversibleMovement
                         ? () => onReverseMovement(movement)
@@ -845,11 +903,29 @@ class _StatementCard extends StatelessWidget {
   }
 }
 
+class _ShareLine {
+  const _ShareLine({required this.key, required this.text});
+
+  final Key key;
+  final String text;
+}
+
+/// Component label of a multi-share allocation. A DISABLED category stays
+/// readable and says so; an unresolvable one is never guessed.
+String _shareCategoryLabel(FinancialCategoryIndex index, String categoryId) {
+  final category = index.byId(categoryId);
+  final path = index.pathLabel(categoryId);
+  if (category == null || path == null) return 'Categoria indisponível';
+  return category.isActive ? path : '$path (indisponível)';
+}
+
 class _StatementRow extends StatelessWidget {
   const _StatementRow({
     required this.entry,
     required this.classificationLabel,
+    required this.shareLines,
     required this.onClassify,
+    required this.onRevise,
     required this.transferId,
     required this.onReverseMovement,
     required this.onReverseTransfer,
@@ -857,7 +933,9 @@ class _StatementRow extends StatelessWidget {
 
   final FinancialStatementEntry entry;
   final String classificationLabel;
+  final List<_ShareLine> shareLines;
   final VoidCallback? onClassify;
+  final VoidCallback? onRevise;
   final String? transferId;
   final VoidCallback? onReverseMovement;
   final VoidCallback? onReverseTransfer;
@@ -912,6 +990,15 @@ class _StatementRow extends StatelessWidget {
                   ),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                for (final line in shareLines)
+                  Padding(
+                    padding: const EdgeInsets.only(left: AppTokens.space12),
+                    child: Text(
+                      line.text,
+                      key: line.key,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
                 const SizedBox(height: AppTokens.space4),
                 Text(
                   'Saldo após evento: ${formatFinancialMoney(entry.balanceAfter)}',
@@ -942,6 +1029,15 @@ class _StatementRow extends StatelessWidget {
                   label: const Text('Classificar'),
                 ),
               ],
+              if (onRevise != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                FilledButton.tonalIcon(
+                  key: Key('financial-movement-revise-${movement.movementId}'),
+                  onPressed: onRevise,
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Alterar classificação'),
+                ),
+              ],
               if (onReverseMovement != null) ...[
                 const SizedBox(height: AppTokens.space8),
                 TextButton.icon(
@@ -968,18 +1064,42 @@ class _StatementRow extends StatelessWidget {
   }
 }
 
+/// What the editor hands back: the shares to send and, for a revision, the
+/// predecessor the editor was opened on (never looked up anywhere else).
+class _ClassificationSubmission {
+  const _ClassificationSubmission({required this.shares, this.supersedesId});
+
+  final List<FinancialAllocationShareInput> shares;
+  final String? supersedesId;
+
+  bool get isRevision => supersedesId != null;
+}
+
+class _EditorRow {
+  _EditorRow({this.categoryId, String amountText = ''})
+    : controller = TextEditingController(text: amountText);
+
+  String? categoryId;
+  final TextEditingController controller;
+}
+
 class _ClassifyMovementDialog extends ConsumerStatefulWidget {
   const _ClassifyMovementDialog({
     required this.accountId,
     required this.account,
     required this.movement,
     required this.operatorId,
+    required this.current,
   });
 
   final String accountId;
   final FinancialAccount account;
   final FinancialMovement movement;
   final String? operatorId;
+
+  /// The allocation this editor revises, captured when it was opened. Null for
+  /// a first classification.
+  final FinancialMovementAllocation? current;
 
   static const dialogKey = Key('financial-classify-dialog');
   static const confirmKey = Key('financial-classify-confirm');
@@ -988,6 +1108,23 @@ class _ClassifyMovementDialog extends ConsumerStatefulWidget {
   static const noticeKey = Key('financial-classify-notice');
   static const unknownKey = Key('financial-classify-category-unknown');
   static const reconcileKey = Key('financial-classify-reconcile-categories');
+  static const modeKey = Key('financial-classify-mode');
+  static const addShareKey = Key('financial-allocation-add');
+  static const totalKey = Key('financial-allocation-total');
+  static const allocatedKey = Key('financial-allocation-allocated');
+  static const remainingKey = Key('financial-allocation-remaining');
+  static const unchangedKey = Key('financial-allocation-unchanged');
+
+  static Key rowCategoryKey(int index) =>
+      Key('financial-allocation-row-category-$index');
+  static Key rowAmountKey(int index) =>
+      Key('financial-allocation-row-amount-$index');
+  static Key rowRemoveKey(int index) =>
+      Key('financial-allocation-row-remove-$index');
+  static Key rowUnavailableKey(int index) =>
+      Key('financial-allocation-row-unavailable-$index');
+  static Key optionKey(String categoryId) =>
+      Key('financial-allocation-option-$categoryId');
 
   @override
   ConsumerState<_ClassifyMovementDialog> createState() =>
@@ -996,9 +1133,74 @@ class _ClassifyMovementDialog extends ConsumerStatefulWidget {
 
 class _ClassifyMovementDialogState
     extends ConsumerState<_ClassifyMovementDialog> {
+  late bool _split;
   String? _selectedCategoryId;
+  final List<_EditorRow> _rows = [];
   String? _error;
   String? _notice;
+
+  FinancialMovementAllocation? get _current => widget.current;
+
+  @override
+  void initState() {
+    super.initState();
+    final current = _current;
+    _split = current != null && current.allocations.length > 1;
+    if (current != null && current.allocations.length == 1) {
+      _selectedCategoryId = current.allocations.single.categoryId;
+    }
+    if (_split) _seedRows();
+  }
+
+  @override
+  void dispose() {
+    for (final row in _rows) {
+      row.controller.dispose();
+    }
+    super.dispose();
+  }
+
+  /// Rows for the split editor: the current shares when revising (so the
+  /// components stay visible), otherwise two empty lines.
+  void _seedRows() {
+    final current = _current;
+    if (current != null) {
+      for (final share in current.allocations) {
+        _rows.add(
+          _EditorRow(
+            categoryId: share.categoryId,
+            amountText: financialShareMagnitudeText(share.money.amount),
+          ),
+        );
+      }
+      if (_rows.length == 1) _rows.add(_EditorRow());
+      return;
+    }
+    _rows.add(_EditorRow(categoryId: _selectedCategoryId));
+    _rows.add(_EditorRow());
+  }
+
+  void _setSplit(bool split) {
+    if (split == _split) return;
+    setState(() {
+      _split = split;
+      if (split && _rows.isEmpty) _seedRows();
+    });
+  }
+
+  FinancialAllocationDraftReport _report(FinancialAccountDetailState state) =>
+      evaluateFinancialAllocationDraft(
+        movement: widget.movement,
+        account: widget.account,
+        index: state.categoryIndex,
+        rows: [
+          for (final row in _rows)
+            FinancialAllocationDraftRow(
+              categoryId: row.categoryId,
+              amountText: row.controller.text,
+            ),
+        ],
+      );
 
   Future<void> _createCategory() async {
     final operatorId = widget.operatorId;
@@ -1032,7 +1234,14 @@ class _ClassifyMovementDialogState
                 category: created,
                 account: widget.account,
               )) {
-            _selectedCategoryId = created.categoryId;
+            if (_split) {
+              final empty = _rows
+                  .where((row) => row.categoryId == null)
+                  .firstOrNull;
+              if (empty != null) empty.categoryId = created.categoryId;
+            } else {
+              _selectedCategoryId = created.categoryId;
+            }
           }
         case FinancialMutationOutcome.rejected:
           _error = 'A categoria não foi aceita. Revise nome, escopo e pai.';
@@ -1080,6 +1289,187 @@ class _ClassifyMovementDialogState
     });
   }
 
+  /// Shares the current mode would send, or null while it cannot close.
+  List<FinancialAllocationShareInput>? _sharesToSend(
+    FinancialAccountDetailState state,
+    List<FinancialCategory> eligible,
+    FinancialAllocationDraftReport report,
+  ) {
+    if (_split) return report.shares;
+    final selected = _selectedCategoryId;
+    if (selected == null ||
+        !eligible.any((item) => item.categoryId == selected)) {
+      return null;
+    }
+    return FinancialMovementAllocationCreateInput.single(
+      categoryId: selected,
+      movementMoney: widget.movement.money,
+    ).allocations;
+  }
+
+  String _categoryLabel(FinancialAccountDetailState state, String id) {
+    final category = state.categoryIndex.byId(id);
+    final path = state.categoryIndex.pathLabel(id);
+    if (category == null || path == null) return 'Categoria desconhecida';
+    return category.isActive ? path : '$path (indisponível)';
+  }
+
+  Widget _splitRow(
+    FinancialAccountDetailState state,
+    List<FinancialCategory> eligible,
+    FinancialAllocationDraftReport report,
+    int index,
+  ) {
+    final row = _rows[index];
+    final rowReport = report.rows[index];
+    final takenByOthers = {
+      for (var i = 0; i < _rows.length; i++)
+        if (i != index && _rows[i].categoryId != null) _rows[i].categoryId!,
+    };
+    final options = <FinancialCategory>[
+      for (final category in eligible)
+        if (!takenByOthers.contains(category.categoryId)) category,
+    ];
+    final selectedId = row.categoryId;
+    final selectedIsOffered =
+        selectedId == null ||
+        options.any((item) => item.categoryId == selectedId);
+    final unavailable = !selectedIsOffered;
+    final amountText = row.controller.text.trim();
+    String? amountError;
+    if (amountText.isNotEmpty) {
+      if (rowReport.issues.contains(FinancialAllocationIssue.invalidAmount)) {
+        amountError = 'Valor inválido.';
+      } else if (rowReport.issues.contains(
+        FinancialAllocationIssue.zeroAmount,
+      )) {
+        amountError = 'Informe um valor maior que zero.';
+      }
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.space12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: KeyedSubtree(
+                  key: ValueKey('row-${identityHashCode(row)}-$selectedId'),
+                  child: DropdownButtonFormField<String>(
+                    key: _ClassifyMovementDialog.rowCategoryKey(index),
+                    initialValue: selectedId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Categoria ${index + 1}',
+                    ),
+                    items: [
+                      for (final category in options)
+                        DropdownMenuItem<String>(
+                          value: category.categoryId,
+                          child: Text(
+                            key: _ClassifyMovementDialog.optionKey(
+                              category.categoryId,
+                            ),
+                            state.categoryIndex.pathLabel(
+                                  category.categoryId,
+                                ) ??
+                                category.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      if (unavailable)
+                        DropdownMenuItem<String>(
+                          value: selectedId,
+                          child: Text(
+                            _categoryLabel(state, selectedId),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                    onChanged: (value) =>
+                        setState(() => row.categoryId = value),
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppTokens.space8),
+              Expanded(
+                flex: 2,
+                child: TextField(
+                  key: _ClassifyMovementDialog.rowAmountKey(index),
+                  controller: row.controller,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  decoration: InputDecoration(
+                    labelText: 'Valor ${index + 1}',
+                    prefixText: '${widget.movement.money.currency} ',
+                    errorText: amountError,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              IconButton(
+                key: _ClassifyMovementDialog.rowRemoveKey(index),
+                tooltip: 'Remover categoria ${index + 1}',
+                onPressed: _rows.length <= 1
+                    ? null
+                    : () => setState(() {
+                        _rows.removeAt(index).controller.dispose();
+                      }),
+                icon: const Icon(Icons.remove_circle_outline_rounded),
+              ),
+            ],
+          ),
+          if (unavailable)
+            Padding(
+              padding: const EdgeInsets.only(top: AppTokens.space4),
+              child: Text(
+                'Categoria indisponível. Substitua-a por outra para confirmar.',
+                key: _ClassifyMovementDialog.rowUnavailableKey(index),
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summary(FinancialAllocationDraftReport report) {
+    final currency = widget.movement.money.currency;
+    String money(String text) => formatFinancialMoney(
+      FinancialMoneyWire(amount: text, currency: currency),
+    );
+    final over = report.remainingText.startsWith('-');
+    return Semantics(
+      container: true,
+      liveRegion: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Total do lançamento: ${money(report.movementText)}',
+            key: _ClassifyMovementDialog.totalKey,
+          ),
+          Text(
+            'Total rateado: ${money(report.allocatedText)}',
+            key: _ClassifyMovementDialog.allocatedKey,
+          ),
+          Text(
+            'Restante: ${money(report.remainingText)}',
+            key: _ClassifyMovementDialog.remainingKey,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: over ? Theme.of(context).colorScheme.error : null,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(
@@ -1089,17 +1479,32 @@ class _ClassifyMovementDialogState
       index: state.categoryIndex,
       account: widget.account,
     );
+    final revising = _current != null;
+    final report = _report(state);
     final selected =
         eligible.any((item) => item.categoryId == _selectedCategoryId)
         ? _selectedCategoryId
         : null;
     final busy = state.classificationMutationInFlight;
+    final shares = _sharesToSend(state, eligible, report);
+    final unchanged =
+        revising &&
+        shares != null &&
+        financialSharesMatchAllocation(_current!, shares);
     final description = widget.movement.description ?? 'Lançamento selecionado';
+    final historicalUnavailable = !_split && revising
+        ? _current!.allocations
+              .map((share) => share.categoryId)
+              .where((id) => !eligible.any((item) => item.categoryId == id))
+              .toList()
+        : const <String>[];
     return AlertDialog(
       key: _ClassifyMovementDialog.dialogKey,
-      title: const Text('Classificar lançamento'),
+      title: Text(
+        revising ? 'Alterar classificação' : 'Classificar lançamento',
+      ),
       content: SizedBox(
-        width: 480,
+        width: 520,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1109,47 +1514,103 @@ class _ClassifyMovementDialogState
                 '$description · ${formatFinancialMoney(widget.movement.money)}',
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
-              const SizedBox(height: AppTokens.space4),
-              Text(
-                'O valor total do lançamento será classificado na categoria escolhida.',
-                style: Theme.of(
-                  context,
-                ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
-              ),
-              const SizedBox(height: AppTokens.space16),
-              if (eligible.isEmpty)
-                const Text(
-                  'Nenhuma categoria disponível para este lançamento. Crie uma nova categoria.',
-                )
-              else
-                RadioGroup<String>(
-                  groupValue: selected,
-                  onChanged: (value) =>
-                      setState(() => _selectedCategoryId = value),
-                  child: Column(
-                    children: [
-                      for (final category in eligible)
-                        RadioListTile<String>(
-                          key: Key(
-                            'financial-classify-category-${category.categoryId}',
-                          ),
-                          value: category.categoryId,
-                          title: Text(
-                            state.categoryIndex.pathLabel(
-                                  category.categoryId,
-                                ) ??
-                                category.name,
-                          ),
-                          subtitle: Text(
-                            category.visibilityScope ==
-                                    FinancialVisibilityScope.personal
-                                ? 'Pessoal'
-                                : 'Residência',
-                          ),
-                        ),
-                    ],
+              const SizedBox(height: AppTokens.space12),
+              SegmentedButton<bool>(
+                key: _ClassifyMovementDialog.modeKey,
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: false, label: Text('1 categoria')),
+                  ButtonSegment(
+                    value: true,
+                    label: Text('Ratear entre categorias'),
                   ),
+                ],
+                selected: {_split},
+                onSelectionChanged: (value) => _setSplit(value.single),
+              ),
+              const SizedBox(height: AppTokens.space12),
+              if (_split) ...[
+                Text(
+                  'Distribua o valor do lançamento. A soma das categorias deve '
+                  'ser igual ao total, sem diferença.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
                 ),
+                const SizedBox(height: AppTokens.space12),
+                for (var i = 0; i < _rows.length; i++)
+                  KeyedSubtree(
+                    key: ObjectKey(_rows[i]),
+                    child: _splitRow(state, eligible, report, i),
+                  ),
+                TextButton.icon(
+                  key: _ClassifyMovementDialog.addShareKey,
+                  onPressed: _rows.length >= financialMaxAllocationShares
+                      ? null
+                      : () => setState(() => _rows.add(_EditorRow())),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Adicionar categoria'),
+                ),
+                const SizedBox(height: AppTokens.space8),
+                _summary(report),
+              ] else ...[
+                Text(
+                  'O valor total do lançamento será classificado na categoria escolhida.',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
+                ),
+                const SizedBox(height: AppTokens.space16),
+                for (final id in historicalUnavailable)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: AppTokens.space8),
+                    child: Text(
+                      'Categoria atual: ${_categoryLabel(state, id)}. '
+                      'Escolha outra para alterar.',
+                      key: Key('financial-classify-unavailable-$id'),
+                    ),
+                  ),
+                if (eligible.isEmpty)
+                  const Text(
+                    'Nenhuma categoria disponível para este lançamento. Crie uma nova categoria.',
+                  )
+                else
+                  RadioGroup<String>(
+                    groupValue: selected,
+                    onChanged: (value) =>
+                        setState(() => _selectedCategoryId = value),
+                    child: Column(
+                      children: [
+                        for (final category in eligible)
+                          RadioListTile<String>(
+                            key: Key(
+                              'financial-classify-category-${category.categoryId}',
+                            ),
+                            value: category.categoryId,
+                            title: Text(
+                              state.categoryIndex.pathLabel(
+                                    category.categoryId,
+                                  ) ??
+                                  category.name,
+                            ),
+                            subtitle: Text(
+                              category.visibilityScope ==
+                                      FinancialVisibilityScope.personal
+                                  ? 'Pessoal'
+                                  : 'Residência',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+              if (unchanged) ...[
+                const SizedBox(height: AppTokens.space8),
+                const Text(
+                  'Nenhuma alteração em relação à classificação atual.',
+                  key: _ClassifyMovementDialog.unchangedKey,
+                ),
+              ],
               const SizedBox(height: AppTokens.space8),
               if (widget.operatorId != null)
                 TextButton.icon(
@@ -1197,9 +1658,14 @@ class _ClassifyMovementDialogState
         ),
         FilledButton(
           key: _ClassifyMovementDialog.confirmKey,
-          onPressed: selected == null || busy
+          onPressed: shares == null || busy || unchanged
               ? null
-              : () => Navigator.of(context).pop(selected),
+              : () => Navigator.of(context).pop(
+                  _ClassificationSubmission(
+                    shares: shares,
+                    supersedesId: _current?.allocationSetId,
+                  ),
+                ),
           child: const Text('Confirmar'),
         ),
       ],

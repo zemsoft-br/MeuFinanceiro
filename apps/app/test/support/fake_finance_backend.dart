@@ -117,6 +117,31 @@ class FakeFinanceBackend {
   /// Holds the allocation POST open until completed.
   Completer<void>? allocationPostGate;
 
+  /// Idempotency keys / bodies received by `POST .../allocation/revisions`.
+  final List<String> revisionKeys = [];
+  final List<Map<String, dynamic>> revisionBodies = [];
+  final List<String> revisionMovementIds = [];
+
+  /// Forces a status for revision POSTs (null = normal 201).
+  int? revisionPostStatus;
+
+  /// The revision POST reaches the server, then fails at transport level.
+  bool revisionPostThrows = false;
+
+  /// Replaces the 201 body of the revision POST.
+  String Function(String movementId, Map<String, dynamic> body)?
+  revisionPostBody;
+
+  /// Runs when the revision POST arrives, before the backend decides. Lets a
+  /// test commit another writer's revision (or this one) server-side.
+  void Function(String movementId, Map<String, dynamic> body)? onRevisionPost;
+
+  /// Holds the revision POST open until completed.
+  Completer<void>? revisionPostGate;
+
+  /// Responses already produced per idempotency key (server-side replay).
+  final Map<String, String> _revisionReplays = {};
+
   /// Holds the next bulk allocations GET open (snapshot taken before waiting).
   Completer<void>? nextBulkGate;
 
@@ -159,6 +184,13 @@ class FakeFinanceBackend {
         (call) =>
             call.method == AuthHttpMethod.post &&
             call.uri.path.endsWith('/allocation'),
+      )
+      .length;
+  int get revisionPosts => calls
+      .where(
+        (call) =>
+            call.method == AuthHttpMethod.post &&
+            call.uri.path.endsWith('/allocation/revisions'),
       )
       .length;
   int get singleAllocationReads => calls
@@ -207,6 +239,15 @@ class FakeFinanceBackend {
         AuthHttpResponse(statusCode: status, body: json);
 
     if (method == AuthHttpMethod.post) {
+      final revision = RegExp(
+        r'^/api/v1/finance/movements/([^/]+)/allocation/revisions$',
+      ).firstMatch(path);
+      if (revision != null) {
+        return _postRevision(
+          revision.group(1)!,
+          jsonDecode(body!) as Map<String, dynamic>,
+        );
+      }
       final allocation = RegExp(
         r'^/api/v1/finance/movements/([^/]+)/allocation$',
       ).firstMatch(path);
@@ -330,6 +371,62 @@ class FakeFinanceBackend {
       shares: shares,
     );
     allocations[movementId] = json;
+    return AuthHttpResponse(statusCode: 201, body: json);
+  }
+
+  /// Mimics the server: replays a known idempotency key, answers 409 when the
+  /// predecessor is not the current set, otherwise appends revision N+1.
+  Future<AuthHttpResponse> _postRevision(
+    String movementId,
+    Map<String, dynamic> body,
+  ) async {
+    final key = body['idempotencyKey'] as String;
+    revisionKeys.add(key);
+    revisionBodies.add(body);
+    revisionMovementIds.add(movementId);
+    onRevisionPost?.call(movementId, body);
+    final gate = revisionPostGate;
+    if (gate != null) await gate.future;
+    if (revisionPostThrows) {
+      throw const FormatException('simulated transport failure');
+    }
+    final status = revisionPostStatus;
+    if (status != null) {
+      return AuthHttpResponse(statusCode: status, body: '{}');
+    }
+    final override = revisionPostBody;
+    if (override != null) {
+      return AuthHttpResponse(
+        statusCode: 201,
+        body: override(movementId, body),
+      );
+    }
+    final replay = _revisionReplays[key];
+    if (replay != null) return AuthHttpResponse(statusCode: 201, body: replay);
+    final currentJson = allocations[movementId];
+    if (currentJson == null) {
+      return const AuthHttpResponse(statusCode: 404, body: '{}');
+    }
+    final current = jsonDecode(currentJson) as Map<String, dynamic>;
+    if (current['allocationSetId'] != body['supersedesId']) {
+      return const AuthHttpResponse(statusCode: 409, body: '{}');
+    }
+    _createdSets += 1;
+    final shares = (body['allocations'] as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .map(
+          (share) => (share['categoryId'] as String, share['amount'] as String),
+        )
+        .toList();
+    final json = fakeAllocationJson(
+      setId: financeTestAllocationSetId(200 + _createdSets),
+      movementId: movementId,
+      shares: shares,
+      revision: (current['revision'] as int) + 1,
+      supersedesId: body['supersedesId'] as String,
+    );
+    allocations[movementId] = json;
+    _revisionReplays[key] = json;
     return AuthHttpResponse(statusCode: 201, body: json);
   }
 

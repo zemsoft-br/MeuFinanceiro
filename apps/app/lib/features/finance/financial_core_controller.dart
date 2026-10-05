@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:meufinanceiro_app/core/auth/authenticated_api_client.dart';
 import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
+import 'package:meufinanceiro_app/features/finance/financial_allocation_math.dart';
 import 'package:meufinanceiro_app/features/finance/financial_category_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 
@@ -352,6 +353,10 @@ class FinancialAccountDetailController
   /// commit is replayed instead of duplicated. Cleared on any definitive answer.
   final Map<String, String> _pendingClassificationKeys = {};
 
+  /// Same contract for revisions, kept apart so a key minted for a first
+  /// classification can never be reused by a revision (and vice versa).
+  final Map<String, String> _pendingRevisionKeys = {};
+
   @override
   FinancialAccountDetailState build() {
     ref.onDispose(() {
@@ -439,48 +444,57 @@ class FinancialAccountDetailController
     required String movementId,
     required String categoryId,
   }) async {
-    final previous = state;
-    final account = previous.account;
-    if (account == null ||
-        previous.balance == null ||
-        previous.statement == null ||
-        previous.isBusy ||
-        !previous.classificationTrusted) {
+    final movement = _movementOf(state, movementId);
+    if (movement == null) return FinancialMutationOutcome.notAllowed;
+    final List<FinancialAllocationShareInput> shares;
+    try {
+      shares = FinancialMovementAllocationCreateInput.single(
+        categoryId: categoryId,
+        movementMoney: movement.money,
+      ).allocations;
+    } on FormatException {
       return FinancialMutationOutcome.notAllowed;
     }
-    FinancialMovement? movement;
-    for (final item in previous.movements) {
-      if (item.movementId == movementId) movement = item;
-    }
-    final category = previous.categoryIndex.byId(categoryId);
+    return classifyMovementShares(movementId: movementId, shares: shares);
+  }
+
+  /// First classification of a Movement with 1..50 shares. Same guarantees as
+  /// [classifyMovement]; the shares must close the Movement money exactly.
+  Future<FinancialMutationOutcome> classifyMovementShares({
+    required String movementId,
+    required List<FinancialAllocationShareInput> shares,
+  }) async {
+    final previous = state;
+    final account = previous.account;
+    final movement = _movementOf(previous, movementId);
     final operatorId = ref
         .read(operatorSessionControllerProvider)
         .principal
         ?.operatorId;
-    if (movement == null ||
-        category == null ||
+    if (account == null ||
+        movement == null ||
+        !_canWriteClassification(previous) ||
         !canClassifyFinancialMovementSimply(
           account: account,
           movement: movement,
           currentAllocation: previous.currentAllocations[movementId],
           operatorId: operatorId,
         ) ||
-        !isFinancialCategoryEligibleForAccount(
-          category: category,
-          account: account,
-        )) {
+        !_sharesAreSendable(previous, account, movement, shares)) {
       return FinancialMutationOutcome.notAllowed;
     }
 
-    // One logical attempt: same Movement, category, amount and currency.
+    // One logical attempt: same Movement and the same shares (any order).
     // Anything else is a different request and never reuses a key.
-    final attemptKey =
-        '$movementId|$categoryId|${movement.money.currency}|${movement.money.amount}';
+    final attemptKey = financialAllocationAttemptIdentity(
+      kind: 'classify',
+      movementId: movementId,
+      shares: shares,
+    );
     final FinancialMovementAllocationCreateInput input;
     try {
-      input = FinancialMovementAllocationCreateInput.single(
-        categoryId: categoryId,
-        movementMoney: movement.money,
+      input = FinancialMovementAllocationCreateInput(
+        allocations: shares,
         idempotencyKey: _pendingClassificationKeys[attemptKey],
       );
     } on FormatException {
@@ -488,14 +502,155 @@ class FinancialAccountDetailController
     }
     _pendingClassificationKeys[attemptKey] = input.idempotencyKey;
 
+    return _writeAllocation(
+      previous: previous,
+      keys: _pendingClassificationKeys,
+      attemptKey: attemptKey,
+      send: (api) => api.createMovementAllocation(movementId, input),
+      // Any current allocation means the write (or someone's) is persisted.
+      keyConsumed: (reconciled) =>
+          reconciled.currentAllocations.containsKey(movementId),
+    );
+  }
+
+  /// Appends a revision of the current classification.
+  ///
+  /// [supersedesId] is the `allocationSetId` the editor was opened on and must
+  /// still be the current one: a revision against a known historical set is
+  /// refused here without any request. Append-only: the server never updates
+  /// or deletes the current set.
+  ///
+  /// * 201: the confirmed response becomes the current allocation (no ledger
+  ///   reload; classification does not touch balance or statement).
+  /// * 409 (stale predecessor): never retried, the edit is never re-applied on
+  ///   top of the newer set. Persisted truth replaces the view and the user
+  ///   must review again from the new predecessor.
+  /// * timeout/5xx/transport/invalid 2xx: one reconciliation, no retry. The
+  ///   attempt key is kept only while the predecessor is still current.
+  Future<FinancialMutationOutcome> reviseMovementClassification({
+    required String movementId,
+    required String supersedesId,
+    required List<FinancialAllocationShareInput> shares,
+  }) async {
+    final previous = state;
+    final account = previous.account;
+    final movement = _movementOf(previous, movementId);
+    final current = previous.currentAllocations[movementId];
+    final operatorId = ref
+        .read(operatorSessionControllerProvider)
+        .principal
+        ?.operatorId;
+    if (account == null ||
+        movement == null ||
+        current == null ||
+        !_canWriteClassification(previous) ||
+        !canReviseFinancialMovementClassification(
+          account: account,
+          movement: movement,
+          currentAllocation: current,
+          operatorId: operatorId,
+        )) {
+      return FinancialMutationOutcome.notAllowed;
+    }
+    if (current.allocationSetId != supersedesId) {
+      // The editor was opened on a set that is no longer current. The local
+      // view is already the newer truth: send nothing, ask for a new review.
+      return FinancialMutationOutcome.conflictReconciled;
+    }
+    if (!_sharesAreSendable(previous, account, movement, shares) ||
+        financialSharesMatchAllocation(current, shares)) {
+      return FinancialMutationOutcome.notAllowed;
+    }
+
+    final attemptKey = financialAllocationAttemptIdentity(
+      kind: 'revise',
+      movementId: movementId,
+      supersedesId: supersedesId,
+      shares: shares,
+    );
+    final FinancialMovementAllocationRevisionInput input;
+    try {
+      input = FinancialMovementAllocationRevisionInput(
+        supersedesId: supersedesId,
+        allocations: shares,
+        idempotencyKey: _pendingRevisionKeys[attemptKey],
+      );
+    } on FormatException {
+      return FinancialMutationOutcome.notAllowed;
+    }
+    _pendingRevisionKeys[attemptKey] = input.idempotencyKey;
+
+    return _writeAllocation(
+      previous: previous,
+      keys: _pendingRevisionKeys,
+      attemptKey: attemptKey,
+      send: (api) => api.reviseMovementAllocation(movementId, input),
+      // The key stays usable only while the predecessor is still current.
+      keyConsumed: (reconciled) =>
+          reconciled.currentAllocations[movementId]?.allocationSetId !=
+          supersedesId,
+    );
+  }
+
+  FinancialMovement? _movementOf(
+    FinancialAccountDetailState from,
+    String movementId,
+  ) {
+    for (final item in from.movements) {
+      if (item.movementId == movementId) return item;
+    }
+    return null;
+  }
+
+  bool _canWriteClassification(FinancialAccountDetailState from) =>
+      from.account != null &&
+      from.balance != null &&
+      from.statement != null &&
+      !from.isBusy &&
+      from.classificationTrusted;
+
+  /// Local, ergonomic refusal of requests the backend would reject anyway:
+  /// every category known and eligible for the account, and the shares close
+  /// the Movement money exactly (sign, currency, count, uniqueness, sum).
+  bool _sharesAreSendable(
+    FinancialAccountDetailState from,
+    FinancialAccount account,
+    FinancialMovement movement,
+    List<FinancialAllocationShareInput> shares,
+  ) {
+    for (final share in shares) {
+      final category = from.categoryIndex.byId(share.categoryId);
+      if (category == null ||
+          !isFinancialCategoryEligibleForAccount(
+            category: category,
+            account: account,
+          )) {
+        return false;
+      }
+    }
+    return financialAllocationClosureIssues(
+      movementMoney: movement.money,
+      shares: shares,
+    ).isEmpty;
+  }
+
+  /// Sends one allocation write and maps every answer to a typed outcome.
+  /// Shared by the first classification and by revisions; neither ever retries.
+  Future<FinancialMutationOutcome> _writeAllocation({
+    required FinancialAccountDetailState previous,
+    required Map<String, String> keys,
+    required String attemptKey,
+    required Future<FinancialMovementAllocation> Function(FinancialCoreApi api)
+    send,
+    required bool Function(FinancialAccountDetailState reconciled) keyConsumed,
+  }) async {
+    final account = previous.account!;
     state = previous.copyLoaded(
       classificationMutationInFlight: true,
       refreshFailure: previous.refreshFailure,
     );
     try {
-      final created = await ref
-          .read(financialCoreApiProvider)
-          .createMovementAllocation(movementId, input);
+      final created = await send(ref.read(financialCoreApiProvider));
       if (_disposed) return FinancialMutationOutcome.success;
       if (created.currency != account.currency ||
           created.allocations.any(
@@ -503,30 +658,33 @@ class FinancialAccountDetailController
           )) {
         throw const FormatException('financial allocation response mismatch.');
       }
-      _pendingClassificationKeys.remove(attemptKey);
+      keys.remove(attemptKey);
       state = state.copyLoaded(
         refreshFailure: previous.refreshFailure,
-        currentAllocations: {...state.currentAllocations, movementId: created},
+        currentAllocations: {
+          ...state.currentAllocations,
+          created.movementId: created,
+        },
       );
       return FinancialMutationOutcome.success;
     } on AuthenticatedApiException catch (error) {
       if (_disposed) return FinancialMutationOutcome.temporarilyUnavailable;
       if (error.statusCode == 409) {
-        _pendingClassificationKeys.remove(attemptKey);
+        keys.remove(attemptKey);
         return await _reconcileClassification(previous) ??
             FinancialMutationOutcome.conflictReconciled;
       }
       if (error.statusCode == 404) {
         // A sanitized 404 may hide a canonical change (category disabled or
         // gone from the audience): read the truth once, never retry the POST.
-        _pendingClassificationKeys.remove(attemptKey);
+        keys.remove(attemptKey);
         final failure = await _reconcileClassification(previous);
         return failure == FinancialMutationOutcome.accessBlocked
             ? failure!
             : FinancialMutationOutcome.rejected;
       }
       if (error.statusCode == 422) {
-        _pendingClassificationKeys.remove(attemptKey);
+        keys.remove(attemptKey);
         state = previous.copyLoaded(refreshFailure: previous.refreshFailure);
         return FinancialMutationOutcome.rejected;
       }
@@ -537,18 +695,20 @@ class FinancialAccountDetailController
         return _failMutation(previous, error);
       }
       // Timeout/transport/5xx: the write may or may not have committed.
-      return _reconcileAfterUnknownClassification(
+      return _reconcileAfterUnknownWrite(
         previous,
+        keys,
         attemptKey,
-        movementId,
+        keyConsumed,
       );
     } on FormatException {
       if (_disposed) return FinancialMutationOutcome.invalidResponse;
       // A 2xx that cannot be validated is just as ambiguous.
-      return _reconcileAfterUnknownClassification(
+      return _reconcileAfterUnknownWrite(
         previous,
+        keys,
         attemptKey,
-        movementId,
+        keyConsumed,
       );
     }
   }
@@ -840,27 +1000,27 @@ class FinancialAccountDetailController
     }
   }
 
-  /// A classification POST ended with an unknown outcome. Idempotency of the
+  /// An allocation POST ended with an unknown outcome. Idempotency of the
   /// write (the pending key) and trust in the snapshot are separate things: the
   /// POST is never repeated automatically, and the snapshot is only trusted
   /// again after one canonical read of categories and current allocations.
   ///
-  /// * read ok, allocation present: the persisted truth replaces the local map;
-  ///   the key is no longer needed.
-  /// * read ok, still unclassified: trusted again, the key is kept so an
-  ///   explicit retry of the SAME logical attempt replays instead of duplicating.
+  /// * read ok, the write (or a successor) is visible: the persisted truth
+  ///   replaces the local map; the key is no longer needed and nothing is
+  ///   resent. No causality is claimed.
+  /// * read ok, nothing changed: trusted again, the key is kept so an explicit
+  ///   retry of the SAME logical attempt replays instead of duplicating.
   /// * read failed: untrusted (see [_reconcileClassification]); the key is kept.
-  Future<FinancialMutationOutcome> _reconcileAfterUnknownClassification(
+  Future<FinancialMutationOutcome> _reconcileAfterUnknownWrite(
     FinancialAccountDetailState previous,
+    Map<String, String> keys,
     String attemptKey,
-    String movementId,
+    bool Function(FinancialAccountDetailState reconciled) keyConsumed,
   ) async {
     final failure = await _reconcileClassification(previous);
     if (failure != null) return failure;
     if (_disposed) return FinancialMutationOutcome.unknownOutcomeReconciled;
-    if (state.currentAllocations.containsKey(movementId)) {
-      _pendingClassificationKeys.remove(attemptKey);
-    }
+    if (keyConsumed(state)) keys.remove(attemptKey);
     return FinancialMutationOutcome.unknownOutcomeReconciled;
   }
 

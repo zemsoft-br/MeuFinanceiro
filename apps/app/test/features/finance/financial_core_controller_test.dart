@@ -1805,6 +1805,885 @@ void main() {
       expect(container.read(_detailProvider).categoryCreationUnknown, isFalse);
     });
   });
+
+  group('initial split classification', () {
+    final movement = financeTestMovementId(1);
+
+    FinancialAllocationShareInput share(int category, String amount) =>
+        FinancialAllocationShareInput(
+          categoryId: financeTestCategoryId(category),
+          amount: amount,
+          currency: 'BRL',
+        );
+
+    Future<FinancialMutationOutcome> classify(
+      ProviderContainer container,
+      List<FinancialAllocationShareInput> shares, {
+      int movementIndex = 1,
+    }) => container
+        .read(_detailProvider.notifier)
+        .classifyMovementShares(
+          movementId: financeTestMovementId(movementIndex),
+          shares: shares,
+        );
+
+    test('closing shares create one allocation after 201 only', () async {
+      final backend = _classificationBackend();
+      final container = await _loaded(backend);
+      final gate = Completer<void>();
+      backend.allocationPostGate = gate;
+      final callsBefore = backend.calls.length;
+
+      final pending = classify(container, [
+        share(1, '-50'),
+        share(2, '-25.25'),
+      ]);
+      while (backend.allocationPosts < 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(container.read(_detailProvider).currentAllocations, isEmpty);
+
+      gate.complete();
+      expect(await pending, FinancialMutationOutcome.success);
+
+      final state = container.read(_detailProvider);
+      expect(state.currentAllocations[movement]!.allocations, hasLength(2));
+      expect(backend.allocationPosts, 1);
+      expect(backend.calls.length, callsBefore + 1, reason: 'no reload');
+      expect(backend.postedBodies.single['allocations'], [
+        {
+          'categoryId': financeTestCategoryId(1),
+          'amount': '-50',
+          'currency': 'BRL',
+        },
+        {
+          'categoryId': financeTestCategoryId(2),
+          'amount': '-25.25',
+          'currency': 'BRL',
+        },
+      ]);
+    });
+
+    test('shares that do not close are refused without any request', () async {
+      final backend = _classificationBackend();
+      final container = await _loaded(backend);
+
+      for (final shares in [
+        [share(1, '-50'), share(2, '-25.24')],
+        [share(1, '-50'), share(2, '-25.26')],
+        [share(1, '-50'), share(2, '25.25')],
+        [share(1, '-75.25'), share(2, '-0.00000001')],
+        [share(1, '-75.24999999')],
+      ]) {
+        expect(
+          await classify(container, shares),
+          FinancialMutationOutcome.notAllowed,
+        );
+      }
+      expect(backend.allocationPosts, 0);
+    });
+
+    test('DISABLED, foreign and duplicated categories are refused', () async {
+      final backend = _classificationBackend();
+      final container = await _loaded(backend);
+
+      for (final shares in [
+        [share(1, '-50'), share(5, '-25.25')],
+        [share(1, '-50'), share(4, '-25.25')],
+        [share(1, '-50'), share(1, '-25.25')],
+        [share(1, '-50'), share(99, '-25.25')],
+      ]) {
+        expect(
+          await classify(container, shares),
+          FinancialMutationOutcome.notAllowed,
+        );
+      }
+      expect(backend.allocationPosts, 0);
+    });
+
+    test('an income splits with positive shares', () async {
+      final backend = _classificationBackend(
+        movements: [
+          FakeMovementSpec(
+            id: financeTestMovementId(1),
+            amount: '0.3',
+            effect: 'INCOME',
+            description: 'Rendimento',
+          ),
+        ],
+      );
+      final container = await _loaded(backend);
+
+      expect(
+        await classify(container, [share(1, '0.1'), share(2, '0.2')]),
+        FinancialMutationOutcome.success,
+      );
+      expect(
+        (backend.postedBodies.single['allocations'] as List).map(
+          (s) => (s as Map)['amount'],
+        ),
+        ['0.1', '0.2'],
+      );
+    });
+
+    test('50 shares are sent and 51 are refused', () async {
+      final backend = FakeFinanceBackend(
+        movements: [
+          FakeMovementSpec(id: financeTestMovementId(1), amount: '-51'),
+        ],
+        categories: [
+          for (var i = 1; i <= 51; i++)
+            fakeCategoryJson(id: financeTestCategoryId(i), name: 'C$i'),
+        ],
+      );
+      final container = await _loaded(backend);
+
+      expect(
+        await classify(container, [
+          for (var i = 1; i <= 51; i++) share(i, '-1'),
+        ]),
+        FinancialMutationOutcome.notAllowed,
+      );
+      expect(backend.allocationPosts, 0);
+
+      backend.movements = [
+        FakeMovementSpec(id: financeTestMovementId(1), amount: '-50'),
+      ];
+      await container.read(_detailProvider.notifier).refresh();
+      expect(
+        await classify(container, [
+          for (var i = 1; i <= 50; i++) share(i, '-1'),
+        ]),
+        FinancialMutationOutcome.success,
+      );
+      expect(backend.allocationPosts, 1);
+      expect(backend.postedBodies.single['allocations'], hasLength(50));
+    });
+
+    test(
+      'same split attempt reuses its key, a reorder too, a change not',
+      () async {
+        final backend = _classificationBackend()..allocationPostStatus = 503;
+        final container = await _loaded(backend);
+        final a = share(1, '-50');
+        final b = share(2, '-25.25');
+
+        await classify(container, [a, b]);
+        await classify(container, [a, b]);
+        await classify(container, [b, a]);
+        await classify(container, [share(1, '-60'), share(2, '-15.25')]);
+
+        expect(backend.postedKeys, hasLength(4));
+        expect(backend.postedKeys[1], backend.postedKeys[0]);
+        expect(backend.postedKeys[2], backend.postedKeys[0]);
+        expect(backend.postedKeys[3], isNot(backend.postedKeys[0]));
+      },
+    );
+  });
+
+  group('allocation revision', () {
+    final movement = financeTestMovementId(1);
+
+    String setId(int n) => financeTestAllocationSetId(n);
+    String cat(int n) => financeTestCategoryId(n);
+
+    String r1([List<(String, String)>? shares]) => fakeAllocationJson(
+      setId: setId(1),
+      movementId: movement,
+      shares: shares ?? [(cat(1), '-75.25')],
+    );
+
+    String r2([List<(String, String)>? shares]) => fakeAllocationJson(
+      setId: setId(2),
+      movementId: movement,
+      shares: shares ?? [(cat(2), '-75.25')],
+      revision: 2,
+      supersedesId: setId(1),
+    );
+
+    FinancialAllocationShareInput share(int category, String amount) =>
+        FinancialAllocationShareInput(
+          categoryId: cat(category),
+          amount: amount,
+          currency: 'BRL',
+        );
+
+    FakeFinanceBackend backendWith({
+      String? current,
+      List<FakeMovementSpec>? movements,
+      String accountStatus = 'ACTIVE',
+    }) => _classificationBackend(
+      movements: movements,
+      accountStatus: accountStatus,
+      allocations: {movement: current ?? r1()},
+    );
+
+    Future<FinancialMutationOutcome> revise(
+      ProviderContainer container,
+      List<FinancialAllocationShareInput> shares, {
+      String? supersedes,
+      int movementIndex = 1,
+    }) => container
+        .read(_detailProvider.notifier)
+        .reviseMovementClassification(
+          movementId: financeTestMovementId(movementIndex),
+          supersedesId: supersedes ?? setId(1),
+          shares: shares,
+        );
+
+    final split = [share(1, '-50'), share(2, '-25.25')];
+
+    FinancialMovementAllocation currentOf(ProviderContainer container) =>
+        container.read(_detailProvider).currentAllocations[movement]!;
+
+    test('simple -> split appends revision 2 after 201 only', () async {
+      final backend = backendWith();
+      final container = await _loaded(backend);
+      final gate = Completer<void>();
+      backend.revisionPostGate = gate;
+      final callsBefore = backend.calls.length;
+
+      final pending = revise(container, split);
+      while (backend.revisionPosts < 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      // On the wire, nothing visible yet (no optimistic success).
+      var state = container.read(_detailProvider);
+      expect(state.classificationMutationInFlight, isTrue);
+      expect(currentOf(container).allocationSetId, setId(1));
+
+      gate.complete();
+      expect(await pending, FinancialMutationOutcome.success);
+
+      state = container.read(_detailProvider);
+      expect(state.classificationMutationInFlight, isFalse);
+      expect(state.classificationTrusted, isTrue);
+      final current = currentOf(container);
+      expect(current.revision, 2);
+      expect(current.supersedesId, setId(1));
+      expect(current.allocations.map((s) => s.categoryId), [cat(1), cat(2)]);
+      // Exactly one POST, to the revision endpoint, and nothing else.
+      expect(backend.revisionPosts, 1);
+      expect(backend.allocationPosts, 0);
+      expect(backend.calls.length, callsBefore + 1);
+      expect(backend.revisionMovementIds.single, movement);
+      final body = backend.revisionBodies.single;
+      expect(body.keys.toSet(), {
+        'idempotencyKey',
+        'supersedesId',
+        'allocations',
+      });
+      expect(body['supersedesId'], setId(1));
+    });
+
+    test('revision does not reload ledger or statement', () async {
+      final backend = backendWith();
+      final container = await _loaded(backend);
+      final statementReads = backend.statementReads;
+      final categoryReads = backend.categoryReads;
+      final bulkReads = backend.bulkReads;
+      final balance = container.read(_detailProvider).balance;
+      final statement = container.read(_detailProvider).statement;
+
+      await revise(container, split);
+
+      expect(backend.statementReads, statementReads);
+      expect(backend.categoryReads, categoryReads);
+      expect(backend.bulkReads, bulkReads);
+      expect(container.read(_detailProvider).balance, same(balance));
+      expect(container.read(_detailProvider).statement, same(statement));
+    });
+
+    test('split -> simple', () async {
+      final backend = backendWith(
+        current: r1([(cat(1), '-50'), (cat(2), '-25.25')]),
+      );
+      final container = await _loaded(backend);
+
+      expect(
+        await revise(container, [share(3, '-75.25')]),
+        FinancialMutationOutcome.success,
+      );
+      expect(currentOf(container).allocations.single.categoryId, cat(3));
+      expect(currentOf(container).revision, 2);
+    });
+
+    test('split -> another split', () async {
+      final backend = backendWith(
+        current: r1([(cat(1), '-50'), (cat(2), '-25.25')]),
+      );
+      final container = await _loaded(backend);
+
+      expect(
+        await revise(container, [
+          share(1, '-10'),
+          share(3, '-30'),
+          share(2, '-35.25'),
+        ]),
+        FinancialMutationOutcome.success,
+      );
+      expect(currentOf(container).allocations, hasLength(3));
+      expect(
+        (backend.revisionBodies.single['allocations'] as List).map(
+          (s) => (s as Map)['categoryId'],
+        ),
+        [cat(1), cat(3), cat(2)],
+      );
+    });
+
+    test('expense shares keep the Movement sign on the wire', () async {
+      final backend = backendWith();
+      final container = await _loaded(backend);
+
+      await revise(container, [
+        share(1, '-0.00000001'),
+        share(2, '-75.24999999'),
+      ]);
+
+      expect(
+        (backend.revisionBodies.single['allocations'] as List).map(
+          (s) => (s as Map)['amount'],
+        ),
+        ['-0.00000001', '-75.24999999'],
+      );
+    });
+
+    test(
+      'predecessor is always the current set the editor opened on',
+      () async {
+        final backend = backendWith();
+        final container = await _loaded(backend);
+
+        await revise(container, split);
+
+        expect(backend.revisionBodies.single['supersedesId'], setId(1));
+        final secondPredecessor = currentOf(container).allocationSetId;
+        expect(secondPredecessor, isNot(setId(1)));
+        // A revision against the (now historical) set is refused locally.
+        expect(
+          await revise(container, [share(3, '-75.25')], supersedes: setId(1)),
+          FinancialMutationOutcome.conflictReconciled,
+        );
+        expect(backend.revisionPosts, 1, reason: 'no request against history');
+        // The next one supersedes the new current.
+        expect(
+          await revise(container, [
+            share(3, '-75.25'),
+          ], supersedes: secondPredecessor),
+          FinancialMutationOutcome.success,
+        );
+        expect(backend.revisionBodies.last['supersedesId'], secondPredecessor);
+      },
+    );
+
+    test('local refusals send nothing', () async {
+      final nothing = backendWith();
+      final container = await _loaded(nothing);
+      final cases = <String, List<FinancialAllocationShareInput>>{
+        'under': [share(1, '-50'), share(2, '-25.24')],
+        'over': [share(1, '-50'), share(2, '-25.26')],
+        'wrong sign': [share(1, '75.25')],
+        'duplicate': [share(1, '-50'), share(1, '-25.25')],
+        'disabled': [share(1, '-50'), share(5, '-25.25')],
+        'foreign': [share(1, '-50'), share(4, '-25.25')],
+        'unknown': [share(1, '-50'), share(99, '-25.25')],
+        'identical': [share(1, '-75.25')],
+        'empty': [],
+      };
+      for (final entry in cases.entries) {
+        expect(
+          await revise(container, entry.value),
+          FinancialMutationOutcome.notAllowed,
+          reason: entry.key,
+        );
+      }
+      expect(nothing.revisionPosts, 0);
+      expect(currentOf(container).allocationSetId, setId(1));
+    });
+
+    test('there is nothing to revise without a current allocation', () async {
+      final backend = _classificationBackend();
+      final container = await _loaded(backend);
+
+      expect(
+        await revise(container, split),
+        FinancialMutationOutcome.notAllowed,
+      );
+      expect(backend.revisionPosts, 0);
+    });
+
+    test('only the owner of an ACTIVE account revises', () async {
+      final other = backendWith();
+      final notOwner = await _loaded(
+        other,
+        operatorId: financeTestOtherOperatorId,
+      );
+      expect(
+        await revise(notOwner, split),
+        FinancialMutationOutcome.notAllowed,
+      );
+
+      final archived = backendWith(accountStatus: 'ARCHIVED');
+      final archivedContainer = await _loaded(archived);
+      expect(
+        await revise(archivedContainer, split),
+        FinancialMutationOutcome.notAllowed,
+      );
+      expect(other.revisionPosts + archived.revisionPosts, 0);
+    });
+
+    test('NEUTRAL and REVERSAL are never revised', () async {
+      for (final spec in [
+        FakeMovementSpec(
+          id: financeTestMovementId(1),
+          effect: 'NEUTRAL',
+          description: 'Transferência',
+        ),
+        FakeMovementSpec(
+          id: financeTestMovementId(1),
+          role: 'REVERSAL',
+          effect: 'NEUTRAL',
+          description: null,
+        ),
+      ]) {
+        final backend = backendWith(movements: [spec]);
+        final container = await _loaded(backend);
+        expect(
+          await revise(container, split),
+          FinancialMutationOutcome.notAllowed,
+        );
+        expect(backend.revisionPosts, 0);
+      }
+    });
+
+    group('idempotency identity', () {
+      test('the same attempt reuses its key, even reordered', () async {
+        final backend = backendWith()..revisionPostStatus = 503;
+        final container = await _loaded(backend);
+
+        await revise(container, [split[0], split[1]]);
+        await revise(container, [split[0], split[1]]);
+        await revise(container, [split[1], split[0]]);
+
+        expect(backend.revisionKeys, hasLength(3));
+        expect(backend.revisionKeys.toSet(), hasLength(1));
+      });
+
+      test('amount, category and currency changes mint a new key', () async {
+        final backend = backendWith()..revisionPostStatus = 503;
+        final container = await _loaded(backend);
+
+        await revise(container, split);
+        await revise(container, [share(1, '-60'), share(2, '-15.25')]);
+        await revise(container, [share(1, '-50'), share(3, '-25.25')]);
+
+        expect(backend.revisionKeys.toSet(), hasLength(3));
+      });
+
+      test('a different predecessor mints a new key', () async {
+        final backend = backendWith()..revisionPostStatus = 503;
+        final container = await _loaded(backend);
+
+        await revise(container, split);
+        // Someone else revises; the user reloads and edits the same shares
+        // against the new current set.
+        backend.allocations[movement] = r2([(cat(3), '-75.25')]);
+        backend.revisionPostStatus = 503;
+        await container.read(_detailProvider.notifier).refresh();
+        await revise(container, split, supersedes: setId(2));
+
+        expect(backend.revisionKeys, hasLength(2));
+        expect(backend.revisionKeys[1], isNot(backend.revisionKeys[0]));
+        expect(backend.revisionBodies[1]['supersedesId'], setId(2));
+      });
+
+      test(
+        'a first-classification key is never reused by a revision',
+        () async {
+          final backend = _classificationBackend();
+          final container = await _loaded(backend);
+          await container
+              .read(_detailProvider.notifier)
+              .classifyMovement(movementId: movement, categoryId: cat(1));
+          // Same shares re-sent as a revision of the new current set.
+          await container
+              .read(_detailProvider.notifier)
+              .reviseMovementClassification(
+                movementId: movement,
+                supersedesId: currentOf(container).allocationSetId,
+                shares: [share(1, '-50'), share(2, '-25.25')],
+              );
+
+          expect(backend.postedKeys, hasLength(1));
+          expect(backend.revisionKeys, hasLength(1));
+          expect(backend.revisionKeys.single, isNot(backend.postedKeys.single));
+        },
+      );
+
+      test(
+        'success clears the key: a later identical attempt gets a new one',
+        () async {
+          final backend = backendWith();
+          final container = await _loaded(backend);
+          await revise(container, split);
+          final first = backend.revisionKeys.single;
+
+          // Back to the original shares and again to the split.
+          await revise(container, [
+            share(1, '-75.25'),
+          ], supersedes: currentOf(container).allocationSetId);
+          await revise(
+            container,
+            split,
+            supersedes: currentOf(container).allocationSetId,
+          );
+
+          expect(backend.revisionKeys.toSet(), hasLength(3));
+          expect(backend.revisionKeys.last, isNot(first));
+        },
+      );
+    });
+
+    group('409 stale predecessor', () {
+      // The editor opened on R1; another writer already appended R2.
+      FakeFinanceBackend staleBackend() {
+        final backend = backendWith();
+        return backend;
+      }
+
+      test('reconciles once and never retries or rebases the edit', () async {
+        final backend = staleBackend();
+        final container = await _loaded(backend);
+        backend.allocations[movement] = r2([(cat(3), '-75.25')]);
+        final categoryReads = backend.categoryReads;
+        final bulkReads = backend.bulkReads;
+        final statementReads = backend.statementReads;
+
+        final outcome = await revise(container, split);
+
+        expect(outcome, FinancialMutationOutcome.conflictReconciled);
+        expect(backend.revisionPosts, 1, reason: 'zero automatic retry');
+        expect(backend.categoryReads, categoryReads + 1);
+        expect(backend.bulkReads, bulkReads + 1);
+        expect(
+          backend.statementReads,
+          statementReads,
+          reason: 'ledger untouched',
+        );
+        final state = container.read(_detailProvider);
+        expect(state.classificationTrusted, isTrue);
+        expect(state.classificationMutationInFlight, isFalse);
+        // The canonical R2 replaced the local view; the edit was NOT applied.
+        final current = currentOf(container);
+        expect(current.allocationSetId, setId(2));
+        expect(current.revision, 2);
+        expect(current.allocations.single.categoryId, cat(3));
+        expect(backend.revisionBodies.single['supersedesId'], setId(1));
+      });
+
+      test('the stale predecessor is never swapped in and resent', () async {
+        final backend = staleBackend();
+        final container = await _loaded(backend);
+        backend.allocations[movement] = r2([(cat(3), '-75.25')]);
+
+        await revise(container, split);
+
+        expect(backend.revisionBodies, hasLength(1));
+        expect(
+          backend.revisionBodies.map((b) => b['supersedesId']),
+          isNot(contains(setId(2))),
+        );
+        // Re-sending the stale edit is refused locally too.
+        expect(
+          await revise(container, split),
+          FinancialMutationOutcome.conflictReconciled,
+        );
+        expect(backend.revisionPosts, 1);
+      });
+
+      test('a fresh, explicit review against R2 is a new attempt', () async {
+        final backend = staleBackend();
+        final container = await _loaded(backend);
+        backend.allocations[movement] = r2([(cat(3), '-75.25')]);
+        await revise(container, split);
+
+        final outcome = await revise(container, split, supersedes: setId(2));
+
+        expect(outcome, FinancialMutationOutcome.success);
+        expect(backend.revisionPosts, 2);
+        expect(backend.revisionBodies[1]['supersedesId'], setId(2));
+        expect(backend.revisionKeys[1], isNot(backend.revisionKeys[0]));
+        expect(currentOf(container).revision, 3);
+      });
+
+      test('a failed reconciliation fails closed (untrusted)', () async {
+        final backend = staleBackend();
+        final container = await _loaded(backend);
+        backend.allocations[movement] = r2([(cat(3), '-75.25')]);
+        backend.bulkReadStatus = 503;
+
+        final outcome = await revise(container, split);
+
+        expect(outcome, FinancialMutationOutcome.temporarilyUnavailable);
+        expect(backend.revisionPosts, 1);
+        final state = container.read(_detailProvider);
+        expect(state.classificationTrusted, isFalse);
+        expect(state.classificationMutationInFlight, isFalse);
+        expect(
+          await revise(container, split, supersedes: setId(2)),
+          FinancialMutationOutcome.notAllowed,
+        );
+        expect(backend.revisionPosts, 1);
+      });
+    });
+
+    group('ambiguous write', () {
+      final causes = <String, void Function(FakeFinanceBackend)>{
+        'timeout/transport failure': (b) => b.revisionPostThrows = true,
+        '5xx': (b) => b.revisionPostStatus = 503,
+        '2xx with an invalid body': (b) =>
+            b.revisionPostBody = (movementId, body) => '{"nope":true}',
+        '2xx for another movement': (b) =>
+            b.revisionPostBody = (movementId, body) => fakeAllocationJson(
+              setId: setId(9),
+              movementId: financeTestMovementId(7),
+              shares: [(cat(1), '-50'), (cat(2), '-25.25')],
+              revision: 2,
+              supersedesId: setId(1),
+            ),
+      };
+
+      for (final entry in causes.entries) {
+        test(
+          '${entry.key} + this write persisted: reconciled, no retry',
+          () async {
+            final backend = backendWith();
+            entry.value(backend);
+            backend.onRevisionPost = (movementId, body) {
+              backend.allocations[movementId] = r2([
+                (cat(1), '-50'),
+                (cat(2), '-25.25'),
+              ]);
+            };
+            final container = await _loaded(backend);
+            final categoryReads = backend.categoryReads;
+            final bulkReads = backend.bulkReads;
+            final statementReads = backend.statementReads;
+
+            final outcome = await revise(container, split);
+
+            expect(outcome, FinancialMutationOutcome.unknownOutcomeReconciled);
+            expect(backend.revisionPosts, 1, reason: 'no automatic retry');
+            expect(backend.categoryReads, categoryReads + 1);
+            expect(backend.bulkReads, bulkReads + 1);
+            expect(backend.statementReads, statementReads);
+            final state = container.read(_detailProvider);
+            expect(state.classificationTrusted, isTrue);
+            expect(state.classificationMutationInFlight, isFalse);
+            expect(currentOf(container).allocationSetId, setId(2));
+          },
+        );
+
+        test(
+          '${entry.key} + another writer succeeded: current is incorporated, never resent',
+          () async {
+            final backend = backendWith();
+            entry.value(backend);
+            backend.onRevisionPost = (movementId, body) {
+              backend.allocations[movementId] = r2([(cat(3), '-75.25')]);
+            };
+            final container = await _loaded(backend);
+
+            final outcome = await revise(container, split);
+
+            expect(outcome, FinancialMutationOutcome.unknownOutcomeReconciled);
+            expect(backend.revisionPosts, 1);
+            expect(
+              container.read(_detailProvider).classificationTrusted,
+              isTrue,
+            );
+            expect(currentOf(container).allocations.single.categoryId, cat(3));
+          },
+        );
+
+        test(
+          '${entry.key} + predecessor still current: explicit retry reuses the key',
+          () async {
+            final backend = backendWith();
+            entry.value(backend);
+            final container = await _loaded(backend);
+
+            final outcome = await revise(container, split);
+
+            expect(outcome, FinancialMutationOutcome.unknownOutcomeReconciled);
+            expect(backend.revisionPosts, 1, reason: 'no automatic retry');
+            expect(
+              container.read(_detailProvider).classificationTrusted,
+              isTrue,
+            );
+            expect(currentOf(container).allocationSetId, setId(1));
+
+            // The backend recovers; the user explicitly retries the SAME edit.
+            backend.revisionPostThrows = false;
+            backend.revisionPostStatus = null;
+            backend.revisionPostBody = null;
+            final retry = await revise(container, split);
+
+            expect(retry, FinancialMutationOutcome.success);
+            expect(backend.revisionPosts, 2);
+            expect(backend.revisionKeys[1], backend.revisionKeys[0]);
+            expect(backend.revisionBodies[1], backend.revisionBodies[0]);
+          },
+        );
+
+        test(
+          '${entry.key} + failed reconciliation: untrusted, key kept, refresh restores',
+          () async {
+            final backend = backendWith();
+            entry.value(backend);
+            backend.onRevisionPost = (movementId, body) =>
+                backend.bulkReadStatus = 503;
+            final container = await _loaded(backend);
+
+            final outcome = await revise(container, split);
+
+            expect(outcome, FinancialMutationOutcome.temporarilyUnavailable);
+            expect(backend.revisionPosts, 1);
+            var state = container.read(_detailProvider);
+            expect(state.classificationTrusted, isFalse);
+            expect(state.classificationMutationInFlight, isFalse);
+
+            // Every classification mutation is blocked while untrusted.
+            expect(
+              await revise(container, split),
+              FinancialMutationOutcome.notAllowed,
+            );
+            expect(
+              await container
+                  .read(_detailProvider.notifier)
+                  .classifyMovement(movementId: movement, categoryId: cat(1)),
+              FinancialMutationOutcome.notAllowed,
+            );
+            final created = await container
+                .read(_detailProvider.notifier)
+                .createCategory(
+                  FinancialCategoryCreateInput(
+                    name: 'Nova',
+                    visibilityScope: FinancialVisibilityScope.household,
+                  ),
+                );
+            expect(created.outcome, FinancialMutationOutcome.notAllowed);
+            expect(backend.revisionPosts, 1);
+            expect(backend.categoryPosts, 0);
+
+            // Atualizar restores trust; the retry of the same edit keeps the key.
+            backend.bulkReadStatus = null;
+            backend.revisionPostThrows = false;
+            backend.revisionPostStatus = null;
+            backend.revisionPostBody = null;
+            await container.read(_detailProvider.notifier).refresh();
+            state = container.read(_detailProvider);
+            expect(state.classificationTrusted, isTrue);
+
+            expect(
+              await revise(container, split),
+              FinancialMutationOutcome.success,
+            );
+            expect(backend.revisionKeys[1], backend.revisionKeys[0]);
+          },
+        );
+      }
+    });
+
+    test(
+      '422 is a rejection: no retry, canonical state kept, new key later',
+      () async {
+        final backend = backendWith()..revisionPostStatus = 422;
+        final container = await _loaded(backend);
+        final before = container.read(_detailProvider).currentAllocations;
+        final categoryReads = backend.categoryReads;
+
+        final outcome = await revise(container, split);
+
+        expect(outcome, FinancialMutationOutcome.rejected);
+        expect(backend.revisionPosts, 1);
+        expect(
+          backend.categoryReads,
+          categoryReads,
+          reason: 'nothing to reconcile',
+        );
+        final state = container.read(_detailProvider);
+        expect(state.classificationTrusted, isTrue);
+        expect(state.currentAllocations, before);
+        expect(state.classificationMutationInFlight, isFalse);
+
+        backend.revisionPostStatus = null;
+        expect(
+          await revise(container, split),
+          FinancialMutationOutcome.success,
+        );
+        expect(backend.revisionKeys[1], isNot(backend.revisionKeys[0]));
+      },
+    );
+
+    test('404 reconciles once without retrying', () async {
+      final backend = backendWith()..revisionPostStatus = 404;
+      final container = await _loaded(backend);
+      final categoryReads = backend.categoryReads;
+      final bulkReads = backend.bulkReads;
+
+      final outcome = await revise(container, split);
+
+      expect(outcome, FinancialMutationOutcome.rejected);
+      expect(backend.revisionPosts, 1);
+      expect(backend.categoryReads, categoryReads + 1);
+      expect(backend.bulkReads, bulkReads + 1);
+      expect(container.read(_detailProvider).classificationTrusted, isTrue);
+    });
+
+    test('404 with a failed reconciliation is untrusted', () async {
+      final backend = backendWith()..revisionPostStatus = 404;
+      backend.onRevisionPost = (m, b) => backend.categoryReadStatus = 503;
+      final container = await _loaded(backend);
+
+      await revise(container, split);
+
+      expect(backend.revisionPosts, 1);
+      expect(container.read(_detailProvider).classificationTrusted, isFalse);
+    });
+
+    test('403 blocks access without reconciling or retrying', () async {
+      final backend = backendWith()..revisionPostStatus = 403;
+      final container = await _loaded(backend);
+
+      final outcome = await revise(container, split);
+
+      expect(outcome, FinancialMutationOutcome.accessBlocked);
+      expect(backend.revisionPosts, 1);
+      expect(
+        container.read(_detailProvider).phase,
+        FinancialLoadPhase.forbidden,
+      );
+    });
+
+    test('only one revision is in flight at a time', () async {
+      final backend = backendWith();
+      final container = await _loaded(backend);
+      final gate = Completer<void>();
+      backend.revisionPostGate = gate;
+
+      final first = revise(container, split);
+      while (backend.revisionPosts < 1) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      final second = await revise(container, [share(3, '-75.25')]);
+      gate.complete();
+      await first;
+
+      expect(second, FinancialMutationOutcome.notAllowed);
+      expect(backend.revisionPosts, 1);
+    });
+  });
 }
 
 final _detailProvider = financialAccountDetailControllerProvider(

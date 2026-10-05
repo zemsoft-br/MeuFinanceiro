@@ -688,6 +688,43 @@ class FinancialMovementAllocationCreateInput {
   };
 }
 
+/// A new append-only revision of an existing classification. The predecessor
+/// is explicit: it is always the `allocationSetId` the editor was opened on.
+class FinancialMovementAllocationRevisionInput {
+  FinancialMovementAllocationRevisionInput({
+    required String supersedesId,
+    required List<FinancialAllocationShareInput> allocations,
+    String? idempotencyKey,
+  }) : supersedesId = _financialResourceId(supersedesId, 'supersedesId'),
+       idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()),
+       allocations = List<FinancialAllocationShareInput>.unmodifiable(
+         allocations,
+       ) {
+    if (this.allocations.isEmpty ||
+        this.allocations.length > _maxAllocationShares) {
+      throw const FormatException('allocations are invalid.');
+    }
+    final categories = this.allocations.map((item) => item.categoryId).toSet();
+    if (categories.length != this.allocations.length) {
+      throw const FormatException('allocation categories must be unique.');
+    }
+    final currencies = this.allocations.map((item) => item.currency).toSet();
+    if (currencies.length != 1) {
+      throw const FormatException('allocation currencies must match.');
+    }
+  }
+
+  final String idempotencyKey;
+  final String supersedesId;
+  final List<FinancialAllocationShareInput> allocations;
+
+  Map<String, Object?> toJson() => {
+    'idempotencyKey': idempotencyKey,
+    'supersedesId': supersedesId,
+    'allocations': allocations.map((item) => item.toJson()).toList(),
+  };
+}
+
 class FinancialCoreApi {
   const FinancialCoreApi(this.client);
 
@@ -1021,6 +1058,30 @@ class FinancialCoreApi {
     if (allocation.movementId != id ||
         allocation.revision != 1 ||
         allocation.supersedesId != null ||
+        !_sameShares(allocation.allocations, input.allocations)) {
+      throw const FormatException('financial allocation response mismatch.');
+    }
+    return allocation;
+  }
+
+  /// Appends a revision. The movement id travels only in the path and the
+  /// predecessor only in the body; a response that is not exactly that revision
+  /// is never accepted silently.
+  Future<FinancialMovementAllocation> reviseMovementAllocation(
+    String movementId,
+    FinancialMovementAllocationRevisionInput input,
+  ) async {
+    final id = _financialResourceId(movementId, 'movementId');
+    final response = await client.post(
+      'finance/movements/$id/allocation/revisions',
+      jsonBody: input.toJson(),
+    );
+    final allocation = _parseMovementAllocation(
+      _decodeJsonObject(response.body, 'financial allocation response'),
+    );
+    if (allocation.movementId != id ||
+        allocation.revision < 2 ||
+        allocation.supersedesId != input.supersedesId ||
         !_sameShares(allocation.allocations, input.allocations)) {
       throw const FormatException('financial allocation response mismatch.');
     }

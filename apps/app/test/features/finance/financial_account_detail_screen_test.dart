@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/features/finance/financial_account_detail_screen.dart';
@@ -633,4 +634,705 @@ void main() {
       },
     );
   }
+
+  group('split and revision editor', () {
+    Key reviseButton(int movement) =>
+        Key('financial-movement-revise-${financeTestMovementId(movement)}');
+    Key shareLine(int movement, int category) => Key(
+      'financial-movement-share-${financeTestMovementId(movement)}-'
+      '${financeTestCategoryId(category)}',
+    );
+    Key rowCategory(int index) =>
+        Key('financial-allocation-row-category-$index');
+    Key rowAmount(int index) => Key('financial-allocation-row-amount-$index');
+    Key rowRemove(int index) => Key('financial-allocation-row-remove-$index');
+    Key option(int category) =>
+        Key('financial-allocation-option-${financeTestCategoryId(category)}');
+    const confirm = Key('financial-classify-confirm');
+    const remaining = Key('financial-allocation-remaining');
+
+    String set(int n) => financeTestAllocationSetId(n);
+
+    String current(
+      List<(int, String)> shares, {
+      int movement = 1,
+      int id = 1,
+      int revision = 1,
+      int? supersedes,
+    }) => fakeAllocationJson(
+      setId: set(id),
+      movementId: financeTestMovementId(movement),
+      shares: [for (final s in shares) (financeTestCategoryId(s.$1), s.$2)],
+      revision: revision,
+      supersedesId: supersedes == null ? null : set(supersedes),
+    );
+
+    bool confirmEnabled(WidgetTester tester) =>
+        tester.widget<FilledButton>(find.byKey(confirm)).onPressed != null;
+
+    Future<void> choose(WidgetTester tester, int row, int category) async {
+      await tester.tap(find.byKey(rowCategory(row)));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(option(category)).hitTestable());
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> amount(WidgetTester tester, int row, String text) async {
+      await tester.enterText(find.byKey(rowAmount(row)), text);
+      await tester.pump();
+    }
+
+    Future<void> openSplit(WidgetTester tester, int movement) async {
+      await _openPicker(tester, movement);
+      await tester.tap(find.text('Ratear entre categorias'));
+      await tester.pumpAndSettle();
+    }
+
+    String text(WidgetTester tester, Key key) =>
+        tester.widget<Text>(find.byKey(key)).data!;
+
+    testWidgets('Ratear shows Total, Rateado and Restante and closes exactly', (
+      tester,
+    ) async {
+      final backend = _backend();
+      await _pump(tester, backend);
+      await openSplit(tester, 1);
+
+      expect(
+        text(tester, const Key('financial-allocation-total')),
+        contains('75,25'),
+      );
+      expect(text(tester, remaining), 'Restante: BRL 75,25');
+      expect(confirmEnabled(tester), isFalse);
+
+      await choose(tester, 0, 1);
+      await amount(tester, 0, '50');
+      expect(
+        text(tester, const Key('financial-allocation-allocated')),
+        'Total rateado: BRL 50,00',
+      );
+      expect(text(tester, remaining), 'Restante: BRL 25,25');
+      expect(confirmEnabled(tester), isFalse);
+
+      await choose(tester, 1, 2);
+      await amount(tester, 1, '25,24');
+      expect(text(tester, remaining), 'Restante: BRL 0,01');
+      expect(confirmEnabled(tester), isFalse, reason: 'under-allocated');
+
+      await amount(tester, 1, '25,26');
+      expect(text(tester, remaining), 'Restante: BRL -0,01');
+      expect(confirmEnabled(tester), isFalse, reason: 'over-allocated');
+
+      await amount(tester, 1, '25,25');
+      expect(text(tester, remaining), 'Restante: BRL 0,00');
+      expect(confirmEnabled(tester), isTrue);
+
+      await tester.tap(find.byKey(confirm));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lançamento classificado.'), findsOneWidget);
+      expect(backend.allocationPosts, 1);
+      expect(backend.postedBodies.single['allocations'], [
+        {
+          'categoryId': financeTestCategoryId(1),
+          'amount': '-50.00',
+          'currency': 'BRL',
+        },
+        {
+          'categoryId': financeTestCategoryId(2),
+          'amount': '-25.25',
+          'currency': 'BRL',
+        },
+      ]);
+      expect(_labelText(tester, 1), 'Categoria: 2 categorias');
+      expect(find.byKey(shareLine(1, 1)), findsOneWidget);
+      expect(find.byKey(shareLine(1, 2)), findsOneWidget);
+      expect(
+        tester.widget<Text>(find.byKey(shareLine(1, 1))).data,
+        'Moradia · BRL -50,00',
+      );
+      expect(
+        tester.widget<Text>(find.byKey(shareLine(1, 2))).data,
+        'Moradia > Energia · BRL -25,25',
+      );
+    });
+
+    testWidgets('zero and malformed shares never enable Confirmar', (
+      tester,
+    ) async {
+      await _pump(tester, _backend());
+      await openSplit(tester, 1);
+      await choose(tester, 0, 1);
+      await choose(tester, 1, 2);
+
+      await amount(tester, 0, '75,25');
+      await amount(tester, 1, '0');
+      expect(text(tester, remaining), 'Restante: BRL 0,00');
+      expect(confirmEnabled(tester), isFalse, reason: 'zero share');
+      expect(find.text('Informe um valor maior que zero.'), findsOneWidget);
+
+      await amount(tester, 1, '1.2.3');
+      expect(confirmEnabled(tester), isFalse);
+      expect(find.text('Valor inválido.'), findsOneWidget);
+
+      await amount(tester, 1, '-5');
+      expect(
+        confirmEnabled(tester),
+        isFalse,
+        reason: 'sign is the Movement\'s',
+      );
+    });
+
+    testWidgets('adding and removing shares', (tester) async {
+      await _pump(tester, _backend());
+      await openSplit(tester, 1);
+
+      expect(find.byKey(rowAmount(1)), findsOneWidget);
+      expect(find.byKey(rowAmount(2)), findsNothing);
+
+      await tester.tap(find.byKey(const Key('financial-allocation-add')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(rowAmount(2)), findsOneWidget);
+
+      await choose(tester, 0, 1);
+      await amount(tester, 0, '10');
+      await amount(tester, 1, '20');
+      await amount(tester, 2, '30');
+      expect(
+        text(tester, const Key('financial-allocation-allocated')),
+        'Total rateado: BRL 60,00',
+      );
+
+      await tester.tap(find.byKey(rowRemove(1)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(rowAmount(2)), findsNothing);
+      expect(
+        text(tester, const Key('financial-allocation-allocated')),
+        'Total rateado: BRL 40,00',
+      );
+      expect(
+        tester.widget<TextField>(find.byKey(rowAmount(1))).controller!.text,
+        '30',
+        reason: 'the right row was removed',
+      );
+    });
+
+    testWidgets('a category already used is unavailable in the other rows', (
+      tester,
+    ) async {
+      await _pump(tester, _backend());
+      await openSplit(tester, 1);
+      await choose(tester, 0, 1);
+
+      List<String?> offered(int row) => tester
+          .widget<DropdownButton<String>>(
+            find.descendant(
+              of: find.byKey(rowCategory(row)),
+              matching: find.byType(DropdownButton<String>),
+            ),
+          )
+          .items!
+          .map((item) => item.value)
+          .toList();
+
+      expect(offered(1), isNot(contains(financeTestCategoryId(1))));
+      expect(offered(1), contains(financeTestCategoryId(2)));
+      // The row that owns a category keeps it; it is merely not offered twice.
+      expect(offered(0), contains(financeTestCategoryId(1)));
+      // DISABLED and other people's PERSONAL categories are never offered.
+      expect(offered(1), isNot(contains(financeTestCategoryId(5))));
+      expect(offered(1), isNot(contains(financeTestCategoryId(4))));
+    });
+
+    testWidgets('the share count is capped at 50', (tester) async {
+      await _pump(tester, _backend());
+      await openSplit(tester, 1);
+      final add = find.byKey(const Key('financial-allocation-add'));
+
+      for (var i = 0; i < 48; i++) {
+        await tester.ensureVisible(add);
+        await tester.tap(add);
+        await tester.pump();
+      }
+
+      expect(find.byKey(rowAmount(49), skipOffstage: false), findsOneWidget);
+      expect(find.byKey(rowAmount(50), skipOffstage: false), findsNothing);
+      expect(tester.widget<TextButton>(add).onPressed, isNull);
+    });
+
+    testWidgets(
+      'Alterar classificação is offered to the owner of a classified row',
+      (tester) async {
+        await _pump(
+          tester,
+          _backend(
+            movements: [
+              FakeMovementSpec(id: financeTestMovementId(1)),
+              FakeMovementSpec(id: financeTestMovementId(2)),
+            ],
+            allocations: {
+              financeTestMovementId(1): current([(1, '-75.25')]),
+            },
+          ),
+        );
+
+        expect(find.byKey(reviseButton(1)), findsOneWidget);
+        expect(find.text('Alterar classificação'), findsOneWidget);
+        expect(find.byKey(_classifyButton(1)), findsNothing);
+        expect(find.byKey(reviseButton(2)), findsNothing);
+        expect(find.byKey(_classifyButton(2)), findsOneWidget);
+      },
+    );
+
+    testWidgets('simple -> split revises against the current set', (
+      tester,
+    ) async {
+      final backend = _backend(
+        allocations: {
+          financeTestMovementId(1): current([(1, '-75.25')]),
+        },
+      );
+      await _pump(tester, backend);
+      await tester.tap(find.byKey(reviseButton(1)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Alterar classificação'), findsWidgets);
+      expect(
+        find.byKey(const Key('financial-allocation-unchanged')),
+        findsOneWidget,
+      );
+      expect(confirmEnabled(tester), isFalse, reason: 'nothing changed yet');
+
+      await tester.tap(find.text('Ratear entre categorias'));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byKey(rowAmount(0))).controller!.text,
+        '75.25',
+        reason: 'the current share stays visible',
+      );
+      await amount(tester, 0, '50');
+      await choose(tester, 1, 2);
+      await amount(tester, 1, '25.25');
+      expect(confirmEnabled(tester), isTrue);
+
+      await tester.tap(find.byKey(confirm));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Classificação alterada.'), findsOneWidget);
+      expect(backend.revisionPosts, 1);
+      expect(backend.allocationPosts, 0);
+      expect(backend.revisionBodies.single['supersedesId'], set(1));
+      expect(_labelText(tester, 1), 'Categoria: 2 categorias');
+      expect(find.byKey(reviseButton(1)), findsOneWidget);
+    });
+
+    testWidgets('split -> simple', (tester) async {
+      final backend = _backend(
+        allocations: {
+          financeTestMovementId(1): current([(1, '-50'), (2, '-25.25')]),
+        },
+      );
+      await _pump(tester, backend);
+      expect(_labelText(tester, 1), 'Categoria: 2 categorias');
+
+      await tester.tap(find.byKey(reviseButton(1)));
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byKey(rowAmount(0))).controller!.text,
+        '50.00',
+      );
+
+      await tester.tap(find.text('1 categoria'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_pickerTile(3)));
+      await tester.pump();
+      expect(confirmEnabled(tester), isTrue);
+
+      await tester.tap(find.byKey(confirm));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Classificação alterada.'), findsOneWidget);
+      expect(_labelText(tester, 1), 'Categoria: Pessoal');
+      expect(backend.revisionBodies.single['allocations'], [
+        {
+          'categoryId': financeTestCategoryId(3),
+          'amount': '-75.25',
+          'currency': 'BRL',
+        },
+      ]);
+      expect(find.byKey(shareLine(1, 1)), findsNothing);
+    });
+
+    testWidgets(
+      'a DISABLED category of the history stays visible but cannot be submitted',
+      (tester) async {
+        final backend = _backend(
+          allocations: {
+            financeTestMovementId(1): current([(5, '-50'), (2, '-25.25')]),
+          },
+        );
+        await _pump(tester, backend);
+
+        expect(
+          tester.widget<Text>(find.byKey(shareLine(1, 5))).data,
+          'Antiga (indisponível) · BRL -50,00',
+        );
+
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Antiga (indisponível)'), findsWidgets);
+        expect(
+          find.byKey(const Key('financial-allocation-row-unavailable-0')),
+          findsOneWidget,
+        );
+        expect(confirmEnabled(tester), isFalse);
+
+        // It is not offered as a destination, only as a visible leftover.
+        await tester.tap(find.byKey(rowCategory(0)));
+        await tester.pumpAndSettle();
+        expect(find.byKey(option(5)), findsNothing);
+        await tester.tap(find.byKey(option(1)).hitTestable());
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('financial-allocation-row-unavailable-0')),
+          findsNothing,
+        );
+        expect(confirmEnabled(tester), isTrue);
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(backend.revisionPosts, 1);
+        expect(
+          (backend.revisionBodies.single['allocations'] as List).map(
+            (s) => (s as Map)['categoryId'],
+          ),
+          [financeTestCategoryId(1), financeTestCategoryId(2)],
+        );
+      },
+    );
+
+    testWidgets('a simple DISABLED classification must be replaced', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _backend(
+          allocations: {
+            financeTestMovementId(1): current([(5, '-75.25')]),
+          },
+        ),
+      );
+      await tester.tap(find.byKey(reviseButton(1)));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          Key('financial-classify-unavailable-${financeTestCategoryId(5)}'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.byKey(_pickerTile(5)), findsNothing);
+      expect(confirmEnabled(tester), isFalse);
+
+      await tester.tap(find.byKey(_pickerTile(1)));
+      await tester.pump();
+      expect(confirmEnabled(tester), isTrue);
+    });
+
+    testWidgets(
+      'non-owner, NEUTRAL, REVERSAL and archived accounts cannot edit',
+      (tester) async {
+        final movements = [
+          FakeMovementSpec(id: financeTestMovementId(1)),
+          FakeMovementSpec(
+            id: financeTestMovementId(2),
+            effect: 'NEUTRAL',
+            description: 'Transferência',
+          ),
+          FakeMovementSpec(
+            id: financeTestMovementId(3),
+            role: 'REVERSAL',
+            effect: 'NEUTRAL',
+            description: null,
+          ),
+        ];
+        final allocations = {
+          financeTestMovementId(1): current([(1, '-75.25')]),
+        };
+
+        await _pump(
+          tester,
+          _backend(movements: movements, allocations: allocations),
+        );
+        expect(find.byKey(reviseButton(1)), findsOneWidget);
+        expect(find.byKey(reviseButton(2)), findsNothing);
+        expect(find.byKey(reviseButton(3)), findsNothing);
+        expect(find.byKey(_classifyButton(2)), findsNothing);
+        expect(find.byKey(_classifyButton(3)), findsNothing);
+      },
+    );
+
+    testWidgets('a non-owner reads the classification but cannot change it', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        _backend(
+          accountScope: 'HOUSEHOLD',
+          allocations: {
+            financeTestMovementId(1): current([(1, '-50'), (2, '-25.25')]),
+          },
+        ),
+        operatorId: financeTestOtherOperatorId,
+      );
+
+      expect(_labelText(tester, 1), 'Categoria: 2 categorias');
+      expect(find.byKey(shareLine(1, 1)), findsOneWidget);
+      expect(find.byKey(reviseButton(1)), findsNothing);
+      expect(find.byKey(_classifyButton(1)), findsNothing);
+    });
+
+    testWidgets('an archived account offers no revision', (tester) async {
+      await _pump(
+        tester,
+        _backend(
+          accountStatus: 'ARCHIVED',
+          allocations: {
+            financeTestMovementId(1): current([(1, '-75.25')]),
+          },
+        ),
+      );
+
+      expect(find.byKey(reviseButton(1)), findsNothing);
+    });
+
+    testWidgets(
+      '409 shows the conflict, never success, and the edit must be reopened',
+      (tester) async {
+        final backend = _backend(
+          allocations: {
+            financeTestMovementId(1): current([(1, '-75.25')]),
+          },
+        )..revisionPostStatus = 409;
+        // Another writer appended R2 before this revision arrived.
+        backend.onRevisionPost = (movementId, body) {
+          backend.allocations[movementId] = current(
+            [(3, '-75.25')],
+            id: 2,
+            revision: 2,
+            supersedes: 1,
+          );
+        };
+        await _pump(tester, backend);
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Ratear entre categorias'));
+        await tester.pumpAndSettle();
+        await amount(tester, 0, '50');
+        await choose(tester, 1, 2);
+        await amount(tester, 1, '25.25');
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.textContaining('A classificação mudou antes de salvar'),
+          findsOneWidget,
+        );
+        expect(find.text('Classificação alterada.'), findsNothing);
+        expect(backend.revisionPosts, 1, reason: 'never retried');
+        // The persisted truth is on screen; the edit was not applied.
+        expect(_labelText(tester, 1), 'Categoria: Pessoal');
+        expect(
+          find.byKey(const Key('financial-classify-dialog')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(FinancialAccountDetailScreen.untrustedNoticeKey),
+          findsNothing,
+        );
+
+        // The user opens the editor again, now on R2, and decides explicitly.
+        backend.revisionPostStatus = null;
+        backend.onRevisionPost = null;
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<Text>(
+                find.byKey(const Key('financial-allocation-unchanged')),
+              )
+              .data,
+          isNotEmpty,
+        );
+        await tester.tap(find.byKey(_pickerTile(1)));
+        await tester.pump();
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(backend.revisionPosts, 2);
+        expect(backend.revisionBodies[1]['supersedesId'], set(2));
+        expect(find.text('Classificação alterada.'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      '409 with a failed reconciliation hides the actions until Atualizar',
+      (tester) async {
+        final backend = _backend(
+          allocations: {
+            financeTestMovementId(1): current([(1, '-75.25')]),
+          },
+        )..revisionPostStatus = 409;
+        backend.onRevisionPost = (movementId, body) {
+          backend.allocations[movementId] = current(
+            [(3, '-75.25')],
+            id: 2,
+            revision: 2,
+            supersedes: 1,
+          );
+          backend.bulkReadStatus = 503;
+        };
+        await _pump(tester, backend);
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(_pickerTile(2)));
+        await tester.pump();
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(FinancialAccountDetailScreen.untrustedNoticeKey),
+          findsOneWidget,
+        );
+        expect(find.text('Classificação alterada.'), findsNothing);
+        expect(find.byKey(reviseButton(1)), findsNothing);
+        expect(backend.revisionPosts, 1);
+
+        backend.bulkReadStatus = null;
+        backend.revisionPostStatus = null;
+        await tester.tap(
+          find.byKey(FinancialAccountDetailScreen.refreshButtonKey),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(FinancialAccountDetailScreen.untrustedNoticeKey),
+          findsNothing,
+        );
+        expect(_labelText(tester, 1), 'Categoria: Pessoal');
+        expect(find.byKey(reviseButton(1)), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'an ambiguous revision is never shown as success and allows an explicit retry',
+      (tester) async {
+        final backend = _backend(
+          allocations: {
+            financeTestMovementId(1): current([(1, '-75.25')]),
+          },
+        )..revisionPostStatus = 503;
+        await _pump(tester, backend);
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(_pickerTile(2)));
+        await tester.pump();
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Classificação alterada.'), findsNothing);
+        expect(
+          find.textContaining('nada mudou na classificação persistida'),
+          findsOneWidget,
+        );
+        expect(backend.revisionPosts, 1);
+        expect(_labelText(tester, 1), 'Categoria: Moradia');
+        expect(find.byKey(reviseButton(1)), findsOneWidget);
+
+        backend.revisionPostStatus = null;
+        await tester.pumpAndSettle(const Duration(seconds: 5));
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(_pickerTile(2)));
+        await tester.pump();
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(backend.revisionPosts, 2);
+        expect(backend.revisionKeys[1], backend.revisionKeys[0]);
+        expect(_labelText(tester, 1), 'Categoria: Moradia > Energia');
+      },
+    );
+
+    testWidgets(
+      'a rejected revision (422) leaves the classification untouched',
+      (tester) async {
+        final backend = _backend(
+          allocations: {
+            financeTestMovementId(1): current([(1, '-75.25')]),
+          },
+        )..revisionPostStatus = 422;
+        await _pump(tester, backend);
+        await tester.tap(find.byKey(reviseButton(1)));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(_pickerTile(2)));
+        await tester.pump();
+        await tester.tap(find.byKey(confirm));
+        await tester.pumpAndSettle();
+
+        expect(find.textContaining('não foi aceita'), findsOneWidget);
+        expect(find.text('Classificação alterada.'), findsNothing);
+        expect(_labelText(tester, 1), 'Categoria: Moradia');
+        expect(backend.revisionPosts, 1);
+      },
+    );
+
+    testWidgets('editor controls are labelled for assistive technology', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(tester, _backend());
+      await openSplit(tester, 1);
+
+      String? tooltip(Key key) =>
+          tester.getSemantics(find.byKey(key)).getSemanticsData().tooltip;
+
+      expect(tooltip(rowRemove(0)), 'Remover categoria 1');
+      expect(tooltip(rowRemove(1)), 'Remover categoria 2');
+      expect(find.text('Adicionar categoria'), findsOneWidget);
+      expect(find.text('Categoria 1'), findsWidgets);
+      expect(find.text('Valor 1'), findsWidgets);
+      handle.dispose();
+    });
+
+    testWidgets(
+      'keyboard: Tab reaches the amount field and Enter-free typing works',
+      (tester) async {
+        await _pump(tester, _backend());
+        await openSplit(tester, 1);
+
+        await tester.tap(find.byKey(rowAmount(0)));
+        await tester.pump();
+        await tester.enterText(find.byKey(rowAmount(0)), '12,5');
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+
+        expect(
+          tester.widget<TextField>(find.byKey(rowAmount(0))).controller!.text,
+          '12,5',
+        );
+        expect(
+          FocusManager.instance.primaryFocus,
+          isNot(
+            same(tester.widget<TextField>(find.byKey(rowAmount(0))).focusNode),
+          ),
+          reason: 'Tab moves focus on to the next control',
+        );
+      },
+    );
+  });
 }
