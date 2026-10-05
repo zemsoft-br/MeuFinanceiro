@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:meufinanceiro_app/core/auth/operator_session_controller.dart';
+import 'package:meufinanceiro_app/features/finance/financial_category_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
 import 'package:meufinanceiro_app/features/finance/financial_money_format.dart';
@@ -37,6 +39,12 @@ class FinancialAccountDetailScreen extends ConsumerStatefulWidget {
   static const incomeButtonKey = Key('financial-account-detail-income');
   static const expenseButtonKey = Key('financial-account-detail-expense');
   static const transferButtonKey = Key('financial-account-detail-transfer');
+  static const untrustedNoticeKey = Key(
+    'financial-account-detail-classification-untrusted',
+  );
+  static const unknownCategoryNoticeKey = Key(
+    'financial-account-detail-category-unknown',
+  );
 
   @override
   ConsumerState<FinancialAccountDetailScreen> createState() =>
@@ -158,6 +166,60 @@ class _FinancialAccountDetailScreenState
     );
   }
 
+  Future<void> _classifyMovement(
+    FinancialAccount account,
+    FinancialMovement movement,
+    String? operatorId,
+  ) async {
+    final categoryId = await showDialog<String>(
+      context: context,
+      builder: (context) => _ClassifyMovementDialog(
+        accountId: widget.accountId,
+        account: account,
+        movement: movement,
+        operatorId: operatorId,
+      ),
+    );
+    if (categoryId == null || !mounted) return;
+    final outcome = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .classifyMovement(
+          movementId: movement.movementId,
+          categoryId: categoryId,
+        );
+    if (!mounted) return;
+    final trusted = ref
+        .read(financialAccountDetailControllerProvider(widget.accountId))
+        .classificationTrusted;
+    final message = !trusted
+        ? 'Não foi possível confirmar o estado das classificações. '
+              'Use Atualizar antes de classificar novamente.'
+        : switch (outcome) {
+            FinancialMutationOutcome.success => 'Lançamento classificado.',
+            FinancialMutationOutcome.conflictReconciled =>
+              'O lançamento foi atualizado com a classificação persistida. '
+                  'Nada foi aplicado; revise e tente novamente se desejar.',
+            FinancialMutationOutcome.rejected =>
+              'A classificação não foi aceita. Atualize a tela e confira a categoria.',
+            FinancialMutationOutcome.temporarilyUnavailable =>
+              'Não foi possível classificar agora. Tente novamente.',
+            FinancialMutationOutcome.invalidResponse =>
+              'Não foi possível validar a resposta. Atualize o detalhe antes de tentar novamente.',
+            FinancialMutationOutcome.accessBlocked =>
+              'O acesso necessário para classificar não está disponível.',
+            FinancialMutationOutcome.notAllowed =>
+              'Este lançamento não pode ser classificado agora.',
+            FinancialMutationOutcome.unknownOutcomeReconciled =>
+              'O estado das classificações foi reconciliado com o persistido. '
+                  'Confira o lançamento antes de classificar novamente.',
+          };
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _reverseMovement(
     FinancialMovement movement,
     String initialDate,
@@ -218,6 +280,11 @@ class _FinancialAccountDetailScreenState
     final provider = financialAccountDetailControllerProvider(widget.accountId);
     final state = ref.watch(provider);
     final account = state.account;
+    final operatorId = ref.watch(
+      operatorSessionControllerProvider.select(
+        (session) => session.principal?.operatorId,
+      ),
+    );
     final initialOperationDate = financialOperationInitialDate(
       now: ref.watch(financialOperationClockProvider)(),
       openingBalanceDate: state.openingBalance?.effectiveDate,
@@ -314,6 +381,24 @@ class _FinancialAccountDetailScreenState
             _RefreshNotice(failure: state.refreshFailure),
             const SizedBox(height: AppTokens.space16),
           ],
+          if (account != null && !state.classificationTrusted) ...[
+            const _StateNotice(
+              noticeKey: FinancialAccountDetailScreen.untrustedNoticeKey,
+              message:
+                  'As classificações exibidas podem estar desatualizadas. '
+                  'Use Atualizar para voltar a classificar lançamentos.',
+            ),
+            const SizedBox(height: AppTokens.space16),
+          ],
+          if (account != null && state.categoryCreationUnknown) ...[
+            const _StateNotice(
+              noticeKey: FinancialAccountDetailScreen.unknownCategoryNoticeKey,
+              message:
+                  'O resultado da última criação de categoria é desconhecido. '
+                  'Use Atualizar antes de criar outra categoria.',
+            ),
+            const SizedBox(height: AppTokens.space16),
+          ],
           if (account == null)
             _FailureOrLoading(
               phase: state.phase,
@@ -331,7 +416,8 @@ class _FinancialAccountDetailScreenState
               destinations: transferDestinations,
               enabled:
                   account.status == FinancialAccountStatus.active &&
-                  !state.operationMutationInFlight,
+                  !state.operationMutationInFlight &&
+                  !state.classificationMutationInFlight,
               mutationInFlight: state.operationMutationInFlight,
               onIncome: () => unawaited(
                 _createManualEntry(
@@ -373,9 +459,18 @@ class _FinancialAccountDetailScreenState
               _StatementCard(
                 statement: state.statement!,
                 transfers: state.transfers,
+                account: account,
+                categoryIndex: state.categoryIndex,
+                currentAllocations: state.currentAllocations,
+                operatorId: operatorId,
+                allowClassification:
+                    !state.isBusy && state.classificationTrusted,
+                onClassify: (movement) =>
+                    unawaited(_classifyMovement(account, movement, operatorId)),
                 allowReversal:
                     account.status == FinancialAccountStatus.active &&
-                    !state.operationMutationInFlight,
+                    !state.operationMutationInFlight &&
+                    !state.classificationMutationInFlight,
                 onReverseMovement: (movement) => unawaited(
                   _reverseMovement(
                     movement,
@@ -647,6 +742,12 @@ class _StatementCard extends StatelessWidget {
   const _StatementCard({
     required this.statement,
     required this.transfers,
+    required this.account,
+    required this.categoryIndex,
+    required this.currentAllocations,
+    required this.operatorId,
+    required this.allowClassification,
+    required this.onClassify,
     required this.allowReversal,
     required this.onReverseMovement,
     required this.onReverseTransfer,
@@ -654,6 +755,12 @@ class _StatementCard extends StatelessWidget {
 
   final FinancialStatement statement;
   final List<FinancialTransfer> transfers;
+  final FinancialAccount account;
+  final FinancialCategoryIndex categoryIndex;
+  final Map<String, FinancialMovementAllocation> currentAllocations;
+  final String? operatorId;
+  final bool allowClassification;
+  final ValueChanged<FinancialMovement> onClassify;
   final bool allowReversal;
   final ValueChanged<FinancialMovement> onReverseMovement;
   final void Function(FinancialTransfer, FinancialMovement) onReverseTransfer;
@@ -696,10 +803,31 @@ class _StatementCard extends StatelessWidget {
                         transfers: transfers,
                       )
                     : null;
+                final allocation = currentAllocations[movement.movementId];
+                final canClassify =
+                    allowClassification &&
+                    canClassifyFinancialMovementSimply(
+                      account: account,
+                      movement: movement,
+                      currentAllocation: allocation,
+                      operatorId: operatorId,
+                    );
+                String classificationLabel;
+                try {
+                  classificationLabel = financialMovementClassificationLabel(
+                    movement: movement,
+                    allocation: allocation,
+                    index: categoryIndex,
+                  );
+                } on FormatException {
+                  classificationLabel = 'Categoria indisponível';
+                }
                 return Padding(
                   padding: const EdgeInsets.only(bottom: AppTokens.space12),
                   child: _StatementRow(
                     entry: entry,
+                    classificationLabel: classificationLabel,
+                    onClassify: canClassify ? () => onClassify(movement) : null,
                     transferId: reversibleTransfer?.transferId,
                     onReverseMovement: reversibleMovement
                         ? () => onReverseMovement(movement)
@@ -720,12 +848,16 @@ class _StatementCard extends StatelessWidget {
 class _StatementRow extends StatelessWidget {
   const _StatementRow({
     required this.entry,
+    required this.classificationLabel,
+    required this.onClassify,
     required this.transferId,
     required this.onReverseMovement,
     required this.onReverseTransfer,
   });
 
   final FinancialStatementEntry entry;
+  final String classificationLabel;
+  final VoidCallback? onClassify;
   final String? transferId;
   final VoidCallback? onReverseMovement;
   final VoidCallback? onReverseTransfer;
@@ -774,6 +906,14 @@ class _StatementRow extends StatelessWidget {
                 ),
                 const SizedBox(height: AppTokens.space4),
                 Text(
+                  'Categoria: $classificationLabel',
+                  key: Key(
+                    'financial-movement-classification-${movement.movementId}',
+                  ),
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: AppTokens.space4),
+                Text(
                   'Saldo após evento: ${formatFinancialMoney(entry.balanceAfter)}',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
@@ -791,6 +931,17 @@ class _StatementRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
+              if (onClassify != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                FilledButton.tonalIcon(
+                  key: Key(
+                    'financial-movement-classify-${movement.movementId}',
+                  ),
+                  onPressed: onClassify,
+                  icon: const Icon(Icons.sell_outlined),
+                  label: const Text('Classificar'),
+                ),
+              ],
               if (onReverseMovement != null) ...[
                 const SizedBox(height: AppTokens.space8),
                 TextButton.icon(
@@ -813,6 +964,399 @@ class _StatementRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ClassifyMovementDialog extends ConsumerStatefulWidget {
+  const _ClassifyMovementDialog({
+    required this.accountId,
+    required this.account,
+    required this.movement,
+    required this.operatorId,
+  });
+
+  final String accountId;
+  final FinancialAccount account;
+  final FinancialMovement movement;
+  final String? operatorId;
+
+  static const dialogKey = Key('financial-classify-dialog');
+  static const confirmKey = Key('financial-classify-confirm');
+  static const newCategoryKey = Key('financial-classify-new-category');
+  static const errorKey = Key('financial-classify-error');
+  static const noticeKey = Key('financial-classify-notice');
+  static const unknownKey = Key('financial-classify-category-unknown');
+  static const reconcileKey = Key('financial-classify-reconcile-categories');
+
+  @override
+  ConsumerState<_ClassifyMovementDialog> createState() =>
+      _ClassifyMovementDialogState();
+}
+
+class _ClassifyMovementDialogState
+    extends ConsumerState<_ClassifyMovementDialog> {
+  String? _selectedCategoryId;
+  String? _error;
+  String? _notice;
+
+  Future<void> _createCategory() async {
+    final operatorId = widget.operatorId;
+    if (operatorId == null) return;
+    final state = ref.read(
+      financialAccountDetailControllerProvider(widget.accountId),
+    );
+    final input = await showDialog<FinancialCategoryCreateInput>(
+      context: context,
+      builder: (context) => _CategoryCreateDialog(
+        account: widget.account,
+        index: state.categoryIndex,
+        operatorId: operatorId,
+      ),
+    );
+    if (input == null || !mounted) return;
+    final result = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .createCategory(input);
+    if (!mounted) return;
+    setState(() {
+      _notice = null;
+      switch (result.outcome) {
+        case FinancialMutationOutcome.success:
+          _error = null;
+          final created = result.category;
+          if (created != null &&
+              isFinancialCategoryEligibleForAccount(
+                category: created,
+                account: widget.account,
+              )) {
+            _selectedCategoryId = created.categoryId;
+          }
+        case FinancialMutationOutcome.rejected:
+          _error = 'A categoria não foi aceita. Revise nome, escopo e pai.';
+        case FinancialMutationOutcome.notAllowed:
+          _error = 'Esta categoria não pode ser criada neste contexto.';
+        case FinancialMutationOutcome.unknownOutcomeReconciled:
+          _error = null;
+          final matches = result.matches.length;
+          _notice = matches == 0
+              ? 'Não foi possível confirmar se a categoria foi criada. A lista '
+                    'foi atualizada: confira se ela já existe antes de tentar '
+                    'novamente.'
+              : 'Não foi possível confirmar a criação, mas há '
+                    '${matches == 1 ? 'uma categoria compatível' : '$matches categorias compatíveis'} '
+                    'na lista atualizada. Selecione a correta; nenhuma será '
+                    'escolhida automaticamente.';
+        case FinancialMutationOutcome.temporarilyUnavailable:
+        case FinancialMutationOutcome.invalidResponse:
+          _error =
+              'O resultado da criação é desconhecido e não pôde ser '
+              'conferido. Atualize as categorias antes de tentar novamente.';
+        case FinancialMutationOutcome.accessBlocked ||
+            FinancialMutationOutcome.conflictReconciled:
+          _error = 'A categoria não foi criada.';
+      }
+    });
+  }
+
+  Future<void> _reconcileCategories() async {
+    final outcome = await ref
+        .read(
+          financialAccountDetailControllerProvider(widget.accountId).notifier,
+        )
+        .reconcileCategories();
+    if (!mounted) return;
+    setState(() {
+      if (outcome == FinancialMutationOutcome.success) {
+        _error = null;
+        _notice =
+            'Categorias atualizadas. Confira a lista antes de criar outra '
+            'categoria.';
+      } else {
+        _error = 'Não foi possível atualizar as categorias agora.';
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(
+      financialAccountDetailControllerProvider(widget.accountId),
+    );
+    final eligible = eligibleFinancialCategories(
+      index: state.categoryIndex,
+      account: widget.account,
+    );
+    final selected =
+        eligible.any((item) => item.categoryId == _selectedCategoryId)
+        ? _selectedCategoryId
+        : null;
+    final busy = state.classificationMutationInFlight;
+    final description = widget.movement.description ?? 'Lançamento selecionado';
+    return AlertDialog(
+      key: _ClassifyMovementDialog.dialogKey,
+      title: const Text('Classificar lançamento'),
+      content: SizedBox(
+        width: 480,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$description · ${formatFinancialMoney(widget.movement.money)}',
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+              const SizedBox(height: AppTokens.space4),
+              Text(
+                'O valor total do lançamento será classificado na categoria escolhida.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: AppTokens.neutral700),
+              ),
+              const SizedBox(height: AppTokens.space16),
+              if (eligible.isEmpty)
+                const Text(
+                  'Nenhuma categoria disponível para este lançamento. Crie uma nova categoria.',
+                )
+              else
+                RadioGroup<String>(
+                  groupValue: selected,
+                  onChanged: (value) =>
+                      setState(() => _selectedCategoryId = value),
+                  child: Column(
+                    children: [
+                      for (final category in eligible)
+                        RadioListTile<String>(
+                          key: Key(
+                            'financial-classify-category-${category.categoryId}',
+                          ),
+                          value: category.categoryId,
+                          title: Text(
+                            state.categoryIndex.pathLabel(
+                                  category.categoryId,
+                                ) ??
+                                category.name,
+                          ),
+                          subtitle: Text(
+                            category.visibilityScope ==
+                                    FinancialVisibilityScope.personal
+                                ? 'Pessoal'
+                                : 'Residência',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: AppTokens.space8),
+              if (widget.operatorId != null)
+                TextButton.icon(
+                  key: _ClassifyMovementDialog.newCategoryKey,
+                  onPressed: busy || state.categoryCreationUnknown
+                      ? null
+                      : _createCategory,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Nova categoria'),
+                ),
+              if (state.categoryCreationUnknown) ...[
+                const SizedBox(height: AppTokens.space8),
+                Text(
+                  'O resultado da última criação de categoria é desconhecido. '
+                  'Atualize as categorias antes de criar outra.',
+                  key: _ClassifyMovementDialog.unknownKey,
+                ),
+                TextButton.icon(
+                  key: _ClassifyMovementDialog.reconcileKey,
+                  onPressed: busy ? null : _reconcileCategories,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Atualizar categorias'),
+                ),
+              ],
+              if (_notice != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                Text(_notice!, key: _ClassifyMovementDialog.noticeKey),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                Text(
+                  _error!,
+                  key: _ClassifyMovementDialog.errorKey,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          key: _ClassifyMovementDialog.confirmKey,
+          onPressed: selected == null || busy
+              ? null
+              : () => Navigator.of(context).pop(selected),
+          child: const Text('Confirmar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _CategoryCreateDialog extends StatefulWidget {
+  const _CategoryCreateDialog({
+    required this.account,
+    required this.index,
+    required this.operatorId,
+  });
+
+  final FinancialAccount account;
+  final FinancialCategoryIndex index;
+  final String operatorId;
+
+  static const nameKey = Key('financial-category-name');
+  static const scopeKey = Key('financial-category-scope');
+  static const confirmKey = Key('financial-category-create-confirm');
+
+  @override
+  State<_CategoryCreateDialog> createState() => _CategoryCreateDialogState();
+}
+
+class _CategoryCreateDialogState extends State<_CategoryCreateDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  late FinancialVisibilityScope _scope;
+  String? _parentId;
+
+  @override
+  void initState() {
+    super.initState();
+    _scope = financialCategoryCreationScopes(widget.account).first;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (!(_formKey.currentState?.validate() ?? false)) return;
+    try {
+      Navigator.of(context).pop(
+        FinancialCategoryCreateInput(
+          name: _nameController.text,
+          visibilityScope: _scope,
+          parentId: _parentId,
+        ),
+      );
+    } on FormatException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Revise os dados da categoria.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scopes = financialCategoryCreationScopes(widget.account);
+    final parents = eligibleFinancialCategoryParents(
+      index: widget.index,
+      scope: _scope,
+      operatorId: widget.operatorId,
+    );
+    return AlertDialog(
+      title: const Text('Nova categoria'),
+      content: SizedBox(
+        width: 460,
+        child: Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  key: _CategoryCreateDialog.nameKey,
+                  controller: _nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: 'Nome'),
+                  validator: (value) {
+                    final text = (value ?? '').trim();
+                    if (text.isEmpty ||
+                        text.length > 96 ||
+                        text.codeUnits.any((u) => u < 32 || u == 127)) {
+                      return 'Informe um nome de até 96 caracteres.';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: AppTokens.space16),
+                DropdownButtonFormField<FinancialVisibilityScope>(
+                  key: _CategoryCreateDialog.scopeKey,
+                  initialValue: _scope,
+                  decoration: const InputDecoration(labelText: 'Visibilidade'),
+                  items: [
+                    for (final scope in scopes)
+                      DropdownMenuItem(
+                        value: scope,
+                        child: Text(
+                          scope == FinancialVisibilityScope.personal
+                              ? 'Pessoal'
+                              : 'Residência',
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() {
+                      _scope = value;
+                      _parentId = null;
+                    });
+                  },
+                ),
+                const SizedBox(height: AppTokens.space16),
+                DropdownButtonFormField<String?>(
+                  key: ValueKey('financial-category-parent-${_scope.name}'),
+                  initialValue: _parentId,
+                  decoration: const InputDecoration(
+                    labelText: 'Categoria pai (opcional)',
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Sem categoria pai'),
+                    ),
+                    for (final parent in parents)
+                      DropdownMenuItem<String?>(
+                        value: parent.categoryId,
+                        child: Text(
+                          widget.index.pathLabel(parent.categoryId) ??
+                              parent.name,
+                        ),
+                      ),
+                  ],
+                  onChanged: (value) => setState(() => _parentId = value),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          key: _CategoryCreateDialog.confirmKey,
+          onPressed: _submit,
+          child: const Text('Criar categoria'),
+        ),
+      ],
     );
   }
 }
@@ -1414,6 +1958,30 @@ class _Metadata extends StatelessWidget {
           const SizedBox(height: AppTokens.space4),
           Text(value, style: Theme.of(context).textTheme.bodyLarge),
         ],
+      ),
+    );
+  }
+}
+
+class _StateNotice extends StatelessWidget {
+  const _StateNotice({required this.noticeKey, required this.message});
+
+  final Key noticeKey;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      key: noticeKey,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTokens.space16),
+        child: Row(
+          children: [
+            const Icon(Icons.info_outline_rounded),
+            const SizedBox(width: AppTokens.space12),
+            Expanded(child: Text(message)),
+          ],
+        ),
       ),
     );
   }
