@@ -103,3 +103,58 @@ def test_the_store_has_cas_and_idempotent_create_and_no_delete() -> None:
     assert "on_conflict_do_nothing" in code
     assert "delete(" not in code and ".delete(" not in code
     assert "retry" not in code.lower()
+
+
+API = ROOT / "apps/api/app"
+ROUTE = (API / "api/routes/finance_budgets.py").read_text(encoding="utf-8")
+SERVICE = (API / "services/financial_budgets.py").read_text(encoding="utf-8")
+REALIZATION = (PERSISTENCE / "financial_budget_realization_store.py").read_text(
+    encoding="utf-8"
+)
+
+
+def test_the_route_has_exactly_the_budget_endpoints_and_no_delete_or_patch() -> None:
+    routes = re.findall(r'^@router\.(\w+)\(\s*"([^"]+)"', ROUTE, re.M)
+    assert sorted(routes) == sorted(
+        [
+            ("get", "/budgets"),
+            ("post", "/budgets"),
+            ("get", "/budgets/{budget_id}"),
+            ("put", "/budgets/{budget_id}"),
+            ("get", "/budgets/{budget_id}/summary"),
+        ]
+    )
+    assert "@router.delete" not in ROUTE and "@router.patch" not in ROUTE
+
+
+def test_realization_is_read_only_derived_and_float_free() -> None:
+    code = _code(REALIZATION)
+    for forbidden in (
+        ".insert(",
+        ".update(",
+        ".delete(",
+        "pg_insert",
+        "float(",
+        "lru_cache",
+        "functools.cache",
+    ):
+        assert forbidden not in code, forbidden
+    assert "postgresql_readonly=True" in code
+    assert 'isolation_level="REPEATABLE READ"' in code
+    # A REVERSAL is classified through the Movement it reverses, never on its own.
+    assert "reversal_of_id" in code
+
+
+def test_service_and_route_do_not_own_financial_arithmetic() -> None:
+    for source in (SERVICE, ROUTE):
+        code = _code(source)
+        for forbidden in (
+            "float(",
+            "financial_movements",
+            "movement_allocation",
+            "planned -",
+            "- realized",
+            "quantize(",
+        ):
+            assert forbidden not in code, forbidden
+    assert "summarize_budget(" in _code(SERVICE)
