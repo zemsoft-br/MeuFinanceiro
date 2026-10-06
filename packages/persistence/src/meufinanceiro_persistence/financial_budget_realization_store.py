@@ -11,13 +11,19 @@ Reversal awareness without classifying REVERSAL (ADR-0022, ADR-0026): a REVERSAL
 contributes the *negative* of the current allocation of the STANDARD Movement it
 reverses, placed at the REVERSAL's own date according to the date basis. A full
 reversal in the same month as its original therefore nets to exactly zero, once.
+
+Cost shape: explicit SQL with materialized steps. (1) the Movements of the month
+(visible, audience-pinned); (2) one scan of the shares of exactly those Movements
+via movement_id = ANY(ARRAY(...)). Under forced RLS every row read from
+movement_allocations pays the policy chain and a nested-loop plan re-evaluates it
+on each rescan (measured ~1.3 s for a 1.9k Movement month against ~45 ms without
+RLS); one array-keyed scan pays it once per share.
 """
 
 from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Any
 from uuid import UUID
 
 from meufinanceiro_finance import (
@@ -31,21 +37,9 @@ from meufinanceiro_finance import (
     budget_period_end,
     validate_financial_resource_id,
 )
-from meufinanceiro_finance.movements import FinancialMovementRole
-from sqlalchemy import (
-    Connection,
-    Engine,
-    case,
-    exists,
-    func,
-    select,
-    union_all,
-)
+from sqlalchemy import Connection, Engine, text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.sql.expression import ColumnElement, Exists, FromClause, Select
 
-from meufinanceiro_persistence.financial_account_schema import financial_accounts
-from meufinanceiro_persistence.financial_budget_schema import financial_budget_lines
 from meufinanceiro_persistence.financial_budget_store import (
     FinancialBudgetAccessError,
     FinancialBudgetNotFoundError,
@@ -55,17 +49,10 @@ from meufinanceiro_persistence.financial_budget_store import (
     _require_scope,
     _visible_row,
 )
-from meufinanceiro_persistence.financial_movement_allocation_schema import (
-    financial_movement_allocation_sets,
-    financial_movement_allocations,
-)
-from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementAccessError,
 )
 
-_STANDARD = FinancialMovementRole.STANDARD.value
-_REVERSAL = FinancialMovementRole.REVERSAL.value
 _EFFECTS = (
     FinancialResultEffect.INCOME.value,
     FinancialResultEffect.EXPENSE.value,
@@ -125,12 +112,9 @@ def _realization(
     connection: Connection, budget: FinancialBudgetRecord, installation_id: UUID
 ) -> FinancialBudgetRealization:
     window = (budget.period_start, budget_period_end(budget.period_start))
-    realized = connection.execute(
-        _realized_statement(budget, installation_id, window)
-    ).all()
-    coverage = connection.execute(
-        _coverage_statement(budget, installation_id, window)
-    ).all()
+    params = _params(budget, installation_id, window)
+    realized = connection.execute(text(_realized_sql(budget)), params).all()
+    coverage = connection.execute(text(_coverage_sql(budget)), params).all()
     try:
         rows = tuple(
             FinancialBudgetRealizedRow(
@@ -160,18 +144,33 @@ def _realization(
         raise FinancialBudgetPersistenceError("budget state is invalid") from None
 
 
-def _date_column(
-    budget: FinancialBudgetRecord, movements: FromClause
-) -> ColumnElement[Any]:
-    """The Movement date that places an amount in the month (the budget's basis)."""
+def _params(
+    budget: FinancialBudgetRecord, installation_id: UUID, window: tuple[date, date]
+) -> dict[str, object]:
+    params: dict[str, object] = {
+        "installation_id": installation_id,
+        "residence_id": budget.residence_id,
+        "currency": budget.currency,
+        "window_start": window[0],
+        "window_end": window[1],
+        "scope": budget.visibility_scope.value,
+    }
+    if budget.visibility_scope is FinancialVisibilityScope.PERSONAL:
+        params["owner_id"] = budget.owner_operator_id
+    return params
+
+
+def _date_column(budget: FinancialBudgetRecord) -> str:
+    """The Movement column that places an amount in the month (the budget basis).
+
+    The only value spliced into the SQL, and only ever one of two literals.
+    """
     if budget.date_basis is FinancialBudgetDateBasis.CASH:
-        return movements.c.effective_date
-    return movements.c.competence_date
+        return "effective_date"
+    return "competence_date"
 
 
-def _audience_filter(
-    budget: FinancialBudgetRecord, accounts: FromClause
-) -> list[ColumnElement[bool]]:
+def _audience_sql(budget: FinancialBudgetRecord) -> str:
     """Pin the account audience to the budget scope.
 
     A HOUSEHOLD budget only ever sums HOUSEHOLD accounts, so every member reads
@@ -179,80 +178,69 @@ def _audience_filter(
     A PERSONAL budget only sums the owner's PERSONAL accounts. SHARED accounts are
     out of the v1 budget scope.
     """
-    conditions = [accounts.c.visibility_scope == budget.visibility_scope.value]
     if budget.visibility_scope is FinancialVisibilityScope.PERSONAL:
-        conditions.append(accounts.c.owner_operator_id == budget.owner_operator_id)
-    return conditions
+        return "a.visibility_scope = :scope AND a.owner_operator_id = :owner_id"
+    return "a.visibility_scope = :scope"
 
 
-def _realized_statement(
-    budget: FinancialBudgetRecord,
-    installation_id: UUID,
-    window: tuple[date, date],
-) -> Select[Any]:
-    movements = financial_movements
-    accounts = financial_accounts
-    sets = financial_movement_allocation_sets
-    allocations = financial_movement_allocations
-    lines = financial_budget_lines
-    successor = sets.alias("successor")
-    # A REVERSAL is classified through the Movement it reverses (its own allocation
-    # set never exists); a STANDARD Movement through its own.
-    classified_movement_id = func.coalesce(movements.c.reversal_of_id, movements.c.id)
-    signed = case(
-        (movements.c.role == _STANDARD, func.abs(allocations.c.amount)),
-        else_=-func.abs(allocations.c.amount),
+def _window_cte(budget: FinancialBudgetRecord) -> str:
+    """Step 1: the Movements of the month (RLS-visible, audience-pinned, in currency).
+
+    A REVERSAL is classified through the STANDARD it reverses, so ``classified_id``
+    is that Movement's id; a STANDARD is classified through its own.
+    """
+    column = _date_column(budget)
+    return f"""
+    win AS MATERIALIZED (
+        SELECT m.id, m.role, m.result_effect, m.amount, m.reversal_of_id,
+               CASE m.role WHEN 'STANDARD' THEN m.id ELSE m.reversal_of_id END
+                   AS classified_id
+          FROM finance.movements m
+          JOIN finance.accounts a
+            ON a.id = m.account_id
+           AND a.installation_id = m.installation_id
+           AND a.residence_id = m.residence_id
+         WHERE m.installation_id = :installation_id
+           AND m.residence_id = :residence_id
+           AND m.currency = :currency
+           AND m.result_effect IN ('INCOME', 'EXPENSE')
+           AND m.{column} >= :window_start
+           AND m.{column} < :window_end
+           AND {_audience_sql(budget)}
+    )"""
+
+
+def _realized_sql(budget: FinancialBudgetRecord) -> str:
+    """Realized per (category, effect): ``+|share|`` STANDARD, ``-|share|`` REVERSAL.
+
+    One row per distinct (category, effect) with activity in the month, so the
+    result is small whatever the number of Movements; pairing with the budget
+    lines happens in the pure domain function.
+    """
+    return f"""
+    /* budget-realized */
+    WITH {_window_cte(budget)},
+    shares AS MATERIALIZED (
+        SELECT al.allocation_set_id, al.movement_id, al.category_id,
+               abs(al.amount) AS magnitude
+          FROM finance.movement_allocations al
+         WHERE al.installation_id = :installation_id
+           AND al.residence_id = :residence_id
+           AND al.movement_id = ANY (ARRAY(SELECT classified_id FROM win))
     )
-    date_column = _date_column(budget, movements)
-    return (
-        select(
-            allocations.c.category_id,
-            movements.c.result_effect,
-            func.sum(signed).label("amount"),
-        )
-        .select_from(
-            movements.join(
-                accounts,
-                (accounts.c.id == movements.c.account_id)
-                & (accounts.c.installation_id == movements.c.installation_id)
-                & (accounts.c.residence_id == movements.c.residence_id),
-            )
-            .join(
-                sets,
-                (sets.c.movement_id == classified_movement_id)
-                & (sets.c.installation_id == movements.c.installation_id)
-                & (sets.c.residence_id == movements.c.residence_id)
-                & ~exists(
-                    select(successor.c.id).where(successor.c.supersedes_id == sets.c.id)
-                ),
-            )
-            .join(allocations, allocations.c.allocation_set_id == sets.c.id)
-            .join(
-                lines,
-                (lines.c.budget_id == budget.id)
-                & (lines.c.revision == budget.version)
-                & (lines.c.category_id == allocations.c.category_id)
-                & (lines.c.result_effect == movements.c.result_effect),
-            )
-        )
-        .where(
-            movements.c.installation_id == installation_id,
-            movements.c.residence_id == budget.residence_id,
-            movements.c.currency == budget.currency,
-            movements.c.result_effect.in_(_EFFECTS),
-            date_column >= window[0],
-            date_column < window[1],
-            *_audience_filter(budget, accounts),
-        )
-        .group_by(allocations.c.category_id, movements.c.result_effect)
-    )
+    SELECT s.category_id, w.result_effect,
+           sum(CASE WHEN w.role = 'STANDARD' THEN s.magnitude
+                    ELSE -s.magnitude END) AS amount
+      FROM win w
+      JOIN shares s ON s.movement_id = w.classified_id
+     WHERE NOT EXISTS (
+               SELECT 1 FROM finance.movement_allocation_sets succ
+                WHERE succ.supersedes_id = s.allocation_set_id)
+     GROUP BY s.category_id, w.result_effect
+    """
 
 
-def _coverage_statement(
-    budget: FinancialBudgetRecord,
-    installation_id: UUID,
-    window: tuple[date, date],
-) -> Select[Any]:
+def _coverage_sql(budget: FinancialBudgetRecord) -> str:
     """Unclassified INCOME/EXPENSE impact in the window, outside every line.
 
     ``+|amount|`` for an unclassified STANDARD Movement that is not reversed
@@ -260,84 +248,39 @@ def _coverage_statement(
     unclassified original that lies outside it. A STANDARD/REVERSAL pair that both
     fall inside the window cancels out entirely (count and amount).
     """
-    movements = financial_movements
-    reversal = financial_movements.alias("reversal")
-    original = financial_movements.alias("original")
-    accounts = financial_accounts
-    sets = financial_movement_allocation_sets
-
-    def _has_set(movement_id: ColumnElement[Any]) -> Exists:
-        return exists(select(sets.c.id).where(sets.c.movement_id == movement_id))
-
-    standard_date = _date_column(budget, movements)
-    reversal_date = _date_column(budget, reversal)
-    original_date = _date_column(budget, original)
-
-    standard_part = (
-        select(
-            movements.c.result_effect,
-            func.count().label("item_count"),
-            func.coalesce(func.sum(func.abs(movements.c.amount)), 0).label("amount"),
-        )
-        .select_from(
-            movements.join(
-                accounts,
-                (accounts.c.id == movements.c.account_id)
-                & (accounts.c.installation_id == movements.c.installation_id)
-                & (accounts.c.residence_id == movements.c.residence_id),
-            )
-        )
-        .where(
-            movements.c.installation_id == installation_id,
-            movements.c.residence_id == budget.residence_id,
-            movements.c.role == _STANDARD,
-            movements.c.currency == budget.currency,
-            movements.c.result_effect.in_(_EFFECTS),
-            standard_date >= window[0],
-            standard_date < window[1],
-            ~_has_set(movements.c.id),
-            ~exists(
-                select(reversal.c.id).where(
-                    reversal.c.reversal_of_id == movements.c.id,
-                    reversal_date >= window[0],
-                    reversal_date < window[1],
-                )
-            ),
-            *_audience_filter(budget, accounts),
-        )
-        .group_by(movements.c.result_effect)
+    return f"""
+    /* budget-coverage */
+    WITH {_window_cte(budget)},
+    classified AS MATERIALIZED (
+        SELECT DISTINCT st.movement_id
+          FROM finance.movement_allocation_sets st
+         WHERE st.installation_id = :installation_id
+           AND st.residence_id = :residence_id
+           AND st.movement_id = ANY (ARRAY(SELECT classified_id FROM win))
     )
-
-    reversal_part = (
-        select(
-            reversal.c.result_effect,
-            func.count().label("item_count"),
-            func.coalesce(-func.sum(func.abs(reversal.c.amount)), 0).label("amount"),
-        )
-        .select_from(
-            reversal.join(original, original.c.id == reversal.c.reversal_of_id).join(
-                accounts,
-                (accounts.c.id == reversal.c.account_id)
-                & (accounts.c.installation_id == reversal.c.installation_id)
-                & (accounts.c.residence_id == reversal.c.residence_id),
-            )
-        )
-        .where(
-            reversal.c.installation_id == installation_id,
-            reversal.c.residence_id == budget.residence_id,
-            reversal.c.role == _REVERSAL,
-            reversal.c.currency == budget.currency,
-            reversal.c.result_effect.in_(_EFFECTS),
-            reversal_date >= window[0],
-            reversal_date < window[1],
-            ~_has_set(original.c.id),
-            (original_date < window[0]) | (original_date >= window[1]),
-            *_audience_filter(budget, accounts),
-        )
-        .group_by(reversal.c.result_effect)
-    )
-    combined = union_all(standard_part, reversal_part).subquery("coverage")
-    return select(combined.c.result_effect, combined.c.item_count, combined.c.amount)
+    SELECT x.result_effect, count(*) AS item_count, sum(x.signed) AS amount
+      FROM (
+            SELECT w.result_effect, abs(w.amount) AS signed
+              FROM win w
+             WHERE w.role = 'STANDARD'
+               AND NOT EXISTS (
+                       SELECT 1 FROM classified c WHERE c.movement_id = w.id)
+               AND NOT EXISTS (
+                       SELECT 1 FROM win r
+                        WHERE r.role = 'REVERSAL' AND r.reversal_of_id = w.id)
+            UNION ALL
+            SELECT w.result_effect, -abs(w.amount)
+              FROM win w
+             WHERE w.role = 'REVERSAL'
+               AND NOT EXISTS (
+                       SELECT 1 FROM classified c
+                        WHERE c.movement_id = w.reversal_of_id)
+               AND NOT EXISTS (
+                       SELECT 1 FROM win o
+                        WHERE o.role = 'STANDARD' AND o.id = w.reversal_of_id)
+           ) x
+     GROUP BY x.result_effect
+    """
 
 
 __all__ = ["FinancialBudgetRealizationStore"]

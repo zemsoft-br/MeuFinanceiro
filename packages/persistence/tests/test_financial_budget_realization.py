@@ -793,3 +793,54 @@ def test_a_reversal_dated_before_its_original_is_flagged_in_its_own_month(
         november.unclassified_expense.count,
         november.unclassified_expense.amount,
     ) == (1, Decimal("100"))
+
+
+def test_reads_during_reclassification_always_see_one_consistent_state(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    world = budget_world
+    movement = _move(world, setup["account"], "-100")
+    current = _classify(world, movement, {setup["market"]: "-100"})
+    budget = _budget(
+        world,
+        {(setup["market"], _EXPENSE): "500", (setup["leisure"], _EXPENSE): "500"},
+    )
+    done = Event()
+
+    def writer() -> None:
+        nonlocal current
+        categories = [setup["leisure"], setup["market"]]
+        for index in range(12):
+            current = _reclassify(
+                world, movement, current, {categories[index % 2]: "-100"}
+            )
+        done.set()
+
+    def reader() -> list[tuple[Decimal, Decimal]]:
+        seen: list[tuple[Decimal, Decimal]] = []
+        while not done.is_set() or len(seen) < 3:
+            realized = _realized(_read(world, budget))
+            seen.append(
+                (
+                    realized.get((setup["market"], "EXPENSE"), Decimal(0)),
+                    realized.get((setup["leisure"], "EXPENSE"), Decimal(0)),
+                )
+            )
+        return seen
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(reader) for _ in range(3)]
+        pool.submit(writer).result()
+        observations = [pair for future in futures for pair in future.result()]
+    # One Movement of 100 is in exactly one category at every snapshot: never
+    # both, never neither, and never a half-applied revision.
+    assert observations
+    assert all(
+        pair in {(Decimal(100), Decimal(0)), (Decimal(0), Decimal(100))}
+        for pair in observations
+    )
+    final = _realized(_read(world, budget))
+    assert sum(final.values()) == Decimal(100)

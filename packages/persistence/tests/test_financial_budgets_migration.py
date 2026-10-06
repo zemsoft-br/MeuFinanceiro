@@ -69,6 +69,7 @@ def test_revision_id_fits_and_history_has_a_single_head() -> None:
     directory = ScriptDirectory.from_config(config)
     heads = directory.get_heads()
     assert len(heads) == 1
+    # Later revisions may build on this one; it must stay in the single history.
     assert _REVISION in {
         item.revision for item in directory.walk_revisions(base="base", head=heads[0])
     }

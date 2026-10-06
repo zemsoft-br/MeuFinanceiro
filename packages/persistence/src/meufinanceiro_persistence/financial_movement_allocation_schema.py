@@ -160,6 +160,11 @@ Index(
     financial_movement_allocations.c.category_id,
     financial_movement_allocations.c.movement_id,
 )
+Index(
+    "ix_finance_allocations_movement",
+    financial_movement_allocations.c.residence_id,
+    financial_movement_allocations.c.movement_id,
+)
 
 __all__ = [
     "financial_movement_allocation_sets",

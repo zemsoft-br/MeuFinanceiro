@@ -147,7 +147,7 @@ Nenhum item sai antes de uma releitura canônica. Toda resposta de escrita (suce
 
 ## Fora do escopo desta entrega
 
-Estado persistido de dismiss/snooze, atribuição de pendência a membro, ML/LLM e aprendizado, criação automática de regra, auto-apply, execução em background, tags, orçamentos, recorrências, dashboard, importação/Pluggy, classificação de `NEUTRAL`/`REVERSAL` e HML/PROD/deploy.
+Estado persistido de dismiss/snooze, atribuição de pendência a membro, ML/LLM e aprendizado, criação automática de regra, auto-apply, execução em background, tags, orçamentos (entregues depois pela #252; ver `FINANCIAL_BUDGETS.md`), recorrências, dashboard, importação/Pluggy, classificação de `NEUTRAL`/`REVERSAL` e HML/PROD/deploy.
 
 ## Evidência de fechamento
 

@@ -24,6 +24,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0023 — Audit trail financeiro transacional e sem snapshot sensível](0023-financial-transactional-audit-trail.md)
 - [ADR-0024 — Regras determinísticas de categorização com proveniência append-only](0024-deterministic-categorization-rules.md)
 - [ADR-0025 — Caixa de pendências derivada, paginada por keyset e sem estado persistido](0025-derived-pending-classification-inbox.md)
+- [ADR-0026 — Orçamentos mensais por categoria como planejamento derivado do ledger](0026-monthly-category-budgets.md)
 
 ## Decisões propostas
 

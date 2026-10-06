@@ -142,7 +142,7 @@ def test_realization_is_read_only_derived_and_float_free() -> None:
     assert "postgresql_readonly=True" in code
     assert 'isolation_level="REPEATABLE READ"' in code
     # A REVERSAL is classified through the Movement it reverses, never on its own.
-    assert "reversal_of_id" in code
+    assert "reversal_of_id" in REALIZATION
 
 
 def test_service_and_route_do_not_own_financial_arithmetic() -> None:
@@ -158,3 +158,54 @@ def test_service_and_route_do_not_own_financial_arithmetic() -> None:
         ):
             assert forbidden not in code, forbidden
     assert "summarize_budget(" in _code(SERVICE)
+
+
+MIGRATION_INDEX = (
+    PERSISTENCE / "migrations/versions/0024_budget_realization_indexes.py"
+).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0026-monthly-category-budgets.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs/architecture/FINANCIAL_BUDGETS.md").read_text(encoding="utf-8")
+
+
+def test_the_index_migration_is_performance_only() -> None:
+    statements = re.findall(r'op\.execute\(\s*(?:f?"([^"]*)")', MIGRATION_INDEX)
+    assert statements
+    for statement in statements:
+        assert statement.startswith(("CREATE INDEX", "DROP INDEX")), statement
+    for forbidden in ("CREATE TABLE", "ALTER TABLE", "GRANT", "POLICY", "TRIGGER"):
+        assert forbidden not in MIGRATION_INDEX, forbidden
+    assert 'down_revision: str | None = "0023_monthly_budgets"' in MIGRATION_INDEX
+
+
+def test_realization_sql_is_explicit_array_keyed_and_current_set_only() -> None:
+    code = REALIZATION  # the SQL lives in (f-)docstring-style literals
+    assert "/* budget-realized */" in code and "/* budget-coverage */" in code
+    assert "movement_id = ANY (ARRAY(SELECT classified_id FROM win))" in code
+    # Only the current allocation set counts: sets with a successor are excluded.
+    assert "succ.supersedes_id = s.allocation_set_id" in code
+    # A REVERSAL is classified through the Movement it reverses, never directly.
+    assert "WHEN 'STANDARD' THEN m.id ELSE m.reversal_of_id" in code
+    # No join by COALESCE (it made the planner pair every share with every line).
+    assert "COALESCE" not in code.upper()
+    # No data is spliced into the SQL beyond the two date column literals.
+    assert 'return "effective_date"' in code and 'return "competence_date"' in code
+
+
+def test_adr_and_architecture_document_the_decision() -> None:
+    for term in (
+        "planejamento persistido",
+        "CAS",
+        "expectedVersion",
+        "REVERSAL",
+        "allocation set corrente",
+        "unclassifiedExpenseCount",
+        "SHARED",
+        "RLS",
+    ):
+        assert term in ADR or term in DOC, term
+    assert "ADR-0026" in DOC
+    assert "FINANCIAL_BUDGETS.md" in ADR
+    adr_index = (ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
+    assert "0026-monthly-category-budgets.md" in adr_index
+    roadmap = (ROOT / "docs/ROADMAP.md").read_text(encoding="utf-8")
+    assert "#252" in roadmap
