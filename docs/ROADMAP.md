@@ -93,6 +93,13 @@ Critério de saída:
 - movimentações sem classificação são revisáveis;
 - confirmações geram sugestões futuras explicáveis.
 
+Estado da fase:
+
+- **entregue em implementação (#245, aguardando revisão de PR):** classificação e rateio manual de Movements em API e Flutter, com categorias mínimas, leitura bulk, revisão append-only e reconciliação de conflito — ver `docs/architecture/FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`;
+- **entregue em implementação (#247, aguardando revisão de PR):** regras determinísticas de categorização (EXACT/CONTAINS, prioridade com empate fail-closed, preview e apply explícitos, proveniência append-only) em API e Flutter, sobre a mesma autoridade de classificação — ver `docs/architecture/FINANCIAL_CATEGORIZATION_RULES.md` e ADR-0024;
+- **entregue em implementação (#249, aguardando revisão de PR):** caixa de pendências derivada (Movements `STANDARD` de receita/despesa sem classificação), paginada por cursor keyset, com estado `MATCHED`/`AMBIGUOUS`/`NO_MATCH` da avaliação da #247 e ações reutilizando as escritas da #245 e da #247, sem estado persistido nem segunda autoridade — ver `docs/architecture/FINANCIAL_PENDING_INBOX.md` e ADR-0025;
+- pendente: tags, aprendizado, orçamentos, recorrências, metas e dashboard.
+
 ## Fase 3 — Importação e conciliação
 
 **Objetivo:** reduzir lançamento manual sem depender de Open Finance.

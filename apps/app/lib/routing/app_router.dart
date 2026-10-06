@@ -10,8 +10,10 @@ import 'package:meufinanceiro_app/features/banking/pluggy/connect/pluggy_connect
 import 'package:meufinanceiro_app/features/banking/pluggy/reauthentication/pluggy_reauthentication_screen.dart';
 import 'package:meufinanceiro_app/features/components_catalog/components_catalog_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_account_create_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_categorization_rules_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_account_detail_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_accounts_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_pending_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
 import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
@@ -79,6 +81,22 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return const NoTransitionPage(
                 child: FinancialAccountCreateScreen(),
               );
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financeCategorizationRulesPath,
+            name: AppRoutes.financeCategorizationRules,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(
+                child: FinancialCategorizationRulesScreen(),
+              );
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financePendingPath,
+            name: AppRoutes.financePending,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(child: FinancialPendingScreen());
             },
           ),
           GoRoute(

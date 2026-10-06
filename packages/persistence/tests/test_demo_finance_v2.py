@@ -3,6 +3,12 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
+from meufinanceiro_finance import (
+    FinancialMovementAllocationDraft,
+    FinancialMovementAllocationSetDraft,
+    Money,
+    new_financial_idempotency_key,
+)
 from sqlalchemy import Engine, func, select
 
 from meufinanceiro_persistence import DEMO_CONTRACT_CHECKSUM, DemoFixtureStore
@@ -13,9 +19,22 @@ from meufinanceiro_persistence.demo_contract import (
     DEMO_EXPECTED_MOVEMENT_NET,
     DEMO_INSTALLATION_ID,
     DEMO_OPENING_AMOUNT,
+    DEMO_OPERATOR_ID,
+    DEMO_RESIDENCE_ID,
 )
-from meufinanceiro_persistence.demo_finance_data import DEMO_MOVEMENTS
+from meufinanceiro_persistence.demo_finance_data import (
+    DEMO_CATEGORIES,
+    DEMO_MOVEMENTS,
+)
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_audit_schema import financial_audit_events
+from meufinanceiro_persistence.financial_movement_allocation_schema import (
+    financial_movement_allocation_sets,
+    financial_movement_allocations,
+)
+from meufinanceiro_persistence.financial_movement_allocation_store import (
+    FinancialMovementAllocationStore,
+)
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
@@ -59,6 +78,10 @@ def test_finance_v2_load_is_deterministic_and_idempotent(
         assert (
             connection.scalar(select(func.count()).select_from(financial_movements))
             == 5
+        )
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_audit_events))
+            == 0
         )
         openings = (
             connection.execute(select(financial_opening_balances)).mappings().all()
@@ -124,4 +147,74 @@ def test_finance_v2_admin_reset_is_idempotent(
         )
         assert (
             connection.scalar(select(func.count()).select_from(financial_accounts)) == 0
+        )
+
+
+def test_finance_v2_reset_cleans_runtime_audit_and_allocations_before_ledger(
+    runtime_engine: Engine,
+    engine: Engine,
+) -> None:
+    store = _store(runtime_engine, engine)
+    store.load()
+
+    target_movement = DEMO_MOVEMENTS[1]
+    category = DEMO_CATEGORIES[0]
+    allocation_store = FinancialMovementAllocationStore(runtime_engine)
+    allocation_store.create_allocation_set(
+        installation_id=DEMO_INSTALLATION_ID,
+        residence_id=DEMO_RESIDENCE_ID,
+        operator_id=DEMO_OPERATOR_ID,
+        idempotency_key=new_financial_idempotency_key(),
+        draft=FinancialMovementAllocationSetDraft(
+            movement_id=target_movement.id,
+            allocations=(
+                FinancialMovementAllocationDraft(
+                    category_id=category.id,
+                    amount=Money(target_movement.amount, "BRL"),
+                ),
+            ),
+        ),
+    )
+
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                select(func.count()).select_from(financial_movement_allocation_sets)
+            )
+            == 1
+        )
+        assert (
+            connection.scalar(
+                select(func.count()).select_from(financial_movement_allocations)
+            )
+            == 1
+        )
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_audit_events))
+            == 1
+        )
+
+    assert store.reset() is True
+    assert store.status().loaded is False
+
+    with engine.connect() as connection:
+        assert (
+            connection.scalar(
+                select(func.count()).select_from(financial_movement_allocations)
+            )
+            == 0
+        )
+        assert (
+            connection.scalar(
+                select(func.count()).select_from(financial_movement_allocation_sets)
+            )
+            == 0
+        )
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_audit_events))
+            == 0
+        )
+        assert (
+            connection.scalar(select(func.count()).select_from(financial_movements))
+            == 0
         )

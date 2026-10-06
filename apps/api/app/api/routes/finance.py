@@ -15,9 +15,15 @@ from meufinanceiro_finance import (
     FinancialAccountRecord,
     FinancialAccountStatement,
     FinancialAccountType,
+    FinancialCategoryDraft,
+    FinancialCategoryRecord,
     FinancialLedgerStateError,
     FinancialManualEntryDraft,
     FinancialManualEntryType,
+    FinancialMovementAllocationDraft,
+    FinancialMovementAllocationRevisionDraft,
+    FinancialMovementAllocationSetDraft,
+    FinancialMovementAllocationSetRecord,
     FinancialMovementRecord,
     FinancialMovementReversalDraft,
     FinancialOpeningBalanceDraft,
@@ -35,6 +41,22 @@ from meufinanceiro_persistence.financial_account_store import (
     FinancialAccountAccessError,
     FinancialAccountNotFoundError,
     FinancialAccountPersistenceError,
+)
+from meufinanceiro_persistence.financial_category_store import (
+    FinancialCategoryAccessError,
+    FinancialCategoryNotFoundError,
+    FinancialCategoryParentNotFoundError,
+    FinancialCategoryPersistenceError,
+)
+from meufinanceiro_persistence.financial_movement_allocation_store import (
+    FinancialMovementAllocationAccessError,
+    FinancialMovementAllocationAccountNotFoundError,
+    FinancialMovementAllocationCategoryNotFoundError,
+    FinancialMovementAllocationConflictError,
+    FinancialMovementAllocationInvalidShapeError,
+    FinancialMovementAllocationMovementNotFoundError,
+    FinancialMovementAllocationNotFoundError,
+    FinancialMovementAllocationPersistenceError,
 )
 from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementAccessError,
@@ -70,6 +92,7 @@ router = APIRouter(prefix="/finance", tags=["finance"])
 
 _DECIMAL_PATTERN = re.compile(r"^-?(?:0|[1-9][0-9]{0,15})(?:\.[0-9]{1,8})?$")
 _DATE_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+_MAX_ALLOCATION_SHARES = 50
 
 
 class FinancialMoneyResponse(BaseModel):
@@ -284,6 +307,95 @@ class FinancialStatementResponse(BaseModel):
     calculated_at: datetime = Field(serialization_alias="calculatedAt")
 
 
+class FinancialCategoryCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    name: str = Field(strict=True, min_length=1, max_length=96)
+    visibility_scope: str = Field(
+        alias="visibilityScope",
+        strict=True,
+        min_length=1,
+        max_length=16,
+    )
+    parent_id: UUID | None = Field(default=None, alias="parentId")
+
+
+class FinancialCategoryResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    category_id: UUID = Field(serialization_alias="categoryId")
+    owner_operator_id: UUID = Field(serialization_alias="ownerOperatorId")
+    visibility_scope: str = Field(serialization_alias="visibilityScope")
+    parent_id: UUID | None = Field(serialization_alias="parentId")
+    name: str
+    status: str
+    created_at: datetime = Field(serialization_alias="createdAt")
+    updated_at: datetime = Field(serialization_alias="updatedAt")
+    disabled_at: datetime | None = Field(serialization_alias="disabledAt")
+
+
+class FinancialCategoriesResponse(BaseModel):
+    categories: tuple[FinancialCategoryResponse, ...]
+
+
+class FinancialAllocationShareRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    category_id: UUID = Field(alias="categoryId")
+    amount: str = Field(strict=True, min_length=1, max_length=32)
+    currency: str = Field(strict=True, min_length=3, max_length=3)
+
+
+class FinancialMovementAllocationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    allocations: tuple[FinancialAllocationShareRequest, ...] = Field(
+        min_length=1, max_length=_MAX_ALLOCATION_SHARES
+    )
+
+
+class FinancialMovementAllocationRevisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    supersedes_id: UUID = Field(alias="supersedesId")
+    allocations: tuple[FinancialAllocationShareRequest, ...] = Field(
+        min_length=1, max_length=_MAX_ALLOCATION_SHARES
+    )
+
+
+class FinancialAllocationShareResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    category_id: UUID = Field(serialization_alias="categoryId")
+    money: FinancialMoneyResponse
+
+
+class FinancialMovementAllocationResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    allocation_set_id: UUID = Field(serialization_alias="allocationSetId")
+    movement_id: UUID = Field(serialization_alias="movementId")
+    revision: int
+    supersedes_id: UUID | None = Field(serialization_alias="supersedesId")
+    allocations: tuple[FinancialAllocationShareResponse, ...]
+    created_at: datetime = Field(serialization_alias="createdAt")
+
+
+class FinancialMovementAllocationEnvelope(BaseModel):
+    allocation: FinancialMovementAllocationResponse | None
+
+
+class FinancialMovementAllocationsResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: UUID = Field(serialization_alias="accountId")
+    movement_allocations: tuple[FinancialMovementAllocationResponse, ...] = Field(
+        serialization_alias="movementAllocations"
+    )
+
+
 def _service(request: Request) -> FinancialCoreService:
     service = getattr(request.app.state, "financial_core", None)
     if service is None:
@@ -484,6 +596,87 @@ def _transfer_reversal_draft(
         ) from None
 
 
+def _category_draft(payload: FinancialCategoryCreateRequest) -> FinancialCategoryDraft:
+    try:
+        return FinancialCategoryDraft(
+            name=payload.name,
+            visibility_scope=FinancialVisibilityScope(payload.visibility_scope),
+            parent_id=payload.parent_id,
+        )
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial category request",
+        ) from None
+
+
+def _signed_money(amount: str, currency: str) -> Money:
+    if not _DECIMAL_PATTERN.fullmatch(amount):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial allocation request",
+        )
+    try:
+        parsed = Decimal(amount)
+        if not parsed.is_finite():
+            raise InvalidOperation
+        return Money(parsed, currency)
+    except (InvalidOperation, TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial allocation request",
+        ) from None
+
+
+def _allocation_drafts(
+    shares: tuple[FinancialAllocationShareRequest, ...],
+) -> tuple[FinancialMovementAllocationDraft, ...]:
+    return tuple(
+        FinancialMovementAllocationDraft(
+            category_id=item.category_id,
+            amount=_signed_money(item.amount, item.currency),
+        )
+        for item in shares
+    )
+
+
+def _allocation_set_draft(
+    movement_id: UUID,
+    payload: FinancialMovementAllocationCreateRequest,
+) -> FinancialMovementAllocationSetDraft:
+    try:
+        return FinancialMovementAllocationSetDraft(
+            movement_id=movement_id,
+            allocations=_allocation_drafts(payload.allocations),
+        )
+    except HTTPException:
+        raise
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial allocation request",
+        ) from None
+
+
+def _allocation_revision_draft(
+    movement_id: UUID,
+    payload: FinancialMovementAllocationRevisionRequest,
+) -> FinancialMovementAllocationRevisionDraft:
+    try:
+        return FinancialMovementAllocationRevisionDraft(
+            movement_id=movement_id,
+            supersedes_id=payload.supersedes_id,
+            allocations=_allocation_drafts(payload.allocations),
+        )
+    except HTTPException:
+        raise
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial allocation request",
+        ) from None
+
+
 def _operation_resource_id(value: UUID) -> UUID:
     try:
         return validate_financial_resource_id(value)
@@ -551,6 +744,39 @@ def _movement_response(record: FinancialMovementRecord) -> FinancialMovementResp
         description=record.description,
         reversal_of_id=record.reversal_of_id,
         reversal_reason=record.reversal_reason,
+        created_at=record.created_at,
+    )
+
+
+def _category_response(record: FinancialCategoryRecord) -> FinancialCategoryResponse:
+    return FinancialCategoryResponse(
+        category_id=record.id,
+        owner_operator_id=record.owner_operator_id,
+        visibility_scope=record.visibility_scope.value,
+        parent_id=record.parent_id,
+        name=record.name,
+        status=record.status.value,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+        disabled_at=record.disabled_at,
+    )
+
+
+def _allocation_response(
+    record: FinancialMovementAllocationSetRecord,
+) -> FinancialMovementAllocationResponse:
+    return FinancialMovementAllocationResponse(
+        allocation_set_id=record.id,
+        movement_id=record.movement_id,
+        revision=record.revision,
+        supersedes_id=record.supersedes_id,
+        allocations=tuple(
+            FinancialAllocationShareResponse(
+                category_id=item.category_id,
+                money=_money_response(item.amount),
+            )
+            for item in record.allocations
+        ),
         created_at=record.created_at,
     )
 
@@ -724,6 +950,67 @@ def _raise_transfer_error(error: FinancialTransferPersistenceError) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="financial operation precedes opening balance",
+        ) from None
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="financial service is unavailable",
+    ) from None
+
+
+def _raise_category_error(error: FinancialCategoryPersistenceError) -> NoReturn:
+    if isinstance(
+        error,
+        (FinancialCategoryNotFoundError, FinancialCategoryParentNotFoundError),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="financial category was not found",
+        ) from None
+    if isinstance(error, FinancialCategoryAccessError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="financial access denied",
+        ) from None
+    raise HTTPException(
+        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        detail="financial service is unavailable",
+    ) from None
+
+
+def _raise_allocation_error(
+    error: FinancialMovementAllocationPersistenceError,
+) -> NoReturn:
+    if isinstance(
+        error,
+        (
+            FinancialMovementAllocationMovementNotFoundError,
+            FinancialMovementAllocationAccountNotFoundError,
+            FinancialMovementAllocationNotFoundError,
+        ),
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="financial resource was not found",
+        ) from None
+    if isinstance(error, FinancialMovementAllocationCategoryNotFoundError):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="financial category was not found",
+        ) from None
+    if isinstance(error, FinancialMovementAllocationAccessError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="financial access denied",
+        ) from None
+    if isinstance(error, FinancialMovementAllocationInvalidShapeError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="invalid financial allocation request",
+        ) from None
+    if isinstance(error, FinancialMovementAllocationConflictError):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="financial operation conflicts with canonical state",
         ) from None
     raise HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1174,6 +1461,177 @@ def get_statement(
             detail="financial service is unavailable",
         ) from None
     return _statement_response(statement)
+
+
+@router.get("/categories", response_model=FinancialCategoriesResponse)
+def list_categories(
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialCategoriesResponse:
+    _reject_query_params(request)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        records = _service(request).list_categories(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+        )
+    except FinancialCategoryPersistenceError as error:
+        _raise_category_error(error)
+    return FinancialCategoriesResponse(
+        categories=tuple(_category_response(item) for item in records)
+    )
+
+
+@router.post(
+    "/categories",
+    response_model=FinancialCategoryResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_category(
+    payload: FinancialCategoryCreateRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialCategoryResponse:
+    _reject_query_params(request)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).create_category(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            draft=_category_draft(payload),
+        )
+    except FinancialCategoryPersistenceError as error:
+        _raise_category_error(error)
+    return _category_response(record)
+
+
+@router.get(
+    "/movements/{movement_id}/allocation",
+    response_model=FinancialMovementAllocationEnvelope,
+)
+def get_movement_allocation(
+    movement_id: UUID,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementAllocationEnvelope:
+    _reject_query_params(request)
+    movement_id = _validated_resource_id(movement_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).get_current_allocation(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            movement_id=movement_id,
+        )
+    except FinancialMovementPersistenceError as error:
+        _raise_movement_error(error)
+    except FinancialMovementAllocationPersistenceError as error:
+        _raise_allocation_error(error)
+    return FinancialMovementAllocationEnvelope(
+        allocation=None if record is None else _allocation_response(record)
+    )
+
+
+@router.get(
+    "/accounts/{account_id}/movement-allocations",
+    response_model=FinancialMovementAllocationsResponse,
+)
+def list_movement_allocations(
+    account_id: UUID,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementAllocationsResponse:
+    _reject_query_params(request)
+    account_id = _validated_resource_id(account_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        records = _service(request).list_current_allocations(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+    except FinancialMovementAllocationPersistenceError as error:
+        _raise_allocation_error(error)
+    return FinancialMovementAllocationsResponse(
+        account_id=account_id,
+        movement_allocations=tuple(_allocation_response(item) for item in records),
+    )
+
+
+@router.post(
+    "/movements/{movement_id}/allocation",
+    response_model=FinancialMovementAllocationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_movement_allocation(
+    movement_id: UUID,
+    payload: FinancialMovementAllocationCreateRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementAllocationResponse:
+    _reject_query_params(request)
+    movement_id = _validated_resource_id(movement_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).create_allocation(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_allocation_set_draft(movement_id, payload),
+        )
+    except FinancialMovementAllocationPersistenceError as error:
+        _raise_allocation_error(error)
+    return _allocation_response(record)
+
+
+@router.post(
+    "/movements/{movement_id}/allocation/revisions",
+    response_model=FinancialMovementAllocationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def revise_movement_allocation(
+    movement_id: UUID,
+    payload: FinancialMovementAllocationRevisionRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest,
+        Depends(require_primary_residence),
+    ],
+) -> FinancialMovementAllocationResponse:
+    _reject_query_params(request)
+    movement_id = _validated_resource_id(movement_id)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        record = _service(request).revise_allocation(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=_idempotency_key(payload.idempotency_key),
+            draft=_allocation_revision_draft(movement_id, payload),
+        )
+    except FinancialMovementAllocationPersistenceError as error:
+        _raise_allocation_error(error)
+    return _allocation_response(record)
 
 
 __all__ = ["router"]

@@ -134,11 +134,11 @@ A migration é simétrica por downgrade e não altera `finance.accounts`.
 - carga inicial/fixture de categorias;
 - edição/movimentação/desativação/exclusão;
 - tags;
-- regras e aprendizado;
+- regras e aprendizado (regras determinísticas foram entregues depois pela #247; ver `FINANCIAL_CATEGORIZATION_RULES.md`);
 - rateios;
 - Movement/ledger;
 - saldo de abertura;
-- API/Flutter;
+- API/Flutter (a API mínima de categorias, o seletor e a criação inline foram entregues depois pela #245; ver `FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`);
 - Pluggy/importadores;
 - deploy/HML/produção.
 

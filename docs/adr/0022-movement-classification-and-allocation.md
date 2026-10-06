@@ -261,6 +261,8 @@ A implementação deve cobrir:
 
 - #124
 - #170
+- #245 — exposição em API e Flutter (`docs/architecture/FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`)
+- #247 — regras determinísticas sobre esta autoridade (ADR-0024)
 - ADR-0015
 - ADR-0016
 - ADR-0017

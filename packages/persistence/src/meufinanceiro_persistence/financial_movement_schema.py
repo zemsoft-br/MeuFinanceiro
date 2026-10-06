@@ -13,6 +13,7 @@ from sqlalchemy import (
     String,
     Table,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -162,6 +163,25 @@ Index(
     financial_movements.c.competence_date,
     financial_movements.c.created_at,
     financial_movements.c.id,
+)
+Index(
+    "ix_finance_movements_pending_scan",
+    financial_movements.c.residence_id,
+    financial_movements.c.effective_date.desc(),
+    financial_movements.c.id.desc(),
+    postgresql_where=text(
+        "role = 'STANDARD' AND result_effect IN ('INCOME', 'EXPENSE')"
+    ),
+)
+Index(
+    "ix_finance_movements_pending_account_scan",
+    financial_movements.c.residence_id,
+    financial_movements.c.account_id,
+    financial_movements.c.effective_date.desc(),
+    financial_movements.c.id.desc(),
+    postgresql_where=text(
+        "role = 'STANDARD' AND result_effect IN ('INCOME', 'EXPENSE')"
+    ),
 )
 
 __all__ = ["financial_movements"]

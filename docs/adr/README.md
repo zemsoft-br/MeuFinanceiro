@@ -22,6 +22,8 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0021 — Transferências internas atômicas no ledger canônico](0021-atomic-internal-transfers.md)
 - [ADR-0022 — Classificação e rateio append-only de Movements](0022-movement-classification-and-allocation.md)
 - [ADR-0023 — Audit trail financeiro transacional e sem snapshot sensível](0023-financial-transactional-audit-trail.md)
+- [ADR-0024 — Regras determinísticas de categorização com proveniência append-only](0024-deterministic-categorization-rules.md)
+- [ADR-0025 — Caixa de pendências derivada, paginada por keyset e sem estado persistido](0025-derived-pending-classification-inbox.md)
 
 ## Decisões propostas
 

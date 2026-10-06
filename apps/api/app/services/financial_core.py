@@ -10,8 +10,13 @@ from meufinanceiro_finance import (
     FinancialAccountDraft,
     FinancialAccountRecord,
     FinancialAccountStatement,
+    FinancialCategoryDraft,
+    FinancialCategoryRecord,
     FinancialManualEntryDraft,
     FinancialManualEntryService,
+    FinancialMovementAllocationRevisionDraft,
+    FinancialMovementAllocationSetDraft,
+    FinancialMovementAllocationSetRecord,
     FinancialMovementDraft,
     FinancialMovementRecord,
     FinancialMovementReversalDraft,
@@ -20,6 +25,9 @@ from meufinanceiro_finance import (
     FinancialTransferDraft,
     FinancialTransferRecord,
     FinancialTransferReversalDraft,
+)
+from meufinanceiro_persistence.financial_movement_allocation_store import (
+    FinancialMovementAllocationNotFoundError,
 )
 
 
@@ -168,6 +176,67 @@ class FinancialBalanceQueryBoundary(Protocol):
     ) -> FinancialAccountStatement: ...
 
 
+@runtime_checkable
+class FinancialCategoryStoreBoundary(Protocol):
+    def create_category(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        draft: FinancialCategoryDraft,
+    ) -> FinancialCategoryRecord: ...
+
+    def list_categories(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+    ) -> tuple[FinancialCategoryRecord, ...]: ...
+
+
+@runtime_checkable
+class FinancialMovementAllocationStoreBoundary(Protocol):
+    def create_allocation_set(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementAllocationSetDraft,
+    ) -> FinancialMovementAllocationSetRecord: ...
+
+    def revise_allocation_set(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementAllocationRevisionDraft,
+    ) -> FinancialMovementAllocationSetRecord: ...
+
+    def get_current_allocation_set(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        movement_id: UUID,
+    ) -> FinancialMovementAllocationSetRecord: ...
+
+    def list_current_allocation_sets(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> tuple[FinancialMovementAllocationSetRecord, ...]: ...
+
+
 class FinancialCoreService:
     """Delegate financial API operations to canonical domain/persistence boundaries."""
 
@@ -178,6 +247,8 @@ class FinancialCoreService:
         movement_store: FinancialMovementStoreBoundary,
         transfer_store: FinancialTransferStoreBoundary,
         balance_query: FinancialBalanceQueryBoundary,
+        category_store: FinancialCategoryStoreBoundary,
+        allocation_store: FinancialMovementAllocationStoreBoundary,
     ) -> None:
         if not isinstance(account_store, FinancialAccountStoreBoundary):
             raise TypeError("account_store must satisfy FinancialAccountStoreBoundary")
@@ -195,12 +266,22 @@ class FinancialCoreService:
             )
         if not isinstance(balance_query, FinancialBalanceQueryBoundary):
             raise TypeError("balance_query must satisfy FinancialBalanceQueryBoundary")
+        if not isinstance(category_store, FinancialCategoryStoreBoundary):
+            raise TypeError(
+                "category_store must satisfy FinancialCategoryStoreBoundary"
+            )
+        if not isinstance(allocation_store, FinancialMovementAllocationStoreBoundary):
+            raise TypeError(
+                "allocation_store must satisfy FinancialMovementAllocationStoreBoundary"
+            )
         self._accounts = account_store
         self._opening_balances = opening_balance_store
         self._movements = movement_store
         self._manual_entries = FinancialManualEntryService(movement_store)
         self._transfers = transfer_store
         self._balance_query = balance_query
+        self._categories = category_store
+        self._allocations = allocation_store
 
     def create_account(
         self,
@@ -426,11 +507,119 @@ class FinancialCoreService:
             account_id=account_id,
         )
 
+    def create_category(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        draft: FinancialCategoryDraft,
+    ) -> FinancialCategoryRecord:
+        return self._categories.create_category(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            draft=draft,
+        )
+
+    def list_categories(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+    ) -> tuple[FinancialCategoryRecord, ...]:
+        return self._categories.list_categories(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+        )
+
+    def get_current_allocation(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        movement_id: UUID,
+    ) -> FinancialMovementAllocationSetRecord | None:
+        """Return the current classification, or None for an accessible, unclassified Movement.
+
+        The Movement read comes first so a missing/invisible Movement keeps the
+        sanitized not-found contract instead of looking like "no classification".
+        """
+        self._movements.get_movement(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            movement_id=movement_id,
+        )
+        try:
+            return self._allocations.get_current_allocation_set(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                movement_id=movement_id,
+            )
+        except FinancialMovementAllocationNotFoundError:
+            return None
+
+    def list_current_allocations(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        account_id: UUID,
+    ) -> tuple[FinancialMovementAllocationSetRecord, ...]:
+        return self._allocations.list_current_allocation_sets(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            account_id=account_id,
+        )
+
+    def create_allocation(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementAllocationSetDraft,
+    ) -> FinancialMovementAllocationSetRecord:
+        return self._allocations.create_allocation_set(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
+        )
+
+    def revise_allocation(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialMovementAllocationRevisionDraft,
+    ) -> FinancialMovementAllocationSetRecord:
+        return self._allocations.revise_allocation_set(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
+        )
+
 
 __all__ = [
     "FinancialAccountStoreBoundary",
     "FinancialBalanceQueryBoundary",
+    "FinancialCategoryStoreBoundary",
     "FinancialCoreService",
+    "FinancialMovementAllocationStoreBoundary",
     "FinancialMovementStoreBoundary",
     "FinancialOpeningBalanceStoreBoundary",
     "FinancialTransferStoreBoundary",

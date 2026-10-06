@@ -20,12 +20,19 @@ void main() {
       ),
       same(finance),
     );
+    expect(
+      AppRoutes.destinationForLocation(
+        AppRoutes.financeCategorizationRulesPath,
+      ),
+      same(finance),
+    );
   });
 
   test('all financial routes remain behind the existing app auth guard', () {
     for (final location in [
       AppRoutes.financePath,
       AppRoutes.financeAccountCreatePath,
+      AppRoutes.financeCategorizationRulesPath,
       AppRoutes.financeAccountDetailLocation(
         '40000000-0000-4000-8000-000000000004',
       ),

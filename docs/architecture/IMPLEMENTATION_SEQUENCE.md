@@ -168,8 +168,9 @@ Cada item deve ser dividido em PRs de schema, domínio/API e cliente Flutter qua
 
 Após o livro estável:
 
-1. regras de categorização;
-2. caixa de pendências;
+0. classificação e rateio manual de Movements (#245): implementado em API e Flutter, aguardando revisão de PR; detalhes em `FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`;
+1. regras determinísticas de categorização (#247): implementado em API e Flutter, aguardando revisão de PR; detalhes em `FINANCIAL_CATEGORIZATION_RULES.md`;
+2. caixa de pendências (#249): implementada em API e Flutter, aguardando revisão de PR; derivada, paginada por keyset e sem estado persistido; detalhes em `FINANCIAL_PENDING_INBOX.md` e ADR-0025;
 3. orçamentos;
 4. recorrências;
 5. assinaturas assistidas;
