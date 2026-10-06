@@ -209,3 +209,24 @@ def test_adr_and_architecture_document_the_decision() -> None:
     assert "0026-monthly-category-budgets.md" in adr_index
     roadmap = (ROOT / "docs/ROADMAP.md").read_text(encoding="utf-8")
     assert "#252" in roadmap
+
+
+def test_the_realization_account_scope_is_server_derived_and_drives_the_sql() -> None:
+    domain = _code(DOMAIN)
+    assert 'OWNER_PERSONAL_ONLY = "OWNER_PERSONAL_ONLY"' in domain
+    assert 'HOUSEHOLD_ONLY = "HOUSEHOLD_ONLY"' in domain
+    assert "def budget_realization_account_scope(" in domain
+    # Exposed by the route from the record, never read from the request.
+    assert "realization_account_scope=record.realization_account_scope.value" in ROUTE
+    assert 'serialization_alias="realizationAccountScope"' in ROUTE
+    request_models = ROUTE.split("class BudgetLineRequest")[1].split(
+        "class BudgetLineResponse"
+    )[0]
+    assert "realization" not in request_models.lower()
+    # The one predicate behind both statements comes from the declared scope.
+    assert "budget.realization_account_scope" in REALIZATION
+    assert "budget.visibility_scope" not in _code(REALIZATION)
+    assert REALIZATION.count("{_audience_sql(budget)}") == 1  # shared by both CTEs
+    assert "a.visibility_scope = :account_scope" in REALIZATION
+    # PERSONAL/SHARED accounts never feed a HOUSEHOLD budget: no widening.
+    assert "'SHARED'" not in REALIZATION and '"SHARED"' not in REALIZATION

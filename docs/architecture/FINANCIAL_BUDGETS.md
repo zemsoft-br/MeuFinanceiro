@@ -47,10 +47,19 @@ Criação: `idempotencyKey` (UUID v4), `name`, `visibilityScope` (`PERSONAL`/`HO
 
 `409` distingue pelo texto sanitizado: `financial budget version is stale` (CAS) e `financial budget conflicts with canonical state` (chave reutilizada com outro material, ou mês já planejado).
 
+Todo orçamento (lista, leitura, criação, edição e o `budget` do resumo) traz o campo estável **`realizationAccountScope`**, decidido pelo servidor:
+
+| Valor | Orçamento | Contas que alimentam realizado e cobertura |
+|---|---|---|
+| `HOUSEHOLD_ONLY` | `HOUSEHOLD` | somente contas `HOUSEHOLD` |
+| `OWNER_PERSONAL_ONLY` | `PERSONAL` | somente contas `PERSONAL` do dono |
+
+Contas pessoais e compartilhadas **não** entram no orçamento da casa, mesmo que seus lançamentos usem uma categoria da casa; o realizado pode, portanto, ser menor que o gasto total do período, e o contrato diz isso em vez de deixar o número parecer completo.
+
 Resumo:
 
 ```text
-budget { ..., version, canEdit }
+budget { ..., realizationAccountScope, version, canEdit }
 lines[] { categoryId, resultEffect, planned, realized, remaining = planned - realized,
           status UNDER | AT | OVER, progressPercent (Decimal, 2 casas, meio para cima) }
 coverage { unclassifiedExpenseCount, unclassifiedExpenseAmount,
@@ -66,7 +75,7 @@ Por linha `(category, effect)`, no mês da base de data do orçamento (`CASH` �
 - `STANDARD` soma `+|parcela|` da allocation corrente da categoria; um rateio conta só a sua parcela;
 - `REVERSAL` soma `-|parcela|` da allocation corrente do `STANDARD` que estorna, na **data do próprio estorno**; `REVERSAL` não é classificado;
 - `NEUTRAL` e outras moedas nunca entram; categorias sem linha são ignoradas;
-- contas somadas: as da audiência do orçamento (HOUSEHOLD → contas `HOUSEHOLD`; PERSONAL → contas `PERSONAL` do dono). `SHARED` fora.
+- contas somadas: as de `realizationAccountScope` (HOUSEHOLD → contas `HOUSEHOLD`; PERSONAL → contas `PERSONAL` do dono). Movements de contas `PERSONAL`/`SHARED` classificados em categoria da casa ficam fora do orçamento da casa — realizado **e** cobertura — por segurança (nenhum gasto pessoal em número compartilhado). `SHARED` não alimenta nenhum orçamento na v1.
 
 Efeitos provados: reclassificação muda o resumo sem tocar o ledger; estorno integral no mesmo mês leva a linha a 0 exatamente uma vez; estorno posterior credita o mês do estorno; reclassificar o original move original e estorno juntos.
 
@@ -109,6 +118,7 @@ Tela **Orçamentos** (`/app/financas/orcamentos`, atalho na lista de contas):
 - criar/editar em diálogo: nome, escopo, moeda explícita, caixa/competência, linhas (tipo, categoria ativa compatível, valor planejado); categoria incompatível ou indisponível não é oferecida e bloqueia salvar; escopo, moeda, mês e base não mudam depois de criados;
 - planejado, realizado e restante exatamente como o servidor devolveu, barra de progresso e `UNDER`/`AT`/`OVER` por texto (e ícone), nunca só por cor;
 - alerta de cobertura com **Abrir Pendências**;
+- aviso em texto, sempre visível (orçamento carregado e criar/editar), do escopo de realização recebido do servidor: pessoal considera só as contas pessoais do dono; da casa considera só as contas da casa, e contas pessoais e compartilhadas não entram no realizado nem na cobertura. O cliente rejeita como resposta inválida um escopo desconhecido ou incoerente com a audiência e não recalcula o realizado;
 - estados: carregando, vazio do mês, erro com tentativa manual, resumo indisponível (plano mantido), lista possivelmente desatualizada, somente leitura e conflito.
 
 ### Sem sucesso otimista, sem retry automático

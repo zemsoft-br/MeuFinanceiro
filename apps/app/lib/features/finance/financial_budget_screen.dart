@@ -45,6 +45,7 @@ class FinancialBudgetScreen extends ConsumerStatefulWidget {
   static const summaryErrorKey = Key('financial-budget-summary-error');
   static const summaryRetryKey = Key('financial-budget-summary-retry');
   static const readOnlyKey = Key('financial-budget-readonly');
+  static const scopeNoticeKey = Key('financial-budget-scope-notice');
   static const editKey = Key('financial-budget-edit');
   static const coverageKey = Key('financial-budget-coverage');
   static const coverageActionKey = Key('financial-budget-coverage-action');
@@ -207,8 +208,10 @@ class _FinancialBudgetScreenState extends ConsumerState<FinancialBudgetScreen> {
                     const SizedBox(height: AppTokens.space8),
                     Text(
                       'Planejamento mensal por categoria. O realizado é '
-                      'calculado a partir do extrato e da classificação atual: '
-                      'um orçamento nunca cria lançamentos nem altera saldos.',
+                      'calculado a partir do extrato e da classificação atual '
+                      'das contas do escopo de cada orçamento (informado em '
+                      'cada um deles): um orçamento nunca cria lançamentos '
+                      'nem altera saldos.',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: AppTokens.neutral700,
                       ),
@@ -640,6 +643,8 @@ class _BudgetCard extends StatelessWidget {
                 context,
               ).textTheme.bodyMedium?.copyWith(color: AppTokens.neutral700),
             ),
+            const SizedBox(height: AppTokens.space12),
+            _ScopeNotice(scope: budget.realizationAccountScope),
             const SizedBox(height: AppTokens.space16),
             if (state.summaryPhase == FinancialBudgetSummaryPhase.loading)
               const KeyedSubtree(
@@ -686,6 +691,52 @@ class _BudgetCard extends StatelessWidget {
             _Lines(state: state, budget: budget, summaryById: summaryById),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Which accounts feed this budget, in plain text (never only a tooltip). The
+/// scope shown is the one the server declared; nothing is derived here.
+class _ScopeNotice extends StatelessWidget {
+  const _ScopeNotice({required this.scope});
+
+  final FinancialBudgetRealizationAccountScope scope;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: FinancialBudgetScreen.scopeNoticeKey,
+      padding: const EdgeInsets.all(AppTokens.space12),
+      decoration: BoxDecoration(
+        color: AppTokens.blue50,
+        border: Border.all(color: AppTokens.blue700),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMedium),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            color: AppTokens.blue700,
+            size: 20,
+            semanticLabel: 'Escopo do realizado',
+          ),
+          const SizedBox(width: AppTokens.space12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  financialBudgetRealizationScopeLabel(scope),
+                  style: Theme.of(context).textTheme.labelLarge,
+                ),
+                const SizedBox(height: AppTokens.space4),
+                Text(financialBudgetRealizationScopeNotice(scope)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -1,6 +1,6 @@
 # Classificação e rateio manual de Movements — API e Flutter
 
-Status: **implementação completa da issue #245** (4 batches). Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **implementação completa da issue #245** (4 batches). Integrada ao `develop` pela PR #246 e consolidada em `main` pela PR #251.
 
 Este documento descreve a capacidade vertical entregue sobre a persistência append-only da #170 (ADR-0022) e a auditoria da #171 (ADR-0023). Ele não altera nenhuma decisão: as regras financeiras continuam definidas no ADR-0022.
 

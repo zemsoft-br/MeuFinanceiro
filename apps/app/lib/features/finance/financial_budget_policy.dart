@@ -63,6 +63,32 @@ String financialBudgetBasisHint(FinancialBudgetDateBasis basis) =>
       FinancialBudgetDateBasis.competence => 'pela data de competência',
     };
 
+/// Short label of the accounts a budget realizes from.
+String financialBudgetRealizationScopeLabel(
+  FinancialBudgetRealizationAccountScope scope,
+) => switch (scope) {
+  FinancialBudgetRealizationAccountScope.ownerPersonalOnly =>
+    'Somente suas contas pessoais',
+  FinancialBudgetRealizationAccountScope.householdOnly =>
+    'Somente contas da casa',
+};
+
+/// The explicit statement of which accounts feed the realized and the coverage.
+/// Plain text, shown wherever the budget is created, edited or read.
+String financialBudgetRealizationScopeNotice(
+  FinancialBudgetRealizationAccountScope scope,
+) => switch (scope) {
+  FinancialBudgetRealizationAccountScope.ownerPersonalOnly =>
+    'Orçamento pessoal: considera somente as suas contas pessoais. Contas da '
+        'casa, compartilhadas e de outros membros não entram no realizado nem '
+        'na cobertura de não classificados.',
+  FinancialBudgetRealizationAccountScope.householdOnly =>
+    'Orçamento da casa: considera somente as contas da casa. Contas pessoais e '
+        'compartilhadas não entram no realizado nem na cobertura, mesmo que um '
+        'lançamento delas esteja numa categoria da casa; por isso o realizado '
+        'pode ser menor que o gasto total do período.',
+};
+
 String financialBudgetEffectLabel(FinancialResultEffect effect) =>
     switch (effect) {
       FinancialResultEffect.income => 'Receita',

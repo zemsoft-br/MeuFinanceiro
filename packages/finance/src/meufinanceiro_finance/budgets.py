@@ -45,6 +45,32 @@ class FinancialBudgetPeriodKind(StrEnum):
     MONTHLY = "MONTHLY"
 
 
+class FinancialBudgetRealizationAccountScope(StrEnum):
+    """Which accounts feed the realized and the coverage of a budget (v1).
+
+    Decided by the server from the budget audience and exposed on the wire so no
+    client has to infer it. It is deliberately narrower than what the
+    classification matrix allows: a PERSONAL or SHARED account may classify a
+    Movement under a HOUSEHOLD category, and that Movement is *not* counted in a
+    HOUSEHOLD budget (nor flagged in its coverage), because a shared figure must
+    never carry one member's personal spending.
+    """
+
+    OWNER_PERSONAL_ONLY = "OWNER_PERSONAL_ONLY"  # the owner's PERSONAL accounts
+    HOUSEHOLD_ONLY = "HOUSEHOLD_ONLY"  # accounts whose audience is HOUSEHOLD
+
+
+def budget_realization_account_scope(
+    visibility_scope: FinancialVisibilityScope,
+) -> FinancialBudgetRealizationAccountScope:
+    """The one mapping from budget audience to the accounts it realizes from."""
+    if visibility_scope is FinancialVisibilityScope.PERSONAL:
+        return FinancialBudgetRealizationAccountScope.OWNER_PERSONAL_ONLY
+    if visibility_scope is FinancialVisibilityScope.HOUSEHOLD:
+        return FinancialBudgetRealizationAccountScope.HOUSEHOLD_ONLY
+    raise ValueError("budget visibility_scope must be PERSONAL or HOUSEHOLD")
+
+
 class FinancialBudgetDateBasis(StrEnum):
     """Which Movement date places an amount in the budget month."""
 
@@ -338,6 +364,11 @@ class FinancialBudgetRecord:
         """Exclusive end of the month, derived server-side."""
         return budget_period_end(self.period_start)
 
+    @property
+    def realization_account_scope(self) -> FinancialBudgetRealizationAccountScope:
+        """Accounts that feed this budget's realized and coverage (server-decided)."""
+        return budget_realization_account_scope(self.visibility_scope)
+
     def __repr__(self) -> str:
         return (
             "FinancialBudgetRecord("
@@ -564,6 +595,7 @@ __all__ = [
     "FinancialBudgetLineSummary",
     "FinancialBudgetPeriodKind",
     "FinancialBudgetRealization",
+    "FinancialBudgetRealizationAccountScope",
     "FinancialBudgetRealizedRow",
     "FinancialBudgetRecord",
     "FinancialBudgetReplacement",
@@ -571,6 +603,7 @@ __all__ = [
     "budget_line_status",
     "budget_period_end",
     "budget_progress_percent",
+    "budget_realization_account_scope",
     "can_edit_budget",
     "is_budget_category_compatible",
     "parse_budget_period",

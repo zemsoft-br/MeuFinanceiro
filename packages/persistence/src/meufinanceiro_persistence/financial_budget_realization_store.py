@@ -30,6 +30,7 @@ from meufinanceiro_finance import (
     FinancialBudgetCoverageSlice,
     FinancialBudgetDateBasis,
     FinancialBudgetRealization,
+    FinancialBudgetRealizationAccountScope,
     FinancialBudgetRealizedRow,
     FinancialBudgetRecord,
     FinancialResultEffect,
@@ -153,10 +154,13 @@ def _params(
         "currency": budget.currency,
         "window_start": window[0],
         "window_end": window[1],
-        "scope": budget.visibility_scope.value,
     }
-    if budget.visibility_scope is FinancialVisibilityScope.PERSONAL:
+    scope = budget.realization_account_scope
+    if scope is FinancialBudgetRealizationAccountScope.OWNER_PERSONAL_ONLY:
+        params["account_scope"] = FinancialVisibilityScope.PERSONAL.value
         params["owner_id"] = budget.owner_operator_id
+    else:
+        params["account_scope"] = FinancialVisibilityScope.HOUSEHOLD.value
     return params
 
 
@@ -171,16 +175,21 @@ def _date_column(budget: FinancialBudgetRecord) -> str:
 
 
 def _audience_sql(budget: FinancialBudgetRecord) -> str:
-    """Pin the account audience to the budget scope.
+    """Pin the accounts to ``budget.realization_account_scope`` (server-decided).
 
-    A HOUSEHOLD budget only ever sums HOUSEHOLD accounts, so every member reads
-    identical numbers and nobody's PERSONAL spending leaks into a shared figure.
-    A PERSONAL budget only sums the owner's PERSONAL accounts. SHARED accounts are
-    out of the v1 budget scope.
+    ``HOUSEHOLD_ONLY`` sums only accounts whose audience is HOUSEHOLD, so every
+    member reads identical numbers and nobody's PERSONAL spending leaks into a
+    shared figure. ``OWNER_PERSONAL_ONLY`` sums only the owner's PERSONAL
+    accounts. PERSONAL and SHARED accounts never feed a HOUSEHOLD budget (even
+    when classified under a HOUSEHOLD category), and SHARED accounts feed no
+    budget in v1. The same predicate drives the realized and the coverage.
     """
-    if budget.visibility_scope is FinancialVisibilityScope.PERSONAL:
-        return "a.visibility_scope = :scope AND a.owner_operator_id = :owner_id"
-    return "a.visibility_scope = :scope"
+    scope = budget.realization_account_scope
+    if scope is FinancialBudgetRealizationAccountScope.OWNER_PERSONAL_ONLY:
+        return "a.visibility_scope = :account_scope AND a.owner_operator_id = :owner_id"
+    if scope is FinancialBudgetRealizationAccountScope.HOUSEHOLD_ONLY:
+        return "a.visibility_scope = :account_scope"
+    raise FinancialBudgetPersistenceError("budget state is invalid")
 
 
 def _window_cte(budget: FinancialBudgetRecord) -> str:

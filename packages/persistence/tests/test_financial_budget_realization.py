@@ -844,3 +844,179 @@ def test_reads_during_reclassification_always_see_one_consistent_state(
     )
     final = _realized(_read(world, budget))
     assert sum(final.values()) == Decimal(100)
+
+
+# --- realization account scope: explicit, server-authoritative -------------------
+
+
+def _scope_world(world: BudgetWorld, setup: dict[str, UUID]) -> dict[str, UUID]:
+    """One account of each audience, each with a classified and a pending spend."""
+    accounts = {
+        "household": setup["account"],
+        "personal": world.account(household=False, name="Pessoal"),
+        "shared": world.account(shared=True, name="Compartilhada"),
+        "member_personal": world.account(
+            household=False, operator_id=world.member_id, name="Pessoal do membro"
+        ),
+    }
+    market = setup["market"]
+    # All three audiences may classify under a HOUSEHOLD category (ADR-0022).
+    for key, amount in (("household", "-40"), ("personal", "-999"), ("shared", "-70")):
+        movement = _move(world, accounts[key], amount)
+        _classify(world, movement, {market: amount})
+    for key, amount in (("personal", "-7"), ("shared", "-3")):
+        _move(world, accounts[key], amount)  # pending: must not reach the coverage
+    return accounts
+
+
+def test_household_budget_declares_and_applies_household_only(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    from meufinanceiro_finance import FinancialBudgetRealizationAccountScope
+
+    _scope_world(budget_world, setup)
+    budget = _budget(budget_world, {(setup["market"], _EXPENSE): "100"})
+    assert (
+        budget.realization_account_scope
+        is FinancialBudgetRealizationAccountScope.HOUSEHOLD_ONLY
+    )
+    record, realization = FinancialBudgetRealizationStore(
+        budget_world.runtime
+    ).read_realization(**budget_world.scope(), budget_id=budget.id)
+    assert record.realization_account_scope.value == "HOUSEHOLD_ONLY"
+    # Only the HOUSEHOLD account counts: the PERSONAL (-999) and SHARED (-70)
+    # spends classified under a HOUSEHOLD category stay out, silently to the
+    # numbers but explicitly in the contract above.
+    assert _realized(realization) == {(setup["market"], "EXPENSE"): Decimal("40")}
+    # The coverage obeys the very same scope: personal/shared pendings are not here.
+    assert realization.unclassified_expense.count == 0
+    assert realization.unclassified_expense.amount == Decimal(0)
+    assert realization.unclassified_income.count == 0
+
+
+def test_household_pending_is_counted_while_personal_and_shared_pending_are_not(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    accounts = _scope_world(budget_world, setup)
+    _move(budget_world, accounts["household"], "-11")
+    budget = _budget(budget_world, {(setup["market"], _EXPENSE): "100"})
+    realization = _read(budget_world, budget)
+    assert realization.unclassified_expense.count == 1
+    assert realization.unclassified_expense.amount == Decimal("11")
+
+
+def test_shared_account_feeds_no_budget_in_v1(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    shared = budget_world.account(shared=True, name="Só compartilhada")
+    movement = _move(budget_world, shared, "-55")
+    _classify(budget_world, movement, {setup["market"]: "-55"})
+    _move(budget_world, shared, "-5")
+    mine = budget_world.category("Minha", household=False)
+    household = _budget(budget_world, {(setup["market"], _EXPENSE): "100"})
+    personal = _budget(budget_world, {(mine, _EXPENSE): "100"}, scope=_PERSONAL)
+    for budget in (household, personal):
+        realization = _read(budget_world, budget)
+        assert realization.rows == ()
+        assert realization.unclassified_expense.count == 0
+
+
+def test_personal_budget_declares_owner_personal_only_and_applies_it(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    from meufinanceiro_finance import FinancialBudgetRealizationAccountScope
+
+    accounts = _scope_world(budget_world, setup)
+    mine = budget_world.category("Minha reserva", household=False)
+    theirs = budget_world.category(
+        "Reserva do membro", household=False, operator_id=budget_world.member_id
+    )
+    owner_spend = _move(budget_world, accounts["personal"], "-25")
+    _classify(budget_world, owner_spend, {mine: "-25"})
+    member_spend = _move(
+        budget_world,
+        accounts["member_personal"],
+        "-13",
+        operator_id=budget_world.member_id,
+    )
+    FinancialMovementAllocationStore(budget_world.runtime).create_allocation_set(
+        **budget_world.scope(budget_world.member_id),
+        idempotency_key=new_financial_idempotency_key(),
+        draft=FinancialMovementAllocationSetDraft(
+            movement_id=member_spend,
+            allocations=(FinancialMovementAllocationDraft(theirs, _money("-13")),),
+        ),
+    )
+
+    budget = _budget(budget_world, {(mine, _EXPENSE): "100"}, scope=_PERSONAL)
+    assert (
+        budget.realization_account_scope
+        is FinancialBudgetRealizationAccountScope.OWNER_PERSONAL_ONLY
+    )
+    realization = _read(budget_world, budget)
+    # Only the owner's PERSONAL account. The HOUSEHOLD and SHARED accounts, and the
+    # member's PERSONAL account, never enter it; the pending -7 of the owner's own
+    # personal account is the only coverage item.
+    realized = _realized(realization)
+    assert realized[(mine, "EXPENSE")] == Decimal("25")
+    # (the owner's own -999 under a HOUSEHOLD category is a row of the owner's
+    # PERSONAL account; it has no line here, so the summary ignores it.)
+    assert (theirs, "EXPENSE") not in realized
+    assert Decimal("13") not in realized.values()
+    assert realization.unclassified_expense.count == 1
+    assert realization.unclassified_expense.amount == Decimal("7")
+
+    member_budget = _budget(
+        budget_world,
+        {(theirs, _EXPENSE): "100"},
+        scope=_PERSONAL,
+        operator_id=budget_world.member_id,
+    )
+    member_view = _read(budget_world, member_budget, operator_id=budget_world.member_id)
+    assert _realized(member_view) == {(theirs, "EXPENSE"): Decimal("13")}
+    assert member_view.unclassified_expense.count == 0  # none of the owner's data
+
+
+def test_no_member_ever_sees_personal_spending_through_a_shared_summary(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    _scope_world(budget_world, setup)
+    budget = _budget(budget_world, {(setup["market"], _EXPENSE): "100"})
+    owner_view = _read(budget_world, budget)
+    member_view = _read(budget_world, budget, operator_id=budget_world.member_id)
+    assert owner_view == member_view
+    assert _realized(member_view) == {(setup["market"], "EXPENSE"): Decimal("40")}
+    # The numbers cannot encode the excluded personal/shared amounts.
+    for value in (Decimal("999"), Decimal("70"), Decimal("7"), Decimal("3")):
+        assert value not in {row.amount for row in member_view.rows}
+        assert member_view.unclassified_expense.amount != value
+
+
+def test_the_sql_predicate_itself_pins_the_account_scope_independently_of_rls(
+    budget_world: BudgetWorld, setup: dict[str, UUID]
+) -> None:
+    # RLS already hides other members' PERSONAL accounts; the explicit predicate is
+    # the second, independent fence and must say exactly what the contract says.
+    from meufinanceiro_persistence import financial_budget_realization_store as store
+
+    mine = budget_world.category("Minha", household=False)
+    household = _budget(budget_world, {(setup["market"], _EXPENSE): "100"})
+    personal = _budget(budget_world, {(mine, _EXPENSE): "100"}, scope=_PERSONAL)
+    window = (_OCT, _NOV)
+
+    household_params = store._params(household, budget_world.installation_id, window)
+    assert store._audience_sql(household) == "a.visibility_scope = :account_scope"
+    assert household_params["account_scope"] == "HOUSEHOLD"
+    assert "owner_id" not in household_params
+
+    personal_params = store._params(personal, budget_world.installation_id, window)
+    assert store._audience_sql(personal) == (
+        "a.visibility_scope = :account_scope AND a.owner_operator_id = :owner_id"
+    )
+    assert personal_params["account_scope"] == "PERSONAL"
+    assert personal_params["owner_id"] == budget_world.owner_id
+    # Realized and coverage are built from that same predicate.
+    for sql in (store._realized_sql(household), store._coverage_sql(household)):
+        assert "a.visibility_scope = :account_scope" in sql
+    for sql in (store._realized_sql(personal), store._coverage_sql(personal)):
+        assert "a.owner_operator_id = :owner_id" in sql

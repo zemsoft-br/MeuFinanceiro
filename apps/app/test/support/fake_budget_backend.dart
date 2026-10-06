@@ -81,6 +81,9 @@ class FakeBudget {
   int version;
   List<FakeBudgetLine> lines;
 
+  /// Forces what the server declares (to prove the client validates it).
+  String? realizationScope;
+
   String get id => budgetTestId(index);
 }
 
@@ -210,7 +213,9 @@ class FakeBudgetBackend {
         '"visibilityScope":"${budget.scope}","name":"${budget.name}",'
         '"currency":"${budget.currency}","periodKind":"MONTHLY",'
         '"periodStart":"${budget.period}-01","periodEnd":"$end",'
-        '"dateBasis":"${budget.basis}","version":${budget.version},'
+        '"dateBasis":"${budget.basis}",'
+        '"realizationAccountScope":"${budget.realizationScope ?? (budget.scope == 'PERSONAL' ? 'OWNER_PERSONAL_ONLY' : 'HOUSEHOLD_ONLY')}",'
+        '"version":${budget.version},'
         '"createdAt":"2026-09-01T12:00:00Z","updatedAt":"2026-09-01T12:00:00Z",'
         '"canEdit":${budget.owner == operatorId},"lines":[$lines]}';
   }

@@ -51,6 +51,7 @@ class FinancialBudgetEditorDialog extends StatefulWidget {
   );
   static const addLineKey = Key('financial-budget-editor-add-line');
   static const issuesKey = Key('financial-budget-editor-issues');
+  static const scopeNoticeKey = Key('financial-budget-editor-scope-notice');
   static const saveKey = Key('financial-budget-editor-save');
   static const cancelKey = Key('financial-budget-editor-cancel');
   static Key lineKey(int index) => Key('financial-budget-editor-line-$index');
@@ -246,6 +247,8 @@ class _FinancialBudgetEditorDialogState
               ),
               const SizedBox(height: AppTokens.space12),
               _identityFields(),
+              const SizedBox(height: AppTokens.space12),
+              _scopeNotice(),
               const SizedBox(height: AppTokens.space16),
               Text('Linhas', style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: AppTokens.space8),
@@ -291,6 +294,35 @@ class _FinancialBudgetEditorDialogState
           child: Text(_editing ? 'Salvar alterações' : 'Criar orçamento'),
         ),
       ],
+    );
+  }
+
+  /// Which accounts will feed the realized, stated before anything is saved.
+  /// While editing it is the scope the server declared; while creating it is the
+  /// contract's mapping for the audience being chosen.
+  Widget _scopeNotice() {
+    final scope =
+        widget.existing?.realizationAccountScope ??
+        expectedBudgetRealizationAccountScope(_scope);
+    return Container(
+      key: FinancialBudgetEditorDialog.scopeNoticeKey,
+      padding: const EdgeInsets.all(AppTokens.space12),
+      decoration: BoxDecoration(
+        color: AppTokens.blue50,
+        border: Border.all(color: AppTokens.blue700),
+        borderRadius: BorderRadius.circular(AppTokens.radiusMedium),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            financialBudgetRealizationScopeLabel(scope),
+            style: Theme.of(context).textTheme.labelLarge,
+          ),
+          const SizedBox(height: AppTokens.space4),
+          Text(financialBudgetRealizationScopeNotice(scope)),
+        ],
+      ),
     );
   }
 

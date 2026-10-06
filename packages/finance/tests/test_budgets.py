@@ -387,3 +387,31 @@ def test_reprs_do_not_leak_amounts_or_names() -> None:
     draft = _draft(name="Segredo", lines=(_line(amount="123456"),))
     text = repr(draft) + repr(draft.lines[0]) + repr(replace(draft, name="Outro"))
     assert "123456" not in text and "Segredo" not in text
+
+
+def test_realization_account_scope_is_derived_from_the_audience() -> None:
+    from meufinanceiro_finance import (
+        FinancialBudgetRealizationAccountScope,
+        budget_realization_account_scope,
+    )
+
+    assert (
+        budget_realization_account_scope(FinancialVisibilityScope.PERSONAL)
+        is FinancialBudgetRealizationAccountScope.OWNER_PERSONAL_ONLY
+    )
+    assert (
+        budget_realization_account_scope(FinancialVisibilityScope.HOUSEHOLD)
+        is FinancialBudgetRealizationAccountScope.HOUSEHOLD_ONLY
+    )
+    with pytest.raises(ValueError):
+        budget_realization_account_scope(FinancialVisibilityScope.SHARED)
+    assert {item.value for item in FinancialBudgetRealizationAccountScope} == {
+        "OWNER_PERSONAL_ONLY",
+        "HOUSEHOLD_ONLY",
+    }
+    line = FinancialBudgetLineRecord(
+        _MARKET, FinancialResultEffect.EXPENSE, Money(Decimal("10"), "BRL")
+    )
+    assert _record(line).realization_account_scope.value == "OWNER_PERSONAL_ONLY"
+    household = _record(line, visibility_scope=FinancialVisibilityScope.HOUSEHOLD)
+    assert household.realization_account_scope.value == "HOUSEHOLD_ONLY"

@@ -687,6 +687,7 @@ def test_create_list_get_and_edit_contract(api: Api, world: dict[str, UUID]) -> 
         "periodStart",
         "periodEnd",
         "dateBasis",
+        "realizationAccountScope",
         "version",
         "createdAt",
         "updatedAt",
@@ -1279,3 +1280,84 @@ def test_summary_statement_count_is_constant(
         if index % 2:
             api.classify("owner", movement, [(market, f"-{index + 1}")])
     assert cost() == empty
+
+
+def test_realization_account_scope_is_in_the_contract_and_scopes_realized_and_coverage(
+    api: Api, pg_env: PgEnv, world: dict[str, UUID]
+) -> None:
+    market = world["market"]
+    mine = api.category("owner", scope="PERSONAL", name="Minha reserva")
+    household_budget = api.post(
+        "owner", "/budgets", _create_body([_line(market, "EXPENSE", "100")])
+    )
+    personal_budget = api.post(
+        "owner",
+        "/budgets",
+        _create_body([_line(mine, "EXPENSE", "100")], scope="PERSONAL", name="Meu"),
+    )
+    assert household_budget.status_code == personal_budget.status_code == 201
+    assert household_budget.json()["realizationAccountScope"] == "HOUSEHOLD_ONLY"
+    assert personal_budget.json()["realizationAccountScope"] == "OWNER_PERSONAL_ONLY"
+    household_id = household_budget.json()["id"]
+    personal_id = personal_budget.json()["id"]
+
+    # A HOUSEHOLD account (counts) and a PERSONAL account whose spend is classified
+    # under the HOUSEHOLD category (does not count, but never silently).
+    counted = _entry(api, "owner", world["account"], "expense", "40")
+    api.classify("owner", counted, [(market, "-40")])
+    excluded = _entry(api, "owner", world["personal_account"], "expense", "999")
+    api.classify("owner", excluded, [(market, "-999")])
+    _entry(api, "owner", world["personal_account"], "expense", "7")  # pending
+    shared = api.post(
+        "owner",
+        "/accounts",
+        {
+            "name": "Conta compartilhada",
+            "accountType": "CHECKING",
+            "customTypeName": None,
+            "currency": "BRL",
+            "visibilityScope": "SHARED",
+        },
+    )
+    assert shared.status_code == 201, shared.text
+    shared_id = UUID(shared.json()["accountId"])
+    api.post(
+        "owner",
+        f"/accounts/{shared_id}/opening-balance",
+        {"amount": "1000.00", "currency": "BRL", "effectiveDate": "2026-09-01"},
+    )
+    shared_spend = _entry(api, "owner", shared_id, "expense", "70")
+    api.classify("owner", shared_spend, [(market, "-70")])
+    _entry(api, "owner", shared_id, "expense", "3")  # pending
+
+    for who in ("owner", "member"):
+        summary = _summary(api, who, household_id)
+        # The same budget object, with the same declared scope, in the summary.
+        assert summary["budget"]["realizationAccountScope"] == "HOUSEHOLD_ONLY"
+        assert summary["lines"][0]["realized"]["amount"] == "40"
+        assert summary["coverage"]["unclassifiedExpenseCount"] == 0
+        assert summary["coverage"]["unclassifiedExpenseAmount"]["amount"] == "0"
+        listed = api.get(who, "/budgets?period=2026-10").json()["items"]
+        expected = {household_id: "HOUSEHOLD_ONLY"}
+        if who == "owner":
+            expected[personal_id] = "OWNER_PERSONAL_ONLY"
+        assert {
+            item["id"]: item["realizationAccountScope"] for item in listed
+        } == expected
+        fetched = api.get(who, f"/budgets/{household_id}").json()
+        assert fetched["realizationAccountScope"] == "HOUSEHOLD_ONLY"
+
+    personal_summary = _summary(api, "owner", personal_id)
+    assert (
+        personal_summary["budget"]["realizationAccountScope"] == "OWNER_PERSONAL_ONLY"
+    )
+    # Owner's PERSONAL account only: its pending 7 is the sole coverage item and
+    # the household/shared spends never appear here.
+    assert personal_summary["coverage"]["unclassifiedExpenseCount"] == 1
+    assert personal_summary["coverage"]["unclassifiedExpenseAmount"]["amount"] == "7"
+    assert personal_summary["lines"][0]["realized"]["amount"] == "0"
+    _clean(
+        api.get("member", f"/budgets/{personal_id}/summary"),
+        404,
+        "financial resource was not found",
+    )

@@ -16,6 +16,7 @@ const _budgetKeys = <String>{
   'periodStart',
   'periodEnd',
   'dateBasis',
+  'realizationAccountScope',
   'version',
   'createdAt',
   'updatedAt',
@@ -58,6 +59,26 @@ enum FinancialBudgetDateBasis {
       _enumByWire(values, value, 'dateBasis', (item) => item.wireValue);
 }
 
+/// Which accounts feed the realized and the coverage of a budget. Declared by the
+/// server (never inferred here): a HOUSEHOLD budget realizes from HOUSEHOLD
+/// accounts only, so a PERSONAL or SHARED account's Movement classified under a
+/// HOUSEHOLD category is *not* counted, and the screen must say so.
+enum FinancialBudgetRealizationAccountScope {
+  ownerPersonalOnly('OWNER_PERSONAL_ONLY'),
+  householdOnly('HOUSEHOLD_ONLY');
+
+  const FinancialBudgetRealizationAccountScope(this.wireValue);
+  final String wireValue;
+
+  static FinancialBudgetRealizationAccountScope parse(Object? value) =>
+      _enumByWire(
+        values,
+        value,
+        'realizationAccountScope',
+        (item) => item.wireValue,
+      );
+}
+
 /// Realized compared with planned. A statement of fact, not a judgement: an
 /// INCOME line that is OVER is good news.
 enum FinancialBudgetLineStatus {
@@ -94,6 +115,7 @@ class FinancialBudget {
     required this.periodStart,
     required this.periodEnd,
     required this.dateBasis,
+    required this.realizationAccountScope,
     required this.version,
     required this.createdAt,
     required this.updatedAt,
@@ -112,6 +134,9 @@ class FinancialBudget {
   final String periodStart;
   final String periodEnd;
   final FinancialBudgetDateBasis dateBasis;
+
+  /// The accounts the realized and the coverage come from (server-decided).
+  final FinancialBudgetRealizationAccountScope realizationAccountScope;
 
   /// CAS token: the only valid `expectedVersion` of the next edit.
   final int version;
@@ -326,6 +351,20 @@ class FinancialBudgetReplaceInput {
   };
 }
 
+/// The contract's mapping from audience to realization scope. Used only to
+/// reject a response that contradicts itself; the value shown is the received one.
+FinancialBudgetRealizationAccountScope expectedBudgetRealizationAccountScope(
+  FinancialVisibilityScope scope,
+) => switch (scope) {
+  FinancialVisibilityScope.personal =>
+    FinancialBudgetRealizationAccountScope.ownerPersonalOnly,
+  FinancialVisibilityScope.household =>
+    FinancialBudgetRealizationAccountScope.householdOnly,
+  FinancialVisibilityScope.shared => throw const FormatException(
+    'visibilityScope is not supported.',
+  ),
+};
+
 String _budgetPeriod(String value) {
   if (!_budgetPeriodPattern.hasMatch(value)) {
     throw const FormatException('period is invalid.');
@@ -385,6 +424,8 @@ extension FinancialBudgetApiCalls on FinancialCoreApi {
         budget.currency != input.currency ||
         budget.period != input.period ||
         budget.dateBasis != input.dateBasis ||
+        budget.realizationAccountScope !=
+            expectedBudgetRealizationAccountScope(input.visibilityScope) ||
         !_sameBudgetLines(budget.lines, input.lines)) {
       throw const FormatException('budget response mismatch.');
     }
@@ -457,6 +498,14 @@ FinancialBudget _parseBudget(Object? raw) {
   if (values['periodKind'] != 'MONTHLY') {
     throw const FormatException('periodKind is invalid.');
   }
+  final realizationScope = FinancialBudgetRealizationAccountScope.parse(
+    values['realizationAccountScope'],
+  );
+  if (realizationScope != expectedBudgetRealizationAccountScope(scope)) {
+    // The declared scope must agree with the audience: anything else would let a
+    // personal figure be presented as shared (or the reverse).
+    throw const FormatException('realizationAccountScope is invalid.');
+  }
   final periodStart = _date(values['periodStart'], 'periodStart');
   final periodEnd = _date(values['periodEnd'], 'periodEnd');
   if (!periodStart.endsWith('-01') || !periodEnd.endsWith('-01')) {
@@ -497,6 +546,7 @@ FinancialBudget _parseBudget(Object? raw) {
     periodStart: periodStart,
     periodEnd: periodEnd,
     dateBasis: FinancialBudgetDateBasis.parse(values['dateBasis']),
+    realizationAccountScope: realizationScope,
     version: version,
     createdAt: _timestamp(values['createdAt'], 'createdAt'),
     updatedAt: _timestamp(values['updatedAt'], 'updatedAt'),

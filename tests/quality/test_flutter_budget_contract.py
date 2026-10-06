@@ -159,3 +159,18 @@ def test_the_editor_only_builds_requests_and_never_sends_them() -> None:
         assert token not in _code(EDITOR), token
     # Scope, currency, month and basis are immutable after creation.
     assert "não mudam depois de criados" in EDITOR
+
+
+def test_the_client_validates_and_shows_the_declared_scope_without_deriving_it() -> (
+    None
+):
+    assert "'realizationAccountScope'" in API
+    assert "values['realizationAccountScope']" in API
+    assert "realizationAccountScope is invalid" in API
+    # Shown in plain text on the loaded budget and in the editor, not a tooltip.
+    assert "financialBudgetRealizationScopeNotice(" in SCREEN
+    assert "financialBudgetRealizationScopeNotice(" in EDITOR
+    assert "scopeNoticeKey" in SCREEN and "scopeNoticeKey" in EDITOR
+    for source in (SCREEN, EDITOR):
+        assert "Tooltip(" not in _code(source).replace("tooltip:", "")
+    assert "Contas pessoais e" in POLICY and "compartilhadas não entram" in POLICY

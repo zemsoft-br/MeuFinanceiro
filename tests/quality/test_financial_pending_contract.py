@@ -130,5 +130,6 @@ def test_adr_and_doc_state_the_derived_no_second_authority_decision() -> None:
     assert "Status: Accepted" in ADR
     assert "ADR-0025" in DOC
     assert (
-        "Pull Request, merge e integração ao `develop` **ainda não ocorreram**" in DOC
+        "Integrada ao `develop` pela PR #250 e consolidada em `main` pela PR #251"
+        in DOC
     )

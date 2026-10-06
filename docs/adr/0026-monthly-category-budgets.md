@@ -32,6 +32,15 @@ A decisão precisa responder: onde mora o plano, como o realizado é obtido sem 
 | `PERSONAL` | só o dono | só o dono | `PERSONAL` ativa do mesmo dono | contas `PERSONAL` do dono |
 | `HOUSEHOLD` | membros ativos | **só o dono (criador)** | `HOUSEHOLD` ativa | contas `HOUSEHOLD` |
 
+**Escopo de realização explícito (`realizationAccountScope`).** A matriz de ADR-0022 permite que um Movement de conta `PERSONAL` ou `SHARED` use uma categoria `HOUSEHOLD`. Esse Movement é um gasto real, mas **não entra** num orçamento da casa (nem na sua cobertura): somar contas pessoais num número compartilhado vazaria o gasto de um membro. Para que isso nunca pareça um orçamento completo quando não é, o servidor declara o escopo em todo orçamento e resumo:
+
+| `realizationAccountScope` | Orçamento | Contas que alimentam realizado **e** cobertura |
+|---|---|---|
+| `HOUSEHOLD_ONLY` | `HOUSEHOLD` | somente contas com audiência `HOUSEHOLD` |
+| `OWNER_PERSONAL_ONLY` | `PERSONAL` | somente contas `PERSONAL` do dono |
+
+É derivado da audiência no domínio (`budget_realization_account_scope`), nunca de entrada do cliente, e é o mesmo predicado SQL do realizado e da cobertura (provado). `SHARED` não alimenta nenhum orçamento na v1. O Flutter valida o campo (valor conhecido e coerente com a audiência) e o exibe em texto no orçamento carregado e no criar/editar; não recalcula nada. Incluir contas pessoais/compartilhadas no orçamento da casa exigiria decisão própria de visibilidade e fica fora da v1.
+
 Ler um orçamento da casa nunca implica escrever (`canEdit` é decidido no servidor e no banco). Fixar as contas somadas pela audiência do orçamento faz todo membro ver os mesmos números num orçamento da casa e impede que gastos pessoais de alguém vazem para um total compartilhado; contas `SHARED` ficam fora da v1. Conhecer um id nunca prova autorização: orçamento ou categoria inexistente, invisível ou incompatível são o mesmo erro sanitizado. RLS é `FORCE`d e fail-closed; o runtime recebe `SELECT, INSERT` e `UPDATE` somente de `name, version, updated_at, updated_by_operator_id`; não há `DELETE`.
 
 ### Escrita: replay-safe e CAS sem perda de atualização

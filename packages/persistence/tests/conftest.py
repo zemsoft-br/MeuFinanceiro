@@ -367,11 +367,18 @@ class BudgetWorld:
         self,
         *,
         household: bool = True,
+        shared: bool = False,
         currency: str = "BRL",
         operator_id: UUID | None = None,
         name: str = "Conta",
     ) -> UUID:
-        scope = self._scope_enum.HOUSEHOLD if household else self._scope_enum.PERSONAL
+        scope = (
+            self._scope_enum.SHARED
+            if shared
+            else self._scope_enum.HOUSEHOLD
+            if household
+            else self._scope_enum.PERSONAL
+        )
         return (
             self._account_store(self.runtime)
             .create_account(

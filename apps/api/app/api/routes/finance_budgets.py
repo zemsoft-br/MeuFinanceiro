@@ -118,6 +118,9 @@ class BudgetResponse(BaseModel):
     period_start: date = Field(serialization_alias="periodStart")
     period_end: date = Field(serialization_alias="periodEnd")
     date_basis: str = Field(serialization_alias="dateBasis")
+    realization_account_scope: str = Field(
+        serialization_alias="realizationAccountScope"
+    )
     version: int
     created_at: datetime = Field(serialization_alias="createdAt")
     updated_at: datetime = Field(serialization_alias="updatedAt")
@@ -292,6 +295,7 @@ def _record_response(
         period_start=record.period_start,
         period_end=record.period_end,
         date_basis=record.date_basis.value,
+        realization_account_scope=record.realization_account_scope.value,
         version=record.version,
         created_at=record.created_at,
         updated_at=record.updated_at,
