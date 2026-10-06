@@ -35,6 +35,8 @@ abstract final class AppRoutes {
   static const financeAccountDetailPath = '/app/financas/contas/:accountId';
   static const financeCategorizationRules = 'finance-categorization-rules';
   static const financeCategorizationRulesPath = '/app/financas/regras';
+  static const financePending = 'finance-pending';
+  static const financePendingPath = '/app/financas/pendencias';
   static const integrations = 'integrations';
   static const integrationsPath = '/app/integracoes';
   static const pluggyConnect = 'pluggy-connect';
