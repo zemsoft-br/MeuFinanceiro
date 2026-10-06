@@ -8,6 +8,10 @@ from meufinanceiro_persistence.demo_contract import (
     DEMO_RESIDENCE_ID,
 )
 from meufinanceiro_persistence.financial_audit_schema import financial_audit_events
+from meufinanceiro_persistence.financial_budget_schema import (
+    financial_budget_lines,
+    financial_budgets,
+)
 from meufinanceiro_persistence.financial_categorization_rule_schema import (
     financial_categorization_rules,
     financial_movement_allocation_rule_origins,
@@ -19,7 +23,7 @@ from meufinanceiro_persistence.financial_movement_allocation_schema import (
 
 
 def reset_demo_financial_extensions(connection: Connection) -> bool:
-    """Delete audit/allocation/rule rows before their referenced demo resources."""
+    """Delete audit/budget/allocation/rule rows before their referenced demo resources."""
     changed = False
 
     audit_result = connection.execute(
@@ -29,6 +33,15 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
         )
     )
     changed |= bool(audit_result.rowcount)
+
+    for budget_table in (financial_budget_lines, financial_budgets):
+        budget_result = connection.execute(
+            delete(budget_table).where(
+                budget_table.c.installation_id == DEMO_INSTALLATION_ID,
+                budget_table.c.residence_id == DEMO_RESIDENCE_ID,
+            )
+        )
+        changed |= bool(budget_result.rowcount)
 
     origin_result = connection.execute(
         delete(financial_movement_allocation_rule_origins).where(
