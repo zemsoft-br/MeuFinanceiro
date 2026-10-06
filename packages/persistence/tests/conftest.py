@@ -27,6 +27,10 @@ from meufinanceiro_persistence.financial_categorization_rule_schema import (
     financial_categorization_rules,
     financial_movement_allocation_rule_origins,
 )
+from meufinanceiro_persistence.financial_budget_schema import (
+    financial_budget_lines,
+    financial_budgets,
+)
 from meufinanceiro_persistence.financial_category_schema import financial_categories
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
@@ -204,6 +208,8 @@ def create_canonical_residences(
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
         connection.execute(delete(financial_audit_events))
+        connection.execute(delete(financial_budget_lines))
+        connection.execute(delete(financial_budgets))
         connection.execute(delete(reconciled_transaction_ledger_links))
         connection.execute(delete(financial_movement_allocation_rule_origins))
         connection.execute(delete(financial_movement_allocations))
@@ -232,3 +238,162 @@ def clean_persistence(engine: Engine) -> Iterator[None]:
         connection.execute(delete(demo_task_effects))
         connection.execute(delete(task_queue))
     yield
+
+
+# --- budget world (shared by the budget persistence proofs) ------------------
+
+_BUDGET_NOW = datetime(2026, 10, 5, 3, 0, tzinfo=UTC)
+
+
+class BudgetWorld:
+    """A household with owner/member, an outsider residence and ledger helpers.
+
+    Everything is created through the runtime role under forced RLS, exactly as
+    the application does it.
+    """
+
+    def __init__(self, engine: Engine, runtime: Engine) -> None:
+        from meufinanceiro_finance import (
+            FinancialAccountDraft,
+            FinancialAccountType,
+            FinancialCategoryDraft,
+            FinancialVisibilityScope,
+        )
+        from meufinanceiro_persistence.financial_account_store import (
+            FinancialAccountStore,
+        )
+        from meufinanceiro_persistence.financial_category_store import (
+            FinancialCategoryStore,
+        )
+
+        self._account_draft = FinancialAccountDraft
+        self._account_type = FinancialAccountType
+        self._category_draft = FinancialCategoryDraft
+        self._scope_enum = FinancialVisibilityScope
+        self._account_store = FinancialAccountStore
+        self._category_store = FinancialCategoryStore
+        self.engine = engine
+        self.runtime = runtime
+        self.installation_id = uuid4()
+        self.residence_id = uuid4()
+        self.other_residence_id = uuid4()
+        with engine.begin() as connection:
+            connection.execute(
+                insert(identity_installation).values(
+                    singleton=True,
+                    id=self.installation_id,
+                    created_at=_BUDGET_NOW,
+                    updated_at=_BUDGET_NOW,
+                )
+            )
+            for residence_id in (self.residence_id, self.other_residence_id):
+                connection.execute(
+                    insert(household_residences).values(
+                        id=residence_id,
+                        installation_id=self.installation_id,
+                        name="Synthetic budget residence",
+                        status="active",
+                        created_at=_BUDGET_NOW,
+                        updated_at=_BUDGET_NOW,
+                    )
+                )
+            self.owner_id = self._operator(connection, self.residence_id, "owner")
+            self.member_id = self._operator(connection, self.residence_id, "member")
+            self.outsider_id = self._operator(
+                connection, self.other_residence_id, "owner"
+            )
+
+    def _operator(self, connection: object, residence_id: UUID, role: str) -> UUID:
+        operator_id = uuid4()
+        connection.execute(  # type: ignore[attr-defined]
+            insert(identity_operators).values(
+                id=operator_id,
+                installation_id=self.installation_id,
+                login_name=f"budget-{uuid4().hex[:10]}",
+                password_hash="synthetic-password-hash-material-000000000000",
+                role="installation_admin",
+                status="active",
+                failed_attempts=0,
+                locked_until=None,
+                last_authenticated_at=None,
+                password_changed_at=_BUDGET_NOW,
+                created_at=_BUDGET_NOW,
+                updated_at=_BUDGET_NOW,
+            )
+        )
+        connection.execute(  # type: ignore[attr-defined]
+            insert(household_memberships).values(
+                id=uuid4(),
+                installation_id=self.installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                role=role,
+                status="active",
+                is_primary=True,
+                created_at=_BUDGET_NOW,
+                updated_at=_BUDGET_NOW,
+            )
+        )
+        return operator_id
+
+    def scope(
+        self, operator_id: UUID | None = None, residence_id: UUID | None = None
+    ) -> dict[str, UUID]:
+        return {
+            "installation_id": self.installation_id,
+            "residence_id": residence_id or self.residence_id,
+            "operator_id": operator_id or self.owner_id,
+        }
+
+    def category(
+        self,
+        name: str,
+        *,
+        household: bool = True,
+        operator_id: UUID | None = None,
+        residence_id: UUID | None = None,
+    ) -> UUID:
+        scope = self._scope_enum.HOUSEHOLD if household else self._scope_enum.PERSONAL
+        return (
+            self._category_store(self.runtime)
+            .create_category(
+                **self.scope(operator_id, residence_id),
+                draft=self._category_draft(name=name, visibility_scope=scope),
+            )
+            .id
+        )
+
+    def account(
+        self,
+        *,
+        household: bool = True,
+        shared: bool = False,
+        currency: str = "BRL",
+        operator_id: UUID | None = None,
+        name: str = "Conta",
+    ) -> UUID:
+        scope = (
+            self._scope_enum.SHARED
+            if shared
+            else self._scope_enum.HOUSEHOLD
+            if household
+            else self._scope_enum.PERSONAL
+        )
+        return (
+            self._account_store(self.runtime)
+            .create_account(
+                **self.scope(operator_id),
+                draft=self._account_draft(
+                    name=name,
+                    currency=currency,
+                    account_type=self._account_type.CHECKING,
+                    visibility_scope=scope,
+                ),
+            )
+            .id
+        )
+
+
+@pytest.fixture
+def budget_world(engine: Engine, runtime_engine: Engine) -> BudgetWorld:
+    return BudgetWorld(engine, runtime_engine)

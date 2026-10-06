@@ -1,6 +1,6 @@
 # Regras determinísticas de categorização — API, persistência e Flutter
 
-Status: **implementação completa da issue #247** (4 batches). Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **implementação completa da issue #247** (4 batches). Integrada ao `develop` pela PR #248 e consolidada em `main` pela PR #251.
 
 Este documento descreve a capacidade entregue sobre a classificação append-only da #170/#245 (ADR-0022) e a auditoria da #171 (ADR-0023). As decisões estão na ADR-0024; nenhuma regra financeira anterior foi alterada.
 
@@ -103,7 +103,7 @@ O lifecycle da regra **não** entra no audit financeiro fechado (`FinancialAudit
 
 ## Fora do escopo desta entrega
 
-ML/LLM, aprendizado, sugestão de regras, fuzzy/regex, condições arbitrárias, faixas de valor/data, regra com rateio, execução em background/agendada ou na importação, Pluggy/Open Finance, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), orçamento, recorrências, tags, classificação de `NEUTRAL`/`REVERSAL`, histórico visual completo de regras e HML/PROD/deploy.
+ML/LLM, aprendizado, sugestão de regras, fuzzy/regex, condições arbitrárias, faixas de valor/data, regra com rateio, execução em background/agendada ou na importação, Pluggy/Open Finance, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), orçamento (entregue depois pela #252; ver `FINANCIAL_BUDGETS.md`), recorrências, tags, classificação de `NEUTRAL`/`REVERSAL`, histórico visual completo de regras e HML/PROD/deploy.
 
 ## Evidência de fechamento
 

@@ -1,6 +1,6 @@
 # Caixa de pendências de classificação — API, desempenho e Flutter
 
-Status: **implementação completa da issue #249** (4 batches). Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **implementação completa da issue #249** (4 batches). Integrada ao `develop` pela PR #250 e consolidada em `main` pela PR #251.
 
 Este documento descreve a caixa de pendências v1 sobre a classificação append-only da #170/#245 (ADR-0022), a auditoria da #171 (ADR-0023) e as regras determinísticas da #247 (ADR-0024). A decisão está na ADR-0025; nenhuma regra financeira anterior foi alterada.
 
@@ -147,7 +147,7 @@ Nenhum item sai antes de uma releitura canônica. Toda resposta de escrita (suce
 
 ## Fora do escopo desta entrega
 
-Estado persistido de dismiss/snooze, atribuição de pendência a membro, ML/LLM e aprendizado, criação automática de regra, auto-apply, execução em background, tags, orçamentos, recorrências, dashboard, importação/Pluggy, classificação de `NEUTRAL`/`REVERSAL` e HML/PROD/deploy.
+Estado persistido de dismiss/snooze, atribuição de pendência a membro, ML/LLM e aprendizado, criação automática de regra, auto-apply, execução em background, tags, orçamentos (entregues depois pela #252; ver `FINANCIAL_BUDGETS.md`), recorrências, dashboard, importação/Pluggy, classificação de `NEUTRAL`/`REVERSAL` e HML/PROD/deploy.
 
 ## Evidência de fechamento
 

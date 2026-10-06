@@ -1,6 +1,6 @@
 # Classificação e rateio manual de Movements — API e Flutter
 
-Status: **implementação completa da issue #245** (4 batches). Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **implementação completa da issue #245** (4 batches). Integrada ao `develop` pela PR #246 e consolidada em `main` pela PR #251.
 
 Este documento descreve a capacidade vertical entregue sobre a persistência append-only da #170 (ADR-0022) e a auditoria da #171 (ADR-0023). Ele não altera nenhuma decisão: as regras financeiras continuam definidas no ADR-0022.
 
@@ -49,7 +49,7 @@ Valores são texto decimal; a aritmética de UX usa `BigInt` com escala de 8 cas
 
 ## Fora do escopo desta entrega
 
-Edição/movimentação/desativação de categorias, `SHARED` para categorias, regras automáticas (entregues depois pela #247; ver `FINANCIAL_CATEGORIZATION_RULES.md`), IA, tags, orçamento, recorrências, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), classificação de transferências `NEUTRAL`, classificação direta de `REVERSAL`, tela de histórico de revisões e qualquer integração Pluggy/Open Finance.
+Edição/movimentação/desativação de categorias, `SHARED` para categorias, regras automáticas (entregues depois pela #247; ver `FINANCIAL_CATEGORIZATION_RULES.md`), IA, tags, orçamento (entregue depois pela #252; ver `FINANCIAL_BUDGETS.md`), recorrências, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), classificação de transferências `NEUTRAL`, classificação direta de `REVERSAL`, tela de histórico de revisões e qualquer integração Pluggy/Open Finance.
 
 ## Evidência de fechamento
 

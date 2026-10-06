@@ -49,6 +49,13 @@ class AuthenticatedApiClient {
     return _send(relativePath, method: AuthHttpMethod.post, jsonBody: jsonBody);
   }
 
+  Future<AuthHttpResponse> put(
+    String relativePath, {
+    Map<String, Object?>? jsonBody,
+  }) {
+    return _send(relativePath, method: AuthHttpMethod.put, jsonBody: jsonBody);
+  }
+
   Future<AuthHttpResponse> delete(String relativePath) {
     return _send(relativePath, method: AuthHttpMethod.delete);
   }

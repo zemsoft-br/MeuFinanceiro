@@ -1,0 +1,232 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+FINANCE = ROOT / "packages/finance/src/meufinanceiro_finance"
+PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
+DOMAIN = (FINANCE / "budgets.py").read_text(encoding="utf-8")
+SCHEMA = (PERSISTENCE / "financial_budget_schema.py").read_text(encoding="utf-8")
+STORE = (PERSISTENCE / "financial_budget_store.py").read_text(encoding="utf-8")
+MIGRATION = (PERSISTENCE / "migrations/versions/0023_monthly_budgets.py").read_text(
+    encoding="utf-8"
+)
+MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
+    encoding="utf-8"
+)
+
+
+def _code(source: str) -> str:
+    """Source without docstrings and comments, so prose never trips a contract."""
+    without_docstrings = re.sub(r'"""[\s\S]*?"""', "", source)
+    return re.sub(r"(?m)^\s*#.*$", "", without_docstrings)
+
+
+def test_budget_domain_is_provider_and_persistence_neutral() -> None:
+    lowered = _code(DOMAIN).lower()
+    for forbidden in (
+        "sqlalchemy",
+        "meufinanceiro_persistence",
+        "pluggy",
+        "fastapi",
+        "provider_",
+        "float(",
+        ": float",
+    ):
+        assert forbidden not in lowered, forbidden
+
+
+def test_the_ledger_never_learns_about_budgets() -> None:
+    lowered = MOVEMENT_SCHEMA.lower()
+    for forbidden in ("budget", "planned", "category_id"):
+        assert forbidden not in lowered, forbidden
+    assert "ALTER TABLE finance.movements" not in MIGRATION
+
+
+def test_budget_tables_hold_planning_only() -> None:
+    columns = set(re.findall(r'Column\(\s*"(\w+)"', SCHEMA))
+    for forbidden in (
+        "balance",
+        "realized",
+        "remaining",
+        "movement_id",
+        "account_id",
+        "spent",
+        "progress",
+    ):
+        assert forbidden not in columns, forbidden
+    assert "planned_amount" in columns
+
+
+def test_the_budget_store_never_touches_the_ledger_or_classification() -> None:
+    code = _code(STORE)
+    for forbidden in (
+        "financial_movements",
+        "financial_movement_allocation",
+        "movement_allocation",
+        "financial_audit",
+    ):
+        assert forbidden not in code, forbidden
+
+
+def test_money_is_decimal_never_float_in_schema_and_store() -> None:
+    for source in (SCHEMA, STORE):
+        lowered = _code(source).lower()
+        assert "float(" not in lowered
+        assert "double" not in lowered
+    assert "Numeric(24, 8)" in SCHEMA
+    assert "numeric(24, 8)" in MIGRATION
+
+
+def test_migration_is_forced_rls_cas_and_never_grants_delete() -> None:
+    assert 'down_revision: str | None = "0022_pending_movement_indexes"' in MIGRATION
+    for table in ("budgets", "budget_lines"):
+        assert f"ALTER TABLE finance.{table} ENABLE ROW LEVEL SECURITY" in MIGRATION
+        assert f"ALTER TABLE finance.{table} FORCE ROW LEVEL SECURITY" in MIGRATION
+    grants = re.findall(r"GRANT [^\n\"]*", MIGRATION)
+    assert grants
+    for grant in grants:
+        assert "DELETE" not in grant.upper(), grant
+        assert "TRUNCATE" not in grant.upper(), grant
+    assert (
+        "GRANT UPDATE (name, version, updated_at, updated_by_operator_id)" in MIGRATION
+    )
+    assert "CONSTRAINT TRIGGER trg_finance_validate_budget_closure" in MIGRATION
+    assert "SECURITY DEFINER" not in MIGRATION
+
+
+def test_the_store_has_cas_and_idempotent_create_and_no_delete() -> None:
+    code = _code(STORE)
+    assert "def create_budget" in code and "def replace_budget" in code
+    assert "budgets.c.version == replacement.expected_version" in code
+    assert "on_conflict_do_nothing" in code
+    assert "delete(" not in code and ".delete(" not in code
+    assert "retry" not in code.lower()
+
+
+API = ROOT / "apps/api/app"
+ROUTE = (API / "api/routes/finance_budgets.py").read_text(encoding="utf-8")
+SERVICE = (API / "services/financial_budgets.py").read_text(encoding="utf-8")
+REALIZATION = (PERSISTENCE / "financial_budget_realization_store.py").read_text(
+    encoding="utf-8"
+)
+
+
+def test_the_route_has_exactly_the_budget_endpoints_and_no_delete_or_patch() -> None:
+    routes = re.findall(r'^@router\.(\w+)\(\s*"([^"]+)"', ROUTE, re.M)
+    assert sorted(routes) == sorted(
+        [
+            ("get", "/budgets"),
+            ("post", "/budgets"),
+            ("get", "/budgets/{budget_id}"),
+            ("put", "/budgets/{budget_id}"),
+            ("get", "/budgets/{budget_id}/summary"),
+        ]
+    )
+    assert "@router.delete" not in ROUTE and "@router.patch" not in ROUTE
+
+
+def test_realization_is_read_only_derived_and_float_free() -> None:
+    code = _code(REALIZATION)
+    for forbidden in (
+        ".insert(",
+        ".update(",
+        ".delete(",
+        "pg_insert",
+        "float(",
+        "lru_cache",
+        "functools.cache",
+    ):
+        assert forbidden not in code, forbidden
+    assert "postgresql_readonly=True" in code
+    assert 'isolation_level="REPEATABLE READ"' in code
+    # A REVERSAL is classified through the Movement it reverses, never on its own.
+    assert "reversal_of_id" in REALIZATION
+
+
+def test_service_and_route_do_not_own_financial_arithmetic() -> None:
+    for source in (SERVICE, ROUTE):
+        code = _code(source)
+        for forbidden in (
+            "float(",
+            "financial_movements",
+            "movement_allocation",
+            "planned -",
+            "- realized",
+            "quantize(",
+        ):
+            assert forbidden not in code, forbidden
+    assert "summarize_budget(" in _code(SERVICE)
+
+
+MIGRATION_INDEX = (
+    PERSISTENCE / "migrations/versions/0024_budget_realization_indexes.py"
+).read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0026-monthly-category-budgets.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs/architecture/FINANCIAL_BUDGETS.md").read_text(encoding="utf-8")
+
+
+def test_the_index_migration_is_performance_only() -> None:
+    statements = re.findall(r'op\.execute\(\s*(?:f?"([^"]*)")', MIGRATION_INDEX)
+    assert statements
+    for statement in statements:
+        assert statement.startswith(("CREATE INDEX", "DROP INDEX")), statement
+    for forbidden in ("CREATE TABLE", "ALTER TABLE", "GRANT", "POLICY", "TRIGGER"):
+        assert forbidden not in MIGRATION_INDEX, forbidden
+    assert 'down_revision: str | None = "0023_monthly_budgets"' in MIGRATION_INDEX
+
+
+def test_realization_sql_is_explicit_array_keyed_and_current_set_only() -> None:
+    code = REALIZATION  # the SQL lives in (f-)docstring-style literals
+    assert "/* budget-realized */" in code and "/* budget-coverage */" in code
+    assert "movement_id = ANY (ARRAY(SELECT classified_id FROM win))" in code
+    # Only the current allocation set counts: sets with a successor are excluded.
+    assert "succ.supersedes_id = s.allocation_set_id" in code
+    # A REVERSAL is classified through the Movement it reverses, never directly.
+    assert "WHEN 'STANDARD' THEN m.id ELSE m.reversal_of_id" in code
+    # No join by COALESCE (it made the planner pair every share with every line).
+    assert "COALESCE" not in code.upper()
+    # No data is spliced into the SQL beyond the two date column literals.
+    assert 'return "effective_date"' in code and 'return "competence_date"' in code
+
+
+def test_adr_and_architecture_document_the_decision() -> None:
+    for term in (
+        "planejamento persistido",
+        "CAS",
+        "expectedVersion",
+        "REVERSAL",
+        "allocation set corrente",
+        "unclassifiedExpenseCount",
+        "SHARED",
+        "RLS",
+    ):
+        assert term in ADR or term in DOC, term
+    assert "ADR-0026" in DOC
+    assert "FINANCIAL_BUDGETS.md" in ADR
+    adr_index = (ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
+    assert "0026-monthly-category-budgets.md" in adr_index
+    roadmap = (ROOT / "docs/ROADMAP.md").read_text(encoding="utf-8")
+    assert "#252" in roadmap
+
+
+def test_the_realization_account_scope_is_server_derived_and_drives_the_sql() -> None:
+    domain = _code(DOMAIN)
+    assert 'OWNER_PERSONAL_ONLY = "OWNER_PERSONAL_ONLY"' in domain
+    assert 'HOUSEHOLD_ONLY = "HOUSEHOLD_ONLY"' in domain
+    assert "def budget_realization_account_scope(" in domain
+    # Exposed by the route from the record, never read from the request.
+    assert "realization_account_scope=record.realization_account_scope.value" in ROUTE
+    assert 'serialization_alias="realizationAccountScope"' in ROUTE
+    request_models = ROUTE.split("class BudgetLineRequest")[1].split(
+        "class BudgetLineResponse"
+    )[0]
+    assert "realization" not in request_models.lower()
+    # The one predicate behind both statements comes from the declared scope.
+    assert "budget.realization_account_scope" in REALIZATION
+    assert "budget.visibility_scope" not in _code(REALIZATION)
+    assert REALIZATION.count("{_audience_sql(budget)}") == 1  # shared by both CTEs
+    assert "a.visibility_scope = :account_scope" in REALIZATION
+    # PERSONAL/SHARED accounts never feed a HOUSEHOLD budget: no widening.
+    assert "'SHARED'" not in REALIZATION and '"SHARED"' not in REALIZATION
