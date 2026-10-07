@@ -32,6 +32,7 @@ from meufinanceiro_finance import (
     FinancialRecurrenceOccurrenceRecord,
     FinancialRecurrenceRealization,
     FinancialRecurrenceRecord,
+    FinancialRecurrenceRealizationDraft,
     FinancialRecurrenceReplacement,
     FinancialRecurrenceStatus,
     FinancialRecurrenceWindow,
@@ -39,7 +40,9 @@ from meufinanceiro_finance import (
     Money,
     can_generate_occurrences,
     can_transition_occurrence,
+    new_financial_idempotency_key,
     new_financial_resource_id,
+    occurrence_manual_entry,
     occurrences_to_supersede,
     recurrence_replacement_changes_rule,
     scheduled_occurrences,
@@ -54,9 +57,12 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementAccessError,
     FinancialMovementAccountNotFoundError,
+    FinancialMovementBeforeOpeningBalanceError,
+    FinancialMovementPersistenceError,
     _owned_active_account_currency,
     _require_active_membership,
     _set_context,
+    create_standard_movement_in_transaction,
 )
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_recurrence_schema import (
@@ -65,6 +71,7 @@ from meufinanceiro_persistence.financial_recurrence_schema import (
 )
 
 _REQUEST_DIGEST_NAMESPACE = "meufinanceiro:recurrence-create:v1"
+_REALIZATION_DIGEST_NAMESPACE = "meufinanceiro:recurrence-realize:v1"
 
 
 class FinancialRecurrencePersistenceError(RuntimeError):
@@ -109,6 +116,10 @@ class FinancialRecurrenceOccurrenceStateError(FinancialRecurrencePersistenceErro
 
 class FinancialRecurrencePausedError(FinancialRecurrencePersistenceError):
     """A PAUSED recurrence does not generate occurrences."""
+
+
+class FinancialRecurrenceBeforeOpeningBalanceError(FinancialRecurrencePersistenceError):
+    """The realization would precede the account opening-balance anchor."""
 
 
 class FinancialRecurrenceStore:
@@ -730,6 +741,148 @@ class FinancialRecurrenceStore:
                 "occurrence could not be persisted"
             ) from None
 
+    def realize_occurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        occurrence_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialRecurrenceRealizationDraft,
+    ) -> FinancialRecurrenceOccurrenceRecord:
+        """Turn one PENDING occurrence into exactly one canonical Movement.
+
+        One transaction, in this order: lock the occurrence, replay, revalidate,
+        write the Movement through the canonical writer
+        (``create_standard_movement_in_transaction``) and link it. Any failure rolls
+        the whole transaction back, so there is never a Movement without its link
+        nor a link without its Movement. The same key with the same material
+        converges on the same Movement; anything else fails closed. No category or
+        allocation is decided here.
+        """
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(occurrence_id)
+        validate_financial_idempotency_key(idempotency_key)
+        if not isinstance(draft, FinancialRecurrenceRealizationDraft):
+            raise TypeError("draft must be FinancialRecurrenceRealizationDraft")
+
+        request_digest = _realization_digest(operator_id, occurrence_id, draft)
+        occurrences = financial_recurrence_occurrences
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                current = _locked_owned_occurrence(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    occurrence_id=occurrence_id,
+                )
+                if current["realization_idempotency_key"] == idempotency_key:
+                    if current["realization_request_digest"] != request_digest:
+                        raise FinancialRecurrenceConflictError(
+                            "recurrence realization idempotency conflict"
+                        )
+                    return _load_occurrences(connection, [current])[0]
+                key_owner = connection.scalar(
+                    select(occurrences.c.id).where(
+                        occurrences.c.installation_id == installation_id,
+                        occurrences.c.realization_idempotency_key == idempotency_key,
+                    )
+                )
+                if key_owner is not None:
+                    raise FinancialRecurrenceConflictError(
+                        "recurrence realization idempotency conflict"
+                    )
+                if current["status"] != FinancialOccurrenceStatus.PENDING.value:
+                    raise FinancialRecurrenceOccurrenceStateError(
+                        "recurrence occurrence cannot be realized"
+                    )
+
+                rule_row = _visible_row(
+                    connection,
+                    installation_id,
+                    residence_id,
+                    current["recurrence_id"],
+                )
+                if (
+                    rule_row is None
+                    or rule_row["owner_operator_id"] != operator_id
+                    or rule_row["account_id"] != current["account_id"]
+                    or rule_row["currency"] != current["currency"]
+                ):
+                    raise FinancialRecurrenceOccurrenceNotFoundError(
+                        "recurrence occurrence was not found"
+                    )
+                account_currency = _owned_active_account(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    account_id=current["account_id"],
+                )
+                if account_currency != current["currency"]:
+                    raise FinancialRecurrenceAccountNotFoundError(
+                        "financial account was not found"
+                    )
+                try:
+                    entry = occurrence_manual_entry(
+                        occurrence=_occurrence_record(current), draft=draft
+                    )
+                except (TypeError, ValueError):
+                    raise FinancialRecurrenceInvalidShapeError(
+                        "realization does not fit the occurrence"
+                    ) from None
+
+                try:
+                    movement = create_standard_movement_in_transaction(
+                        connection,
+                        installation_id=installation_id,
+                        residence_id=residence_id,
+                        operator_id=operator_id,
+                        # A fresh key of its own: a realization key never adopts a
+                        # Movement that already exists under that key.
+                        idempotency_key=new_financial_idempotency_key(),
+                        draft=entry.to_movement_draft(),
+                    )
+                except FinancialMovementAccessError:
+                    raise FinancialRecurrenceAccessError(
+                        "recurrence access denied"
+                    ) from None
+                except FinancialMovementAccountNotFoundError:
+                    raise FinancialRecurrenceAccountNotFoundError(
+                        "financial account was not found"
+                    ) from None
+                except FinancialMovementBeforeOpeningBalanceError:
+                    raise FinancialRecurrenceBeforeOpeningBalanceError(
+                        "financial operation precedes opening balance"
+                    ) from None
+                except FinancialMovementPersistenceError:
+                    # Anything else the canonical writer refuses stays sanitized.
+                    raise FinancialRecurrencePersistenceError(
+                        "occurrence could not be realized"
+                    ) from None
+                updated = _link_occurrence_to_movement(
+                    connection,
+                    occurrence_id=occurrence_id,
+                    operator_id=operator_id,
+                    movement_id=movement.id,
+                    idempotency_key=idempotency_key,
+                    request_digest=request_digest,
+                )
+                return _load_occurrences(connection, [updated])[0]
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except IntegrityError as error:
+            raise _realization_integrity_error(error) from None
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "occurrence could not be realized"
+            ) from None
+
 
 def _require_scope(
     installation_id: UUID, residence_id: UUID, operator_id: UUID
@@ -1011,6 +1164,78 @@ def _realization(
         ) from None
 
 
+def _realization_digest(
+    operator_id: UUID,
+    occurrence_id: UUID,
+    draft: FinancialRecurrenceRealizationDraft,
+) -> str:
+    material = json.dumps(
+        [
+            _REALIZATION_DIGEST_NAMESPACE,
+            str(operator_id),
+            str(occurrence_id),
+            draft.canonical_material(),
+        ],
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _link_occurrence_to_movement(
+    connection: Connection,
+    *,
+    occurrence_id: UUID,
+    operator_id: UUID,
+    movement_id: UUID,
+    idempotency_key: UUID,
+    request_digest: str,
+) -> RowMapping:
+    """PENDING -> REALIZED with the Movement written in this very transaction."""
+    occurrences = financial_recurrence_occurrences
+    updated = (
+        connection.execute(
+            update(occurrences)
+            .where(
+                occurrences.c.id == occurrence_id,
+                occurrences.c.status == FinancialOccurrenceStatus.PENDING.value,
+            )
+            .values(
+                status=FinancialOccurrenceStatus.REALIZED.value,
+                movement_id=movement_id,
+                realization_idempotency_key=idempotency_key,
+                realization_request_digest=request_digest,
+                realized_at=func.transaction_timestamp(),
+                realized_by_operator_id=operator_id,
+                updated_at=func.transaction_timestamp(),
+            )
+            .returning(*occurrences.c)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if updated is None:
+        raise FinancialRecurrenceOccurrenceStateError(
+            "recurrence occurrence cannot be realized"
+        )
+    return updated
+
+
+def _realization_integrity_error(
+    error: IntegrityError,
+) -> FinancialRecurrencePersistenceError:
+    diagnostic = getattr(error.orig, "diag", None)
+    name = getattr(diagnostic, "constraint_name", None)
+    if name in {
+        "uq_finance_recurrence_occurrences_realization_key",
+        "uq_finance_recurrence_occurrences_movement",
+    }:
+        return FinancialRecurrenceConflictError(
+            "recurrence realization idempotency conflict"
+        )
+    return FinancialRecurrencePersistenceError("occurrence could not be realized")
+
+
 def _supersede_stale_future_pending(
     connection: Connection,
     *,
@@ -1113,6 +1338,7 @@ def _occurrence_record(
 __all__ = [
     "FinancialRecurrenceAccessError",
     "FinancialRecurrenceAccountNotFoundError",
+    "FinancialRecurrenceBeforeOpeningBalanceError",
     "FinancialRecurrenceConflictError",
     "FinancialRecurrenceInvalidShapeError",
     "FinancialRecurrenceNotEditableError",

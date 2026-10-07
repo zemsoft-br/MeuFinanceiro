@@ -21,6 +21,7 @@ from meufinanceiro_finance import (
     FinancialRecurrenceEditOutcome,
     FinancialRecurrenceGenerationResult,
     FinancialRecurrenceOccurrenceRecord,
+    FinancialRecurrenceRealizationDraft,
     FinancialRecurrenceRecord,
     FinancialRecurrenceReplacement,
     FinancialRecurrenceStatus,
@@ -123,6 +124,17 @@ class RecurrenceStoreBoundary(Protocol):
         residence_id: UUID,
         operator_id: UUID,
         occurrence_id: UUID,
+    ) -> FinancialRecurrenceOccurrenceRecord: ...
+
+    def realize_occurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        occurrence_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialRecurrenceRealizationDraft,
     ) -> FinancialRecurrenceOccurrenceRecord: ...
 
 
@@ -360,6 +372,27 @@ class FinancialRecurrenceService:
             residence_id=residence_id,
             operator_id=operator_id,
             occurrence_id=occurrence_id,
+        )
+        return _occurrence_view(record, operator_id)
+
+    def realize_occurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        occurrence_id: UUID,
+        idempotency_key: UUID,
+        draft: FinancialRecurrenceRealizationDraft,
+    ) -> OccurrenceView:
+        """The one explicit act that produces a fact: exactly one canonical Movement."""
+        record = self._store.realize_occurrence(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            occurrence_id=occurrence_id,
+            idempotency_key=idempotency_key,
+            draft=draft,
         )
         return _occurrence_view(record, operator_id)
 

@@ -13,6 +13,7 @@ from meufinanceiro_finance import (
     FinancialRecurrenceFrequency,
     FinancialRecurrenceGenerationResult,
     FinancialRecurrenceOccurrenceRecord,
+    FinancialRecurrenceRealizationDraft,
     FinancialRecurrenceRecord,
     FinancialRecurrenceReplacement,
     FinancialRecurrenceStatus,
@@ -116,6 +117,10 @@ class _Store:
 
     def skip_occurrence(self, **kwargs: Any) -> FinancialRecurrenceOccurrenceRecord:
         self.calls.append(("skip", kwargs))
+        return _occurrence(self.rule)
+
+    def realize_occurrence(self, **kwargs: Any) -> FinancialRecurrenceOccurrenceRecord:
+        self.calls.append(("realize", kwargs))
         return _occurrence(self.rule)
 
 
@@ -261,6 +266,24 @@ def test_lifecycle_commands_delegate_without_reinterpretation() -> None:
     skipped = service.skip_occurrence(**_SCOPE, occurrence_id=uuid4())
     assert skipped.can_edit is True
     assert [name for name, _ in store.calls] == ["pause", "resume", "skip"]
+
+
+def test_realize_delegates_key_and_draft_untouched_and_never_adds_a_date() -> None:
+    store, service = _service(today=date(2031, 1, 1))
+    draft = FinancialRecurrenceRealizationDraft(
+        actual=Money(Decimal("127.50"), "BRL"),
+        effective_date=date(2026, 10, 11),
+        competence_date=date(2026, 10, 1),
+    )
+    key = uuid4()
+    view = service.realize_occurrence(
+        **_SCOPE, occurrence_id=uuid4(), idempotency_key=key, draft=draft
+    )
+    assert view.can_edit is True
+    ((_, kwargs),) = store.calls
+    assert kwargs["draft"] is draft and kwargs["idempotency_key"] == key
+    # The dates are the user's: the injected clock is not consulted for them.
+    assert "today" not in kwargs
 
 
 def test_create_delegates_the_draft_and_key_untouched() -> None:

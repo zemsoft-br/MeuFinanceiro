@@ -138,6 +138,7 @@ def test_the_route_has_exactly_the_recurrence_endpoints_and_no_delete_or_patch()
             ("post", "/recurrences/{recurrence_id}/occurrences/generate"),
             ("get", "/recurrence-occurrences"),
             ("post", "/recurrence-occurrences/{occurrence_id}/skip"),
+            ("post", "/recurrence-occurrences/{occurrence_id}/realize"),
         ]
     )
     assert "@router.delete" not in ROUTE and "@router.patch" not in ROUTE
@@ -166,3 +167,59 @@ def test_the_store_never_reads_a_clock_and_generation_is_replay_safe() -> None:
     assert "index_where=text(\"status <> 'SUPERSEDED'\")" in code
     assert ".with_for_update()" in code
     assert "FinancialRecurrencePausedError" in code
+
+
+MOVEMENT_STORE = (PERSISTENCE / "financial_movement_store.py").read_text(
+    encoding="utf-8"
+)
+
+
+def _method(source: str, name: str) -> str:
+    start = source.index(f"    def {name}(")
+    following = re.search(r"\n    def \w+\(", source[start + 10 :])
+    end = start + 10 + following.start() if following else len(source)
+    return source[start:end]
+
+
+def test_realization_uses_the_canonical_writer_in_one_transaction() -> None:
+    code = _code(STORE)
+    realize = _method(code, "realize_occurrence")
+    assert "create_standard_movement_in_transaction(" in realize
+    assert realize.count("self._engine.begin()") == 1  # one transaction, no second
+    assert "_link_occurrence_to_movement(" in realize
+    assert "new_financial_idempotency_key()" in realize  # the Movement's own key
+    # The recurrence store reads the ledger but never writes it by itself.
+    for forbidden in (
+        "insert(financial_movements",
+        "financial_movements.insert",
+        "update(financial_movements",
+        "delete(financial_movements",
+        "financial_movement_allocation",
+        "category",
+    ):
+        assert forbidden not in code, forbidden
+    assert "retry" not in code.lower()
+
+
+def test_the_public_movement_writer_delegates_to_the_shared_transactional_body() -> (
+    None
+):
+    code = _code(MOVEMENT_STORE)
+    create = _method(code, "create_movement")
+    assert "create_standard_movement_in_transaction(" in create
+    assert "pg_insert(financial_movements)" not in create
+    assert "def create_standard_movement_in_transaction(" in code
+    assert code.count("pg_insert(financial_movements)") == 2  # STANDARD and REVERSAL
+
+
+def test_realization_is_the_only_link_between_an_occurrence_and_the_ledger() -> None:
+    assert "movement_id" in SCHEMA
+    # No other module may mention occurrences when writing Movements.
+    for source in (MOVEMENT_STORE, MOVEMENT_SCHEMA):
+        lowered = _code(source).lower()  # prose may explain; code may not know
+        assert "occurrence" not in lowered
+        assert "recurrence" not in lowered
+    assert "ck_finance_recurrence_occurrences_movement_link" in MIGRATION
+    assert (
+        "movement_row.created_at IS DISTINCT FROM transaction_timestamp()" in MIGRATION
+    )

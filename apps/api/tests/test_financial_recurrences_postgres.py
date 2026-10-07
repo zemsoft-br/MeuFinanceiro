@@ -895,3 +895,381 @@ def test_pause_blocks_generation_and_resume_restores_it_keeping_history(
 
     assert _ledger_rows(api, household.residence_id) == []
     assert _ledger_views(api, "owner", account) == ledger
+
+
+# --- realize (explicit registration) ---------------------------------------------
+
+
+def _realize_body(**overrides: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "idempotencyKey": str(uuid4()),
+        "actualAmount": "127.50",
+        "currency": "BRL",
+        "effectiveDate": "2026-10-11",
+        "competenceDate": "2026-10-01",
+    }
+    body.update(overrides)
+    return body
+
+
+def _realize(
+    api: Api, who: str, occurrence_id: str, **overrides: Any
+) -> httpx.Response:
+    return api.post(
+        who,
+        f"/recurrence-occurrences/{occurrence_id}/realize",
+        _realize_body(**overrides),
+    )
+
+
+def _balance(api: Api, who: str, account_id: UUID) -> dict[str, Any]:
+    return dict(api.get(who, f"/accounts/{account_id}/balance").json())
+
+
+def test_smoke_the_issue_vertical_internet_expense_over_http(
+    api: Api, household: Household
+) -> None:
+    """Internet EXPENSE 120 on day 10: forecast, register 127.50, retry, pause, skip."""
+    account = api.account("owner", scope="HOUSEHOLD", opening="1000.00")
+    before = _ledger_views(api, "owner", account)
+    assert before[0]["currentBalance"]["amount"] == "1000"
+
+    rule = api.create("owner", account, description="Internet", dayOfMonth=10)
+
+    # October: a PENDING forecast. Balance and statement are unchanged.
+    october = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    assert october["status"] == "PENDING" and october["scheduledDate"] == "2026-10-10"
+    assert _ledger_rows(api, household.residence_id) == []
+    assert _ledger_views(api, "owner", account) == before
+
+    # Register with explicit dates and a real amount that differs from the plan.
+    key = str(uuid4())
+    realized = _realize(api, "owner", october["id"], idempotencyKey=key)
+    assert realized.status_code == 200, realized.text
+    body = realized.json()
+    assert body["status"] == "REALIZED"
+    assert body["expected"] == {"amount": "120", "currency": "BRL"}
+    link = body["realization"]
+    assert link["actual"] == {"amount": "127.5", "currency": "BRL"}
+    assert link["effectiveDate"] == "2026-10-11"
+    assert link["competenceDate"] == "2026-10-01"
+    assert link["movementState"] == "ACTIVE"
+    rows = _ledger_rows(api, household.residence_id)
+    assert len(rows) == 1  # exactly one Movement
+    movement = api.get("owner", f"/movements/{link['movementId']}").json()
+    assert movement["role"] == "STANDARD" and movement["resultEffect"] == "EXPENSE"
+    assert movement["money"] == {"amount": "-127.5", "currency": "BRL"}
+    assert movement["description"] == "Internet"
+    after = _balance(api, "owner", account)
+    assert after["currentBalance"]["amount"] == "872.5"
+    assert after["movementCount"] == 1
+
+    # An identical retry does not duplicate and returns the same answer.
+    retry = _realize(api, "owner", october["id"], idempotencyKey=key)
+    assert retry.status_code == 200 and retry.json() == body
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+    assert _balance(api, "owner", account)["currentBalance"]["amount"] == "872.5"
+
+    # November is generated and stays a forecast.
+    november = api.generate("owner", rule["id"], "2026-11").json()["items"][0]
+    assert november["status"] == "PENDING"
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+
+    # Pause: December is not generated.
+    assert api.post("owner", f"/recurrences/{rule['id']}/pause").status_code == 200
+    _clean(
+        api.generate("owner", rule["id"], "2026-12"),
+        409,
+        "financial recurrence is paused",
+    )
+    assert api.occurrences("owner", "2026-12").json() == {"items": []}
+
+    # Resume, generate December, skip it: no Movement for December.
+    assert api.post("owner", f"/recurrences/{rule['id']}/resume").status_code == 200
+    december = api.generate("owner", rule["id"], "2026-12").json()["items"][0]
+    skipped = api.post("owner", f"/recurrence-occurrences/{december['id']}/skip")
+    assert skipped.json()["status"] == "SKIPPED"
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+    assert _balance(api, "owner", account)["currentBalance"]["amount"] == "872.5"
+
+    # The listing shows expected x actual for the registered one.
+    listed = api.occurrences("owner", "2026-10", "2026-12").json()["items"]
+    assert [item["status"] for item in listed] == ["REALIZED", "PENDING", "SKIPPED"]
+    assert listed[0]["expected"]["amount"] == "120"
+    assert listed[0]["realization"]["actual"]["amount"] == "127.5"
+    assert listed[1]["realization"] is None and listed[2]["realization"] is None
+
+
+def test_pending_and_skipped_never_move_the_balance_or_statement(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    before = _ledger_views(api, "owner", account)
+    rule = api.create("owner", account)
+    items = api.generate("owner", rule["id"], "2026-10", "2026-12").json()["items"]
+    api.post("owner", f"/recurrence-occurrences/{items[0]['id']}/skip")
+    assert _ledger_views(api, "owner", account) == before
+    assert _ledger_rows(api, household.residence_id) == []
+
+
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"actualAmount": "0"},
+        {"actualAmount": "-5"},
+        {"actualAmount": "1.123456789"},
+        {"actualAmount": "1e2"},
+        {"actualAmount": "12,5"},
+        {"actualAmount": ""},
+        {"currency": "USD"},  # the occurrence is BRL
+        {"currency": "br"},
+        {"effectiveDate": "2026-13-01"},
+        {"effectiveDate": "2026-10-1"},
+        {"competenceDate": "2026-02-30"},
+        {"idempotencyKey": "nope"},
+        {"idempotencyKey": "00000000-0000-0000-0000-000000000000"},
+        {"accountId": str(uuid4())},
+        {"movementId": str(uuid4())},
+        {"category": "x"},
+    ],
+)
+def test_invalid_realizations_are_rejected_without_a_movement(
+    api: Api, household: Household, override: dict[str, Any]
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    response = _realize(api, "owner", occurrence["id"], **override)
+    assert response.status_code == 422, response.text
+    assert _ledger_rows(api, household.residence_id) == []
+    again = api.occurrences("owner", "2026-10").json()["items"][0]
+    assert again["status"] == "PENDING"
+
+
+def test_required_realization_fields_cannot_be_omitted(api: Api) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    for field in (
+        "idempotencyKey",
+        "actualAmount",
+        "currency",
+        "effectiveDate",
+        "competenceDate",
+    ):
+        body = _realize_body()
+        del body[field]
+        response = api.post(
+            "owner", f"/recurrence-occurrences/{occurrence['id']}/realize", body
+        )
+        assert response.status_code == 422, field
+
+
+def test_a_realization_before_the_opening_balance_fails_without_state(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner", opening="1000.00")  # anchor 2026-09-01
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    response = _realize(api, "owner", occurrence["id"], effectiveDate="2026-08-31")
+    _clean(response, 422, "financial operation precedes opening balance")
+    assert _ledger_rows(api, household.residence_id) == []
+    assert api.occurrences("owner", "2026-10").json()["items"][0]["status"] == "PENDING"
+
+
+def test_incompatible_commands_fail_closed_with_409(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    first, second = api.generate("owner", rule["id"], "2026-10", "2026-11").json()[
+        "items"
+    ]
+    key = str(uuid4())
+    assert _realize(api, "owner", first["id"], idempotencyKey=key).status_code == 200
+
+    changed = _realize(api, "owner", first["id"], idempotencyKey=key, actualAmount="1")
+    _clean(changed, 409, "financial recurrence conflicts with canonical state")
+    other_target = _realize(api, "owner", second["id"], idempotencyKey=key)
+    _clean(other_target, 409, "financial recurrence conflicts with canonical state")
+    already = _realize(api, "owner", first["id"])
+    _clean(
+        already,
+        409,
+        "financial recurrence occurrence state does not allow this operation",
+    )
+    skip_realized = api.post("owner", f"/recurrence-occurrences/{first['id']}/skip")
+    _clean(
+        skip_realized,
+        409,
+        "financial recurrence occurrence state does not allow this operation",
+    )
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+
+
+def test_a_skipped_occurrence_cannot_be_registered(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    api.post("owner", f"/recurrence-occurrences/{occurrence['id']}/skip")
+    _clean(
+        _realize(api, "owner", occurrence["id"]),
+        409,
+        "financial recurrence occurrence state does not allow this operation",
+    )
+    assert _ledger_rows(api, household.residence_id) == []
+
+
+def test_only_the_owner_registers_and_ids_prove_nothing(
+    api: Api, household: Household, other_household: Household
+) -> None:
+    shared_account = api.account("owner", scope="HOUSEHOLD")
+    private_account = api.account("owner", scope="PERSONAL")
+    shared_rule = api.create("owner", shared_account)
+    private_rule = api.create("owner", private_account)
+    visible = api.generate("owner", shared_rule["id"], "2026-10").json()["items"][0]
+    hidden = api.generate("owner", private_rule["id"], "2026-10").json()["items"][0]
+    api.login("outsider", other_household.owner_id, other_household.residence_id)
+
+    _clean(_realize(api, "member", visible["id"]), 403, "financial access denied")
+    _clean(
+        _realize(api, "member", hidden["id"]),
+        404,
+        "financial resource was not found",
+    )
+    _clean(
+        _realize(api, "outsider", visible["id"]),
+        404,
+        "financial resource was not found",
+    )
+    _clean(
+        _realize(api, "owner", str(uuid4())), 404, "financial resource was not found"
+    )
+    assert _ledger_rows(api, household.residence_id) == []
+
+
+def test_concurrent_identical_registrations_over_http_create_one_movement(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    key = str(uuid4())
+    barrier = Barrier(5)
+
+    def attempt() -> tuple[int, str | None]:
+        barrier.wait()
+        response = _realize(api, "owner", occurrence["id"], idempotencyKey=key)
+        body = response.json()
+        return response.status_code, (
+            body["realization"]["movementId"] if response.status_code == 200 else None
+        )
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        results = [f.result() for f in [pool.submit(attempt) for _ in range(5)]]
+    assert {code for code, _ in results} == {200}
+    assert len({movement for _, movement in results}) == 1
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+
+
+def test_concurrent_registrations_with_different_keys_have_one_winner(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    barrier = Barrier(5)
+
+    def attempt() -> int:
+        barrier.wait()
+        return _realize(api, "owner", occurrence["id"]).status_code
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        codes = [f.result() for f in [pool.submit(attempt) for _ in range(5)]]
+    assert sorted(codes) == [200, 409, 409, 409, 409]
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+
+
+def test_a_reversal_through_the_public_api_never_reopens_the_occurrence(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    realized = _realize(api, "owner", occurrence["id"]).json()
+    movement_id = realized["realization"]["movementId"]
+    assert _balance(api, "owner", account)["currentBalance"]["amount"] == "872.5"
+
+    reversal = api.post(
+        "owner",
+        f"/movements/{movement_id}/reversal",
+        {
+            "idempotencyKey": str(uuid4()),
+            "effectiveDate": "2026-10-12",
+            "competenceDate": "2026-10-01",
+            "reason": "Cobrança duplicada",
+        },
+    )
+    assert reversal.status_code == 201, reversal.text
+    assert _balance(api, "owner", account)["currentBalance"]["amount"] == "1000"
+
+    after = api.occurrences("owner", "2026-10").json()["items"][0]
+    assert after["status"] == "REALIZED"
+    assert after["realization"]["movementId"] == movement_id
+    assert after["realization"]["movementState"] == "REVERSED"
+    # Nothing is reopened, skipped, regenerated or registered again.
+    _clean(
+        _realize(api, "owner", occurrence["id"]),
+        409,
+        "financial recurrence occurrence state does not allow this operation",
+    )
+    assert api.generate("owner", rule["id"], "2026-10").json()["createdCount"] == 0
+    assert len(_ledger_rows(api, household.residence_id)) == 2  # Movement + reversal
+
+
+def test_registering_never_classifies_the_movement(api: Api) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    movement_id = _realize(api, "owner", occurrence["id"]).json()["realization"][
+        "movementId"
+    ]
+    allocation = api.get("owner", f"/movements/{movement_id}/allocation").json()
+    assert allocation == {"allocation": None}
+
+
+def test_an_edit_after_registering_leaves_the_fact_and_its_snapshot_alone(
+    api: Api, household: Household
+) -> None:
+    account = api.account("owner")
+    rule = api.create("owner", account)
+    occurrence = api.generate("owner", rule["id"], "2026-10").json()["items"][0]
+    realized = _realize(api, "owner", occurrence["id"]).json()
+    edited = api.put(
+        "owner",
+        f"/recurrences/{rule['id']}",
+        _replace_body(expectedAmount="999", description="Outra"),
+    )
+    assert edited.status_code == 200 and edited.json()["supersededCount"] == 0
+    after = api.occurrences("owner", "2026-10").json()["items"][0]
+    assert after == realized
+    assert after["expected"]["amount"] == "120" and after["description"] == "Internet"
+    assert len(_ledger_rows(api, household.residence_id)) == 1
+
+
+def test_the_realize_route_is_the_only_writer_of_movements_in_this_surface(
+    api: Api,
+) -> None:
+    paths = api.client.app.openapi()["paths"]  # type: ignore[attr-defined]
+    operations = {
+        (path, method.upper())
+        for path, item in paths.items()
+        if "recurrence" in path
+        for method in item
+    }
+    posts = {path for path, method in operations if method == "POST"}
+    assert "/api/v1/finance/recurrence-occurrences/{occurrence_id}/realize" in posts
+    assert not any(method in ("DELETE", "PATCH") for _, method in operations)
+    assert len(operations) == 10

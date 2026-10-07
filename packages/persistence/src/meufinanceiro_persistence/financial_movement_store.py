@@ -93,104 +93,16 @@ class FinancialMovementStore:
         if not isinstance(draft, FinancialMovementDraft):
             raise TypeError("draft must be FinancialMovementDraft")
 
-        request_digest = _standard_request_digest(operator_id, draft)
         try:
             with self._engine.begin() as connection:
-                _set_context(
+                return create_standard_movement_in_transaction(
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
                     operator_id=operator_id,
-                )
-                _require_active_membership(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    operator_id=operator_id,
-                )
-                existing = _movement_by_idempotency(
-                    connection,
-                    installation_id=installation_id,
                     idempotency_key=idempotency_key,
+                    draft=draft,
                 )
-                if existing is not None:
-                    return _require_replay(existing, request_digest)
-
-                account_currency = _owned_active_account_currency(
-                    connection,
-                    installation_id=installation_id,
-                    residence_id=residence_id,
-                    operator_id=operator_id,
-                    account_id=draft.account_id,
-                )
-                if account_currency != draft.amount.currency:
-                    raise FinancialMovementAccountNotFoundError(
-                        "financial account was not found"
-                    )
-                _require_not_before_opening(
-                    connection,
-                    account_id=draft.account_id,
-                    effective_date=draft.effective_date,
-                )
-
-                movement_id = new_financial_resource_id()
-                inserted = (
-                    connection.execute(
-                        pg_insert(financial_movements)
-                        .values(
-                            id=movement_id,
-                            installation_id=installation_id,
-                            residence_id=residence_id,
-                            account_id=draft.account_id,
-                            currency=draft.amount.currency,
-                            amount=draft.amount.amount,
-                            result_effect=draft.result_effect.value,
-                            role=FinancialMovementRole.STANDARD.value,
-                            effective_date=draft.effective_date,
-                            competence_date=draft.competence_date,
-                            description=draft.description,
-                            reversal_of_id=None,
-                            reversal_target_role=None,
-                            reversal_reason=None,
-                            created_by_operator_id=operator_id,
-                            idempotency_key=idempotency_key,
-                            request_digest=request_digest,
-                            created_at=func.transaction_timestamp(),
-                        )
-                        .on_conflict_do_nothing(
-                            index_elements=[
-                                financial_movements.c.installation_id,
-                                financial_movements.c.idempotency_key,
-                            ]
-                        )
-                        .returning(*financial_movements.c)
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-                if inserted is not None:
-                    _append_financial_audit_event(
-                        connection,
-                        installation_id=installation_id,
-                        residence_id=residence_id,
-                        actor_operator_id=operator_id,
-                        draft=FinancialAuditEventDraft(
-                            event_type=FinancialAuditEventType.MOVEMENT_CREATED,
-                            subject_id=movement_id,
-                        ),
-                    )
-                    return _record(inserted)
-
-                raced = _movement_by_idempotency(
-                    connection,
-                    installation_id=installation_id,
-                    idempotency_key=idempotency_key,
-                )
-                if raced is None:
-                    raise FinancialMovementIdempotencyConflictError(
-                        "movement idempotency conflict"
-                    )
-                return _require_replay(raced, request_digest)
         except (
             FinancialMovementAccessError,
             FinancialMovementAccountNotFoundError,
@@ -490,6 +402,118 @@ class FinancialMovementStore:
         return tuple(_record(row) for row in rows)
 
 
+def create_standard_movement_in_transaction(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    operator_id: UUID,
+    idempotency_key: UUID,
+    draft: FinancialMovementDraft,
+) -> FinancialMovementRecord:
+    """The canonical STANDARD Movement writer, inside the caller's transaction.
+
+    This is the body of ``FinancialMovementStore.create_movement`` unchanged: same
+    membership, ownership, currency and opening-anchor checks, same idempotency
+    replay, same row, same ``MOVEMENT_CREATED`` audit event. It neither commits nor
+    rolls back: a caller that must link the Movement to something else (a realized
+    recurrence occurrence, ADR-0027) composes it with that write in one transaction,
+    so a failure anywhere leaves neither a Movement nor a link behind.
+    """
+    request_digest = _standard_request_digest(operator_id, draft)
+    _set_context(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=operator_id,
+    )
+    _require_active_membership(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=operator_id,
+    )
+    existing = _movement_by_idempotency(
+        connection,
+        installation_id=installation_id,
+        idempotency_key=idempotency_key,
+    )
+    if existing is not None:
+        return _require_replay(existing, request_digest)
+
+    account_currency = _owned_active_account_currency(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=operator_id,
+        account_id=draft.account_id,
+    )
+    if account_currency != draft.amount.currency:
+        raise FinancialMovementAccountNotFoundError("financial account was not found")
+    _require_not_before_opening(
+        connection,
+        account_id=draft.account_id,
+        effective_date=draft.effective_date,
+    )
+
+    movement_id = new_financial_resource_id()
+    inserted = (
+        connection.execute(
+            pg_insert(financial_movements)
+            .values(
+                id=movement_id,
+                installation_id=installation_id,
+                residence_id=residence_id,
+                account_id=draft.account_id,
+                currency=draft.amount.currency,
+                amount=draft.amount.amount,
+                result_effect=draft.result_effect.value,
+                role=FinancialMovementRole.STANDARD.value,
+                effective_date=draft.effective_date,
+                competence_date=draft.competence_date,
+                description=draft.description,
+                reversal_of_id=None,
+                reversal_target_role=None,
+                reversal_reason=None,
+                created_by_operator_id=operator_id,
+                idempotency_key=idempotency_key,
+                request_digest=request_digest,
+                created_at=func.transaction_timestamp(),
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    financial_movements.c.installation_id,
+                    financial_movements.c.idempotency_key,
+                ]
+            )
+            .returning(*financial_movements.c)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if inserted is not None:
+        _append_financial_audit_event(
+            connection,
+            installation_id=installation_id,
+            residence_id=residence_id,
+            actor_operator_id=operator_id,
+            draft=FinancialAuditEventDraft(
+                event_type=FinancialAuditEventType.MOVEMENT_CREATED,
+                subject_id=movement_id,
+            ),
+        )
+        return _record(inserted)
+
+    raced = _movement_by_idempotency(
+        connection,
+        installation_id=installation_id,
+        idempotency_key=idempotency_key,
+    )
+    if raced is None:
+        raise FinancialMovementIdempotencyConflictError("movement idempotency conflict")
+    return _require_replay(raced, request_digest)
+
+
 def _set_context(
     connection: Connection,
     *,
@@ -717,4 +741,5 @@ __all__ = [
     "FinancialMovementNotFoundError",
     "FinancialMovementPersistenceError",
     "FinancialMovementStore",
+    "create_standard_movement_in_transaction",
 ]

@@ -21,6 +21,7 @@ from meufinanceiro_finance import (
     FinancialRecurrenceDraft,
     FinancialRecurrenceOccurrenceRecord,
     FinancialRecurrenceRealization,
+    FinancialRecurrenceRealizationDraft,
     FinancialRecurrenceRecord,
     FinancialRecurrenceReplacement,
     FinancialRecurrenceStatus,
@@ -32,6 +33,7 @@ from meufinanceiro_finance import (
 from meufinanceiro_persistence.financial_recurrence_store import (
     FinancialRecurrenceAccessError,
     FinancialRecurrenceAccountNotFoundError,
+    FinancialRecurrenceBeforeOpeningBalanceError,
     FinancialRecurrenceConflictError,
     FinancialRecurrenceInvalidShapeError,
     FinancialRecurrenceNotEditableError,
@@ -110,6 +112,22 @@ class OccurrenceGenerateRequest(BaseModel):
     )
     through_period: str = Field(
         alias="throughPeriod", strict=True, min_length=7, max_length=7
+    )
+
+
+class OccurrenceRealizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    idempotency_key: UUID = Field(alias="idempotencyKey")
+    actual_amount: str = Field(
+        alias="actualAmount", strict=True, min_length=1, max_length=32
+    )
+    currency: str = Field(strict=True, min_length=3, max_length=3)
+    effective_date: str = Field(
+        alias="effectiveDate", strict=True, min_length=10, max_length=10
+    )
+    competence_date: str = Field(
+        alias="competenceDate", strict=True, min_length=10, max_length=10
     )
 
 
@@ -288,6 +306,21 @@ def _replacement(payload: RecurrenceReplaceRequest) -> FinancialRecurrenceReplac
         raise _invalid_request() from None
 
 
+def _realization_draft(
+    payload: OccurrenceRealizeRequest,
+) -> FinancialRecurrenceRealizationDraft:
+    try:
+        return FinancialRecurrenceRealizationDraft(
+            actual=Money(_positive_amount(payload.actual_amount), payload.currency),
+            effective_date=_plain_date(payload.effective_date),
+            competence_date=_plain_date(payload.competence_date),
+        )
+    except HTTPException:
+        raise
+    except (TypeError, ValueError):
+        raise _invalid_request() from None
+
+
 def _money(value: Money) -> RecurrenceMoneyResponse:
     return RecurrenceMoneyResponse(
         amount=value.canonical_amount, currency=value.currency
@@ -408,6 +441,11 @@ def _raise_error(error: Exception) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="financial recurrence occurrence state does not allow this operation",
+        ) from None
+    if isinstance(error, FinancialRecurrenceBeforeOpeningBalanceError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="financial operation precedes opening balance",
         ) from None
     if isinstance(error, FinancialRecurrenceConflictError):
         raise HTTPException(
@@ -684,6 +722,40 @@ def skip_occurrence(
             residence_id=residence_id,
             operator_id=operator_id,
             occurrence_id=_resource_id(occurrence_id),
+        )
+    except FinancialRecurrencePersistenceError as error:
+        _raise_error(error)
+    return _occurrence_response(view)
+
+
+@router.post(
+    "/recurrence-occurrences/{occurrence_id}/realize",
+    response_model=OccurrenceResponse,
+)
+def realize_occurrence(
+    occurrence_id: UUID,
+    payload: OccurrenceRealizeRequest,
+    request: Request,
+    authenticated: Annotated[
+        AuthenticatedOperatorRequest, Depends(require_primary_residence)
+    ],
+) -> OccurrenceResponse:
+    """Register one PENDING occurrence: exactly one canonical Movement, atomically."""
+    _reject_query_params(request)
+    installation_id, residence_id, operator_id = _context(authenticated)
+    try:
+        idempotency_key = validate_financial_idempotency_key(payload.idempotency_key)
+    except (TypeError, ValueError):
+        raise _invalid_request() from None
+    draft = _realization_draft(payload)
+    try:
+        view = _service(request).realize_occurrence(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            occurrence_id=_resource_id(occurrence_id),
+            idempotency_key=idempotency_key,
+            draft=draft,
         )
     except FinancialRecurrencePersistenceError as error:
         _raise_error(error)
