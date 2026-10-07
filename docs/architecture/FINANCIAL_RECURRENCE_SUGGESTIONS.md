@@ -124,6 +124,30 @@ Janela fixa de 12 meses; a varredura lê no máximo `SUGGESTION_SCAN_MAX` = 20 0
 
 Criação automática, detecção em segundo plano, ML/LLM/fuzzy, enriquecimento de merchant, metadados de provedor, receitas recorrentes assistidas, frequências semanal/anual/personalizada, cancelamento automático, alertas, comparação de preços, cobrança contestada, cartões e faturas, importação e conciliação, HML/PROD/deploy e GitHub Actions como gate.
 
+## Evidência de fechamento
+
+Validação local (PostgreSQL 18.4 descartável, role não-superusuário, RLS forçada, venv novo do runner oficial; sem GitHub Actions):
+
+| Gate | Resultado |
+|---|---|
+| segurança do repositório, `git diff --check`, DCO | passou |
+| ruff (check e format), mypy `--strict` (193 arquivos) | passou |
+| Alembic | head único `0027_recurrence_suggestions`; upgrade/downgrade simétricos |
+| pytest completo (finance, banking, security, persistence, API, worker, qualidade) | 2281 passaram; **1 falha, o baseline #240** (`test_update_contract_is_linked_and_ignored`) |
+| Flutter | format, analyze (sem issues), 757 testes, build web release e contrato PWA |
+| licenças Python e Flutter, pip-audit | passou, sem vulnerabilidades conhecidas |
+| mutação dirigida | detector de domínio (28 mutantes), persistência/RLS (37), API (11) e cliente Flutter (21): todos mortos, exceto os equivalentes abaixo |
+
+Mutantes sobreviventes, aceitos (equivalentes ou defesa em profundidade):
+
+- `min observations 3 → 2` e "último mês ambíguo permitido" (domínio): a regra de ≥ 3 meses consecutivos e o laço da corrida já impõem o mesmo resultado;
+- `scan ignora o papel` e `leitura de estornos ignora a residência` (store): o filtro de papel é coberto pela descrição nula dos estornos e a residência pela RLS forçada;
+- `aceitar após dispensar` (store): o replay ainda falha com conflito porque a decisão dispensada não tem recorrência;
+- `ACCEPTED sem posse` na política e `gatilho de vínculo ignora o dono` (banco): cada um é coberto pelo outro e pela RLS da regra;
+- `decision kind not checked` (Flutter): o cruzamento `recurrenceId` da resposta já a recusa.
+
+A mutação encontrou lacunas reais de teste, todas fechadas: pareamento de `amountBehavior` com os motivos, ordenação da evidência, espelhamento da conta no aceite, desabilitar ações com a tela ocupada ou não confiável, descarte da chave de idempotência após falha definitiva, cap do conjunto de estornos, digest da evidência e lacuna no histórico. A leitura de desempenho achou um plano quadrático sem estatísticas (corrigido, ver Persistência).
+
 ## Estado do trabalho
 
 | Batch | Escopo | Estado |
