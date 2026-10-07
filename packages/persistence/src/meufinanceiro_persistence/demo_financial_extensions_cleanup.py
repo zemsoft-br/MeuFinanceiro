@@ -18,6 +18,7 @@ from meufinanceiro_persistence.financial_categorization_rule_schema import (
 )
 from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_occurrences,
+    financial_recurrence_revisions,
     financial_recurrences,
 )
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
@@ -40,6 +41,7 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
 
     for planning_table in (
         financial_recurrence_occurrences,
+        financial_recurrence_revisions,
         financial_recurrences,
         financial_budget_lines,
         financial_budgets,

@@ -48,12 +48,24 @@ Gerar é um comando do usuário sobre **uma regra** e uma janela explícita `[fr
 - a regra é travada (`SELECT … FOR UPDATE`) durante a geração, serializando contra edição, pause e outra geração; a inserção usa `ON CONFLICT DO NOTHING` no índice único parcial. Repetir ou concorrer converge para o mesmo conjunto, sem duplicata e sem erro; a resposta informa quantas foram criadas e devolve as vivas da janela;
 - nada gera sozinho: sem leitura que materialize, sem job.
 
-### Edição, pause e histórico
+### Edição, pause e histórico da regra
 
 - editar (`PUT`) exige `expectedVersion`; versão antiga é `409` e não grava. Editáveis: descrição, valor esperado, dia do mês, término. Edição que não muda nada não grava nem incrementa a versão (mas o CAS vale);
 - **tratamento explícito das futuras `PENDING`:** na mesma transação, toda `PENDING` com data agendada `>=` hoje (relógio injetado) que a nova revisão **não descreve mais** (descrição, valor, data pelo novo dia, fim) vira `SUPERSEDED`; a resposta traz `supersededCount`. As compatíveis permanecem. `REALIZED`, `SKIPPED` e as `PENDING` vencidas (data anterior a hoje) **nunca** são tocadas nem reinterpretadas: o usuário ainda pode registrá-las ou pulá-las com o snapshot original. Uma nova geração cria a substituta na revisão corrente;
-- `pause` e `resume` não têm CAS (são comandos de estado alvo e idempotentes): já estar no estado pedido devolve a regra sem nova versão; mudar incrementa a versão. Pausar **não apaga nem altera** ocorrências; retomar não gera nada por si;
+- `pause` e `resume` não têm CAS (são comandos de estado alvo e idempotentes): já estar no estado pedido devolve a regra sem nova versão; mudar incrementa a versão **e grava uma revisão**. Pausar **não apaga nem altera** ocorrências; retomar não gera nada por si;
 - **não há `DELETE`** (nem grant): nada é destrutivo na v1.
+
+### Histórico append-only da regra (`finance.recurrence_revisions`)
+
+Versão sem conteúdo histórico não é histórico: a regra é atualizada no lugar, então o estado anterior (descrição, valor esperado, dia, término, status) só sobreviveria se uma ocorrência o tivesse copiado, e uma regra editada antes de gerar qualquer ocorrência o perderia. O contrato é que **toda alteração de recorrência preserva o estado anterior**:
+
+- **Uma revisão por versão.** `finance.recurrence_revisions` tem chave primária `(recurrence_id, version)` e guarda o estado completo da regra naquela versão (identidade, residência, conta, dono, descrição, efeito, moeda, valor esperado, frequência, início, dia, término, status) mais o **ator** (`actor_operator_id`) e o instante (`recorded_at`) da escrita. Criar grava a revisão 1; cada edição que muda a regra, cada `pause` e cada `resume` que mudam o estado gravam exatamente a revisão seguinte. Replay de criação, edição sem mudança, pause/resume já no estado alvo e CAS antigo não alteram a regra e portanto **não gravam revisão**.
+- **Escrita autoritativa no banco, na mesma instrução.** A revisão é gravada por um gatilho `AFTER INSERT OR UPDATE` da própria regra, a partir da linha que acaba de ser armazenada. Não existe caminho (store, SQL direto do runtime ou outro serviço) que armazene um estado de regra sem sua revisão, e não existe revisão sem o estado correspondente: uma transação que reverte desfaz regra e revisão juntas. O store **não escreve** histórico; ele só o lê.
+- **Append-only.** O runtime tem `SELECT` e `INSERT`, **sem `UPDATE`, `DELETE` nem `TRUNCATE`**. A política de `INSERT` só admite escrita feita de dentro de um gatilho (`pg_trigger_depth() > 0`), de modo que um `INSERT` de cliente é recusado mesmo com os valores certos; um gatilho `BEFORE INSERT` ainda exige que a revisão seja idêntica à regra armazenada (versão, campos, ator, instante) e que a sequência não pule versão; um gatilho `BEFORE UPDATE` recusa qualquer alteração, inclusive de papel privilegiado.
+- **Sem lacuna nem duplicata sob concorrência.** O gatilho da regra já exige `version = antiga + 1`, a edição trava a linha da regra e a chave primária impede a duplicata: edições concorrentes produzem uma sequência contígua, e o perdedor do CAS não grava nada.
+- **Audiência = a da regra e a da conta.** RLS `ENABLE` + `FORCE`; a política de leitura exige o mesmo escopo (instalação, residência, membership ativa) e que a regra e a conta da revisão sejam visíveis sob as respectivas RLS, então `PERSONAL`, `SHARED` (só com grant) e `HOUSEHOLD` seguem a conta e outra residência falha fechado (indistinguível de inexistente). Só o dono escreve.
+- **Escopo preservado.** Não toca `finance.movements`; ocorrências existentes e `SUPERSEDED` mantêm a semântica (snapshot da revisão que as originou). A migration `0026` cria a tabela e, para regras que já existiam, copia o estado **corrente** como primeira revisão registrada (estados anteriores nunca foram guardados e não são reconstruíveis).
+- **Leitura mínima.** Só há leitura de backend para teste e diagnóstico (`FinancialRecurrenceStore.list_recurrence_revisions`, paginada por versão, página máxima `RECURRENCE_REVISION_PAGE_MAX = 200`, sem truncar em silêncio). Não há rota HTTP nem tela de histórico nesta entrega.
 
 ### Skip
 
@@ -80,9 +92,9 @@ Estornar o Movement vinculado (ADR-0020) é um evento do ledger. A ocorrência c
 
 A ocorrência lista o esperado (snapshot) e, quando `REALIZED`, o realizado (`actualAmount`, `effectiveDate`, `competenceDate` lidos do Movement vinculado) e `movementState`. A leitura nunca escreve, nunca calcula saldo e é limitada (listas com teto, janelas de no máximo 12 meses).
 
-### Fora do audit financeiro fechado
+### Relação com o audit financeiro
 
-Como orçamentos e regras de categorização, o ciclo de vida de regra e ocorrência é planejamento e não amplia `finance.audit_events`. A criação do Movement continua auditada pelo writer canônico; a regra e a ocorrência carregam autoria e timestamps.
+O histórico de ciclo de vida da regra mora em `finance.recurrence_revisions`, não em `finance.audit_events`, cujo conjunto fechado de eventos e sujeitos não é ampliado (como em orçamentos e regras de categorização). A criação do Movement continua auditada pelo writer canônico. Isso não torna a ausência de histórico aceitável: o histórico da regra é obrigatório e imposto pelo banco (seção anterior).
 
 ## Alternativas consideradas
 
@@ -94,6 +106,11 @@ Como orçamentos e regras de categorização, o ciclo de vida de regra e ocorrê
 - **Reinterpretar `PENDING` futuras no lugar de superseder:** mudaria silenciosamente o que o usuário viu. Rejeitada.
 - **Reabrir a ocorrência no estorno:** geraria novo ciclo sem ato do usuário. Rejeitada.
 - **`DELETE` de regra:** destrutivo; arquivamento/encerramento por `endDate` e pause cobrem a v1.
+- **Só `version` com CAS (estado anterior perdido):** o contrato exige preservar versões ou histórico; um contador sem conteúdo não satisfaz. Rejeitada.
+- **Confiar no snapshot das ocorrências:** só cobre meses já materializados; uma regra editada antes de gerar ocorrência perderia o estado antigo, e pause/resume não deixam rastro. Rejeitada.
+- **Revisão escrita pelo store com verificação diferida:** o banco só detectaria a omissão no `COMMIT`, e o runtime precisaria de `INSERT` livre na tabela. Rejeitada; o gatilho elimina a omissão e a forja por construção.
+- **Log de aplicação ou `finance.audit_events` best-effort:** não impede uma escrita válida sem registro e amplia um conjunto fechado. Rejeitada.
+- **`SECURITY DEFINER` para gravar a revisão:** exigiria relaxar `FORCE ROW LEVEL SECURITY` para o dono; o gatilho de invocador com política que só admite escrita de dentro de gatilho mantém `FORCE`. Rejeitada.
 - **Frequências além de mensal, assinaturas assistidas, parciais, reajuste, alertas:** fora de escopo (#254).
 
 ## Consequências
@@ -102,10 +119,11 @@ Como orçamentos e regras de categorização, o ciclo de vida de regra e ocorrê
 - uma regra editada deixa `SUPERSEDED` como histórico e exige nova geração; o usuário vê o que mudou (`supersededCount`);
 - o writer de Movement ganhou um ponto de entrada transacional compartilhado; seu comportamento externo é idêntico (provado pelos testes existentes);
 - uma edição simultânea perde para o CAS com `409`; pause/resume convergem por estado.
+- toda versão da regra tem seu conteúdo preservado de forma imutável e atômica com a escrita da regra; o custo é uma linha por mudança real e um `INSERT` extra na mesma instrução.
 
 ## Validação
 
-Domínio (calendário 28–31, fevereiro, bissexto, início/fim), schema e migration simétrica, RLS (PERSONAL, HOUSEHOLD, SHARED, entre residências), CAS e concorrência, geração limitada, idempotente e concorrente, pause/resume, edição e `SUPERSEDED`, skip, realização (um Movement, replay, concorrência, falha intermediária sem estado parcial, conta inativa, esperado × real), estorno que não reabre, zero Movement antes de Registrar, zero saldo por `PENDING`/`SKIPPED`, API HTTP, contratos de qualidade, Flutter (sem retry automático nem sucesso otimista) e o smoke vertical da #254.
+Domínio (calendário 28–31, fevereiro, bissexto, início/fim), schema e migration simétrica, RLS (PERSONAL, HOUSEHOLD, SHARED, entre residências), CAS e concorrência, histórico de revisões (criação, edição antes de qualquer ocorrência, pause/resume, no-op, CAS antigo, falha com rollback, concorrência sem lacuna, RLS por audiência, append-only e anti-forja), geração limitada, idempotente e concorrente, pause/resume, edição e `SUPERSEDED`, skip, realização (um Movement, replay, concorrência, falha intermediária sem estado parcial, conta inativa, esperado × real), estorno que não reabre, zero Movement antes de Registrar, zero saldo por `PENDING`/`SKIPPED`, API HTTP, contratos de qualidade, Flutter (sem retry automático nem sucesso otimista) e o smoke vertical da #254.
 
 ## Referências
 

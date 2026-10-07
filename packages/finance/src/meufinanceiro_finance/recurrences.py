@@ -37,6 +37,8 @@ RECURRENCE_WINDOW_MAX_MONTHS = 12
 # per rule and month, so its cap is the product of the two bounds above.
 RECURRENCE_LIST_MAX = 200
 RECURRENCE_OCCURRENCE_LIST_MAX = RECURRENCE_LIST_MAX * RECURRENCE_WINDOW_MAX_MONTHS
+# History grows with every edit, so it is read by keyset pages of at most this size.
+RECURRENCE_REVISION_PAGE_MAX = 200
 
 _RECURRENCE_EFFECTS = frozenset(
     (FinancialResultEffect.INCOME, FinancialResultEffect.EXPENSE)
@@ -440,6 +442,56 @@ class FinancialRecurrenceRecord:
     def __repr__(self) -> str:
         return (
             "FinancialRecurrenceRecord("
+            f"status={self.status.value!r}, version={self.version}, "
+            "<identity-and-amounts-redacted>)"
+        )
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class FinancialRecurrenceRevisionRecord:
+    """One immutable historical state of a rule, as the database recorded it."""
+
+    recurrence_id: UUID
+    version: int
+    residence_id: UUID
+    account_id: UUID
+    owner_operator_id: UUID
+    description: str
+    result_effect: FinancialResultEffect
+    expected: Money
+    frequency: FinancialRecurrenceFrequency
+    start_date: date
+    day_of_month: int
+    end_date: date | None
+    status: FinancialRecurrenceStatus
+    actor_operator_id: UUID
+    recorded_at: datetime
+
+    def __post_init__(self) -> None:
+        validate_financial_resource_id(self.recurrence_id)
+        _require_version(self.version, "version")
+        _require_uuid(self.residence_id, "residence_id")
+        validate_financial_resource_id(self.account_id)
+        _require_uuid(self.owner_operator_id, "owner_operator_id")
+        object.__setattr__(self, "description", _clean_description(self.description))
+        _require_effect(self.result_effect)
+        _require_positive_money(self.expected, "expected")
+        validate_currency_code(self.expected.currency)
+        if self.frequency is not FinancialRecurrenceFrequency.MONTHLY:
+            raise ValueError("frequency must be MONTHLY")
+        _validate_rule_shape(
+            start_date=self.start_date,
+            day_of_month=self.day_of_month,
+            end_date=self.end_date,
+        )
+        if not isinstance(self.status, FinancialRecurrenceStatus):
+            raise TypeError("status must be FinancialRecurrenceStatus")
+        _require_uuid(self.actor_operator_id, "actor_operator_id")
+        _require_aware(self.recorded_at, "recorded_at")
+
+    def __repr__(self) -> str:
+        return (
+            "FinancialRecurrenceRevisionRecord("
             f"status={self.status.value!r}, version={self.version}, "
             "<identity-and-amounts-redacted>)"
         )

@@ -5,7 +5,9 @@ explicitly realizes one occurrence, and then it does so through the canonical
 Movement writer inside the same transaction that links the occurrence (ADR-0027).
 Create is replay-safe through an explicit idempotency key; edit is a compare-and-swap
 on ``version`` that supersedes stale *future* PENDING occurrences explicitly and never
-deletes anything. Authorization is double-checked: the store verifies what it can
+deletes anything. Every stored rule state (create, edit, pause, resume) is recorded in
+``finance.recurrence_revisions`` by a database trigger in the very statement that
+stores it, so this module never writes history and cannot skip it. Authorization is double-checked: the store verifies what it can
 explain, forced RLS and database triggers decide the rest.
 """
 
@@ -22,6 +24,7 @@ from meufinanceiro_finance import (
     RECURRENCE_GENERATION_MAX_MONTHS,
     RECURRENCE_LIST_MAX,
     RECURRENCE_OCCURRENCE_LIST_MAX,
+    RECURRENCE_REVISION_PAGE_MAX,
     RECURRENCE_WINDOW_MAX_MONTHS,
     FinancialOccurrenceMovementState,
     FinancialOccurrenceStatus,
@@ -34,6 +37,7 @@ from meufinanceiro_finance import (
     FinancialRecurrenceRecord,
     FinancialRecurrenceRealizationDraft,
     FinancialRecurrenceReplacement,
+    FinancialRecurrenceRevisionRecord,
     FinancialRecurrenceStatus,
     FinancialRecurrenceWindow,
     FinancialResultEffect,
@@ -67,6 +71,7 @@ from meufinanceiro_persistence.financial_movement_store import (
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_occurrences,
+    financial_recurrence_revisions,
     financial_recurrences,
 )
 
@@ -302,6 +307,66 @@ class FinancialRecurrenceStore:
         except DBAPIError:
             raise FinancialRecurrencePersistenceError(
                 "recurrences could not be read"
+            ) from None
+
+    def list_recurrence_revisions(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        recurrence_id: UUID,
+        after_version: int = 0,
+        limit: int = RECURRENCE_REVISION_PAGE_MAX,
+    ) -> tuple[FinancialRecurrenceRevisionRecord, ...]:
+        """One keyset page of a rule's history, oldest version first.
+
+        Read-only diagnostics: history is written only by the database. A rule the
+        actor cannot see is indistinguishable from a missing one.
+        """
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(recurrence_id)
+        for name, value in (("after_version", after_version), ("limit", limit)):
+            if isinstance(value, bool) or not isinstance(value, int):
+                raise TypeError(f"{name} must be an integer")
+        if after_version < 0:
+            raise ValueError("after_version must not be negative")
+        if not 1 <= limit <= RECURRENCE_REVISION_PAGE_MAX:
+            raise ValueError("limit is out of range")
+        revisions = financial_recurrence_revisions
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                if (
+                    _visible_row(
+                        connection, installation_id, residence_id, recurrence_id
+                    )
+                    is None
+                ):
+                    raise FinancialRecurrenceNotFoundError("recurrence was not found")
+                rows = (
+                    connection.execute(
+                        select(revisions)
+                        .where(
+                            revisions.c.installation_id == installation_id,
+                            revisions.c.residence_id == residence_id,
+                            revisions.c.recurrence_id == recurrence_id,
+                            revisions.c.version > after_version,
+                        )
+                        .order_by(revisions.c.version)
+                        .limit(limit)
+                    )
+                    .mappings()
+                    .all()
+                )
+                return tuple(_revision_record(row) for row in rows)
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "recurrence history could not be read"
             ) from None
 
     def replace_recurrence(
@@ -1323,6 +1388,31 @@ def _record(row: RowMapping) -> FinancialRecurrenceRecord:
     except (KeyError, TypeError, ValueError):
         raise FinancialRecurrencePersistenceError(
             "recurrence state is invalid"
+        ) from None
+
+
+def _revision_record(row: RowMapping) -> FinancialRecurrenceRevisionRecord:
+    try:
+        return FinancialRecurrenceRevisionRecord(
+            recurrence_id=row["recurrence_id"],
+            version=row["version"],
+            residence_id=row["residence_id"],
+            account_id=row["account_id"],
+            owner_operator_id=row["owner_operator_id"],
+            description=row["description"],
+            result_effect=FinancialResultEffect(row["result_effect"]),
+            expected=Money(row["expected_amount"], row["currency"]),
+            frequency=FinancialRecurrenceFrequency(row["frequency"]),
+            start_date=row["start_date"],
+            day_of_month=row["day_of_month"],
+            end_date=row["end_date"],
+            status=FinancialRecurrenceStatus(row["status"]),
+            actor_operator_id=row["actor_operator_id"],
+            recorded_at=row["recorded_at"],
+        )
+    except (KeyError, TypeError, ValueError):
+        raise FinancialRecurrencePersistenceError(
+            "recurrence revision state is invalid"
         ) from None
 
 

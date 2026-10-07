@@ -12,6 +12,9 @@ STORE = (PERSISTENCE / "financial_recurrence_store.py").read_text(encoding="utf-
 MIGRATION = (PERSISTENCE / "migrations/versions/0025_monthly_recurrences.py").read_text(
     encoding="utf-8"
 )
+REVISIONS_MIGRATION = (
+    PERSISTENCE / "migrations/versions/0026_recurrence_revisions.py"
+).read_text(encoding="utf-8")
 MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
     encoding="utf-8"
 )
@@ -223,3 +226,40 @@ def test_realization_is_the_only_link_between_an_occurrence_and_the_ledger() -> 
     assert (
         "movement_row.created_at IS DISTINCT FROM transaction_timestamp()" in MIGRATION
     )
+
+
+def test_rule_history_is_database_authored_append_only_and_forced_rls() -> None:
+    migration = REVISIONS_MIGRATION
+    assert 'down_revision: str | None = "0025_monthly_recurrences"' in migration
+    for statement in (
+        "ALTER TABLE finance.recurrence_revisions ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE finance.recurrence_revisions FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE finance.recurrences FORCE ROW LEVEL SECURITY",
+    ):
+        assert statement in migration, statement
+    # The revision is written by the database, in the statement that stores the rule.
+    assert "AFTER INSERT OR UPDATE ON finance.recurrences" in migration
+    assert "finance.record_recurrence_revision()" in migration
+    assert "pg_catalog.pg_trigger_depth() > 0" in migration
+    assert "SECURITY DEFINER" not in migration
+    grants = re.findall(r"GRANT [^\n\"]*", migration)
+    assert grants == ["GRANT SELECT, INSERT ON finance.recurrence_revisions TO {role}"]
+    assert "ck_finance_recurrence_revisions_immutable" in migration
+    # Nothing in the ledger or the occurrence tables changes.
+    assert "ALTER TABLE finance.movements" not in migration
+    assert "recurrence_occurrences" not in _code(migration)
+
+
+def test_the_store_only_reads_history_and_the_docs_require_it() -> None:
+    code = _code(STORE)
+    assert "def list_recurrence_revisions" in code
+    for writer in ("insert", "update", "delete"):
+        assert not re.search(
+            rf"{writer}\(\s*(financial_recurrence_revisions|revisions)\b", code
+        ), writer
+    for source in (ADR, DOC):
+        assert "recurrence_revisions" in source
+    assert "append-only" in ADR and "append-only" in DOC
+    # Missing lifecycle history is a defect, never an accepted P2.
+    assert "sem auditoria de ciclo de vida" not in DOC
+    assert "não é histórico" in ADR

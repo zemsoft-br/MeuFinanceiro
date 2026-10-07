@@ -2,7 +2,9 @@
 
 ``finance.recurrences`` is the rule (the model) with the CAS ``version``.
 ``finance.recurrence_occurrences`` is one persisted instance per rule and month with
-the snapshot of the revision that made it. The only link to the ledger is the
+the snapshot of the revision that made it. ``finance.recurrence_revisions`` is the
+append-only history: one immutable row per rule ``version``, written by a database
+trigger in the same statement that stores the rule. The only link to the ledger is the
 occurrence's ``movement_id``, written once, in the transaction that creates the
 Movement. ``finance.movements`` knows nothing about recurrences.
 """
@@ -18,6 +20,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    PrimaryKeyConstraint,
     String,
     Table,
     UniqueConstraint,
@@ -244,4 +247,69 @@ Index(
     postgresql_where=text("status = 'PENDING'"),
 )
 
-__all__ = ["financial_recurrence_occurrences", "financial_recurrences"]
+financial_recurrence_revisions = Table(
+    "recurrence_revisions",
+    metadata,
+    Column("recurrence_id", UUID(as_uuid=True), nullable=False),
+    Column("version", Integer(), nullable=False),
+    Column("installation_id", UUID(as_uuid=True), nullable=False),
+    Column("residence_id", UUID(as_uuid=True), nullable=False),
+    Column("account_id", UUID(as_uuid=True), nullable=False),
+    Column("owner_operator_id", UUID(as_uuid=True), nullable=False),
+    Column("description", String(256), nullable=False),
+    Column("result_effect", String(16), nullable=False),
+    Column("currency", String(3), nullable=False),
+    Column("expected_amount", Numeric(24, 8), nullable=False),
+    Column("frequency", String(16), nullable=False),
+    Column("start_date", Date(), nullable=False),
+    Column("day_of_month", Integer(), nullable=False),
+    Column("end_date", Date(), nullable=True),
+    Column("status", String(16), nullable=False),
+    Column("actor_operator_id", UUID(as_uuid=True), nullable=False),
+    Column("recorded_at", DateTime(timezone=True), nullable=False),
+    PrimaryKeyConstraint(
+        "recurrence_id", "version", name="pk_finance_recurrence_revisions"
+    ),
+    CheckConstraint("version >= 1", name="ck_finance_recurrence_revisions_version"),
+    CheckConstraint(
+        "result_effect IN ('INCOME', 'EXPENSE')",
+        name="ck_finance_recurrence_revisions_effect",
+    ),
+    CheckConstraint(
+        "status IN ('ACTIVE', 'PAUSED')", name="ck_finance_recurrence_revisions_status"
+    ),
+    ForeignKeyConstraint(
+        ["recurrence_id", "installation_id", "residence_id"],
+        [
+            "finance.recurrences.id",
+            "finance.recurrences.installation_id",
+            "finance.recurrences.residence_id",
+        ],
+        ondelete="RESTRICT",
+        name="fk_finance_recurrence_revisions_rule",
+    ),
+    ForeignKeyConstraint(
+        ["account_id", "installation_id", "residence_id", "currency"],
+        [
+            "finance.accounts.id",
+            "finance.accounts.installation_id",
+            "finance.accounts.residence_id",
+            "finance.accounts.currency",
+        ],
+        ondelete="RESTRICT",
+        name="fk_finance_recurrence_revisions_account",
+    ),
+    schema="finance",
+)
+
+Index(
+    "ix_finance_recurrence_revisions_residence",
+    financial_recurrence_revisions.c.residence_id,
+    financial_recurrence_revisions.c.recurrence_id,
+)
+
+__all__ = [
+    "financial_recurrence_occurrences",
+    "financial_recurrence_revisions",
+    "financial_recurrences",
+]

@@ -1,6 +1,6 @@
 # Recorrências mensais manuais — regra, ocorrência e realização explícita
 
-Status: **implementação completa da issue #254** (4 batches) na branch `feat/finance-recurrences-254`. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **implementação completa da issue #254** (4 batches mais a correção do gate pré-PR: histórico append-only da regra) na branch `feat/finance-recurrences-254`. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
 
 Normativo: ADR-0027. Este documento descreve o contrato, o schema e a API. Nenhuma regra financeira anterior foi alterada.
 
@@ -8,7 +8,7 @@ Normativo: ADR-0027. Este documento descreve o contrato, o schema e a API. Nenhu
 
 Uma **recorrência** é um modelo mensal manual de receita ou despesa esperada. Uma **ocorrência** é a instância persistida desse modelo para um mês. **Nenhuma das duas é um fato financeiro**: só o `Movement` `STANDARD` é, e só depois de **Registrar** explícito. `PENDING`, `SKIPPED` e `SUPERSEDED` nunca alteram saldo nem extrato, e nenhum processo cria Movement sozinho.
 
-## Schema (migration `0025_monthly_recurrences`)
+## Schema (migrations `0025_monthly_recurrences` e `0026_recurrence_revisions`)
 
 `finance.recurrences` (regra): `id` (UUID v4), `installation_id`, `residence_id`, `account_id`, `owner_operator_id`, `description`, `result_effect` (`INCOME`/`EXPENSE`), `currency`, `expected_amount` `NUMERIC(24,8) > 0`, `frequency = 'MONTHLY'`, `start_date`, `day_of_month` 1..31, `end_date`, `status` (`ACTIVE`/`PAUSED`), `version`, `idempotency_key`, `request_digest`, `updated_by_operator_id`, timestamps. FK composta com a conta garante a moeda; identidade imutável por gatilho; versão avança de um em um.
 
@@ -20,6 +20,29 @@ Garantias no banco, além do store:
 - gatilho de transição: só `PENDING` se move, só para `REALIZED`/`SKIPPED`/`SUPERSEDED`, só as colunas de marca mudam; `REALIZED` exige um Movement `STANDARD` da mesma conta, efeito e moeda criado **na mesma transação** pelo mesmo operador;
 - RLS `ENABLE` + `FORCE`; leitura segue a audiência da conta (política consulta `finance.accounts` sob a RLS da conta); inserção e atualização só do dono; o runtime tem `SELECT`, `INSERT` e `UPDATE` de colunas explícitas, **sem `DELETE` nem `TRUNCATE`**;
 - `finance.movements` não muda.
+
+`finance.recurrence_revisions` (histórico append-only da regra, migration `0026`): chave primária `(recurrence_id, version)`; estado completo da regra naquela versão (`installation_id`, `residence_id`, `account_id`, `owner_operator_id`, `description`, `result_effect`, `currency`, `expected_amount`, `frequency`, `start_date`, `day_of_month`, `end_date`, `status`) mais `actor_operator_id` e `recorded_at`. FKs compostas com a regra, a conta (moeda) e as memberships do dono e do ator.
+
+Contrato do histórico (ADR-0027): **alterar uma recorrência preserva o estado anterior**; `version` sozinha não basta.
+
+| Evento | Revisão |
+|---|---|
+| criar | revisão 1, exatamente uma |
+| editar com mudança | revisão `version + 1` com o novo estado; a anterior segue intacta |
+| `pause` / `resume` que mudam o estado | revisão `version + 1` com o novo `status` |
+| replay de criação, edição sem mudança, `pause`/`resume` já no estado alvo | nenhuma (a regra não é escrita) |
+| CAS antigo, falha ou rollback | nenhuma (a revisão nasce e morre com a escrita da regra) |
+
+Garantias no banco:
+
+- **autoria no banco, na mesma instrução:** um gatilho `AFTER INSERT OR UPDATE` da regra grava a revisão a partir da linha armazenada (ator = `updated_by_operator_id`, instante = `updated_at`). Nenhuma escrita válida da regra existe sem revisão, nem por SQL direto do runtime; o store só **lê** o histórico;
+- **append-only:** o runtime tem `SELECT` e `INSERT`, sem `UPDATE`, `DELETE` ou `TRUNCATE`; a política de `INSERT` só admite escrita de dentro de gatilho (`pg_trigger_depth() > 0`), logo um `INSERT` de cliente é recusado; um gatilho `BEFORE INSERT` exige revisão idêntica à regra armazenada e sem pular versão; um gatilho `BEFORE UPDATE` recusa qualquer alteração, inclusive do papel privilegiado;
+- **sem lacuna nem duplicata:** a versão da regra avança de um em um, a edição trava a linha e a chave primária barra a duplicata; edições concorrentes produzem uma sequência contígua;
+- **audiência:** RLS `ENABLE` + `FORCE`; leitura exige o escopo da residência e visibilidade da regra e da conta sob suas RLS (`PERSONAL`, `SHARED` com grant e `HOUSEHOLD`); outra residência falha fechado; só o dono escreve;
+- `finance.movements` não muda; ocorrências existentes e `SUPERSEDED` mantêm a semântica de snapshot;
+- regras criadas antes da `0026` recebem o estado **corrente** como primeira revisão registrada (estados anteriores nunca foram guardados).
+
+Leitura de backend para teste e diagnóstico: `FinancialRecurrenceStore.list_recurrence_revisions(recurrence_id, after_version, limit)`, ordenada por versão e paginada por versão (página máxima 200, limite fora da faixa é erro). Não há rota HTTP nem tela de histórico nesta entrega.
 
 ## Calendário
 
@@ -100,8 +123,7 @@ Provado por HTTP contra PostgreSQL 18.4 com role não-superusuário e RLS força
 ## Pontos aceitos (P2), sem bloqueio
 
 - sem paginação além dos tetos acima: o produto prefere recusar a esconder linhas; paginação por cursor fica para quando o uso real pedir;
-- sem auditoria de ciclo de vida da regra em `finance.audit_events` (como orçamentos): a criação do Movement continua auditada pelo writer canônico;
-- `pause/resume` não usam CAS: são comandos de estado alvo, idempotentes;
+- `pause/resume` não usam CAS: são comandos de estado alvo, idempotentes (cada mudança real grava sua revisão);
 - o relógio de produção é `date.today` (composição da aplicação); o domínio e o store não leem relógio;
 - a tela lista um mês por vez: uma previsão vencida e ainda `PENDING` de um mês anterior aparece ao navegar até aquele mês (não há fila agregada de vencidas na v1);
 - registrar uma ocorrência de regra pausada é permitido: pausar impede gerar, não encerra a previsão existente.
@@ -118,8 +140,9 @@ Validação local (PostgreSQL 18.4 descartável, role não-superusuário, RLS fo
 |---|---|
 | segurança do repositório, `git diff --check`, DCO | passou |
 | ruff (check e format), mypy `--strict` | passou |
-| Alembic | head único `0025_monthly_recurrences`; upgrade/downgrade simétricos |
-| pytest completo (finance, banking, security, persistence, API, worker, qualidade) | 2122+ passaram; **1 falha, o baseline #240** (`test_update_contract_is_linked_and_ignored`) |
+| Alembic | head único `0026_recurrence_revisions`; upgrade/downgrade simétricos |
+| pytest completo (finance, banking, security, persistence, API, worker, qualidade) | 2156 passaram após a correção do histórico; **1 falha, o baseline #240** (`test_update_contract_is_linked_and_ignored`) |
+| mutação dirigida do histórico (19 mutantes: ausência, duplicação, versão/conteúdo errados, forja, grants, RLS, backfill, no-op) | 19 mortos (2 lacunas fechadas: conteúdo da revisão e lacuna de sequência) |
 | Flutter | format, analyze (sem issues), 703 testes, build web release e contrato PWA |
 | licenças Python e Flutter, pip-audit | passou, sem vulnerabilidades conhecidas |
 | mutação dirigida (36 mutantes: calendário, máquina de estados, CAS, idempotência, atomicidade, gatilhos, RLS, serviço) | 35 mortos; 1 sobrevivente equivalente (abaixo) |
@@ -136,3 +159,4 @@ A mutação encontrou três lacunas reais de teste, todas fechadas: fronteira "h
 | 2 | geração, skip, pause/resume, serviço e API | concluído |
 | 3 | realização atômica ligada ao Movement e concorrência | concluído |
 | 4 | Flutter, smoke, desempenho, docs e gates | concluído |
+| gate pré-PR | histórico append-only da regra (`finance.recurrence_revisions`, migration `0026`): versão sem conteúdo histórico não satisfaz o contrato | concluído |
