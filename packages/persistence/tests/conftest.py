@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from psycopg import sql
-from sqlalchemy import create_engine, delete, insert, select
+from sqlalchemy import create_engine, delete, func, insert, select, update
 from sqlalchemy.engine import Engine, make_url
 
 from meufinanceiro_persistence.banking_ledger_review_schema import (
@@ -21,7 +21,10 @@ from meufinanceiro_persistence.banking_reconciliation_schema import (
     reconciled_transactions,
 )
 from meufinanceiro_persistence.bootstrap import normalize_psycopg_url
-from meufinanceiro_persistence.financial_account_schema import financial_accounts
+from meufinanceiro_persistence.financial_account_schema import (
+    financial_account_grants,
+    financial_accounts,
+)
 from meufinanceiro_persistence.financial_audit_schema import financial_audit_events
 from meufinanceiro_persistence.financial_categorization_rule_schema import (
     financial_categorization_rules,
@@ -37,6 +40,10 @@ from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocations,
 )
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
+from meufinanceiro_persistence.financial_recurrence_schema import (
+    financial_recurrence_occurrences,
+    financial_recurrences,
+)
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
 )
@@ -208,6 +215,8 @@ def create_canonical_residences(
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
         connection.execute(delete(financial_audit_events))
+        connection.execute(delete(financial_recurrence_occurrences))
+        connection.execute(delete(financial_recurrences))
         connection.execute(delete(financial_budget_lines))
         connection.execute(delete(financial_budgets))
         connection.execute(delete(reconciled_transaction_ledger_links))
@@ -335,6 +344,44 @@ class BudgetWorld:
             )
         )
         return operator_id
+
+    def archive_account(self, account_id: UUID) -> None:
+        """Archive through the privileged engine (the product has no such write yet)."""
+        with self.engine.begin() as connection:
+            connection.execute(
+                update(financial_accounts)
+                .where(financial_accounts.c.id == account_id)
+                .values(
+                    status="ARCHIVED",
+                    archived_at=func.transaction_timestamp(),
+                    updated_at=func.transaction_timestamp(),
+                )
+            )
+
+    def grant_account(self, account_id: UUID, operator_id: UUID) -> None:
+        """Grant read access to a SHARED account through the privileged engine."""
+        with self.engine.begin() as connection:
+            account = (
+                connection.execute(
+                    select(financial_accounts).where(
+                        financial_accounts.c.id == account_id
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            connection.execute(
+                insert(financial_account_grants).values(
+                    id=uuid4(),
+                    installation_id=account["installation_id"],
+                    residence_id=account["residence_id"],
+                    account_id=account_id,
+                    owner_operator_id=account["owner_operator_id"],
+                    visibility_scope="SHARED",
+                    operator_id=operator_id,
+                    created_at=_BUDGET_NOW,
+                )
+            )
 
     def scope(
         self, operator_id: UUID | None = None, residence_id: UUID | None = None

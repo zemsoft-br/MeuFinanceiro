@@ -21,14 +21,19 @@ def _index_names(engine: Engine) -> set[str]:
     }
 
 
-def test_revision_is_the_single_head_after_monthly_budgets() -> None:
+def test_revision_stays_in_the_single_history_after_monthly_budgets() -> None:
     assert len(_REVISION) <= 32
     config = build_alembic_config(
         "postgresql+psycopg://unused:unused@localhost/unused",
         app_database_user="unused_role",
     )
     directory = ScriptDirectory.from_config(config)
-    assert directory.get_heads() == [_REVISION]
+    heads = directory.get_heads()
+    assert len(heads) == 1
+    # Later revisions may build on this one; it must stay in the single history.
+    assert _REVISION in {
+        item.revision for item in directory.walk_revisions(base="base", head=heads[0])
+    }
     script = directory.get_revision(_REVISION)
     assert script is not None and script.down_revision == _PREVIOUS
 
