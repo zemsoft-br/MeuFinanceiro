@@ -13,29 +13,40 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
 from meufinanceiro_finance import (
+    RECURRENCE_GENERATION_MAX_MONTHS,
     RECURRENCE_LIST_MAX,
+    RECURRENCE_OCCURRENCE_LIST_MAX,
+    RECURRENCE_WINDOW_MAX_MONTHS,
+    FinancialOccurrenceMovementState,
     FinancialOccurrenceStatus,
     FinancialRecurrenceDraft,
     FinancialRecurrenceEditOutcome,
     FinancialRecurrenceFrequency,
+    FinancialRecurrenceGenerationResult,
     FinancialRecurrenceOccurrenceRecord,
+    FinancialRecurrenceRealization,
     FinancialRecurrenceRecord,
     FinancialRecurrenceReplacement,
     FinancialRecurrenceStatus,
+    FinancialRecurrenceWindow,
     FinancialResultEffect,
     Money,
+    can_generate_occurrences,
+    can_transition_occurrence,
     new_financial_resource_id,
     occurrences_to_supersede,
     recurrence_replacement_changes_rule,
+    scheduled_occurrences,
     validate_financial_idempotency_key,
     validate_financial_resource_id,
 )
-from sqlalchemy import Connection, Engine, func, select, update
+from sqlalchemy import Connection, Engine, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -47,6 +58,7 @@ from meufinanceiro_persistence.financial_movement_store import (
     _require_active_membership,
     _set_context,
 )
+from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_occurrences,
     financial_recurrences,
@@ -87,8 +99,20 @@ class FinancialRecurrenceVersionConflictError(FinancialRecurrencePersistenceErro
     """``expectedVersion`` is stale: the rule changed since the caller read it."""
 
 
+class FinancialRecurrenceOccurrenceNotFoundError(FinancialRecurrencePersistenceError):
+    """Occurrence is missing or invisible to the actor (indistinguishable)."""
+
+
+class FinancialRecurrenceOccurrenceStateError(FinancialRecurrencePersistenceError):
+    """The occurrence is in a state that does not allow the requested command."""
+
+
+class FinancialRecurrencePausedError(FinancialRecurrencePersistenceError):
+    """A PAUSED recurrence does not generate occurrences."""
+
+
 class FinancialRecurrenceStore:
-    """Create, read, list and CAS-edit manual monthly recurrences."""
+    """Create, read, list, CAS-edit and run the planning lifecycle of recurrences."""
 
     def __init__(self, engine: Engine) -> None:
         if not isinstance(engine, Engine):
@@ -282,24 +306,15 @@ class FinancialRecurrenceStore:
         try:
             with self._engine.begin() as connection:
                 _prepare(connection, installation_id, residence_id, operator_id)
-                visible = _visible_row(
-                    connection, installation_id, residence_id, recurrence_id
-                )
-                if visible is None:
-                    raise FinancialRecurrenceNotFoundError("recurrence was not found")
-                if visible["owner_operator_id"] != operator_id:
-                    raise FinancialRecurrenceNotEditableError("recurrence is read-only")
-                # Serialize against generation, pause and other edits, then re-read
-                # the locked row: the CAS decides on what is current *now*.
-                current = _visible_row(
+                # Serialize against generation, pause and other edits, then decide the
+                # CAS on the locked row: what is current *now*.
+                current = _locked_owned_rule(
                     connection,
-                    installation_id,
-                    residence_id,
-                    recurrence_id,
-                    lock=True,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    recurrence_id=recurrence_id,
                 )
-                if current is None:
-                    raise FinancialRecurrenceNotFoundError("recurrence was not found")
                 if current["version"] != replacement.expected_version:
                     raise FinancialRecurrenceVersionConflictError(
                         "recurrence version is stale"
@@ -361,6 +376,358 @@ class FinancialRecurrenceStore:
         except DBAPIError:
             raise FinancialRecurrencePersistenceError(
                 "recurrence could not be persisted"
+            ) from None
+
+    def pause_recurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        recurrence_id: UUID,
+    ) -> FinancialRecurrenceRecord:
+        """PAUSED stops future generation; history is kept. Idempotent by state."""
+        return self._set_status(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            recurrence_id=recurrence_id,
+            target=FinancialRecurrenceStatus.PAUSED,
+        )
+
+    def resume_recurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        recurrence_id: UUID,
+    ) -> FinancialRecurrenceRecord:
+        """ACTIVE allows new generation again. It generates nothing by itself."""
+        return self._set_status(
+            installation_id=installation_id,
+            residence_id=residence_id,
+            operator_id=operator_id,
+            recurrence_id=recurrence_id,
+            target=FinancialRecurrenceStatus.ACTIVE,
+        )
+
+    def _set_status(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        recurrence_id: UUID,
+        target: FinancialRecurrenceStatus,
+    ) -> FinancialRecurrenceRecord:
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(recurrence_id)
+        rules = financial_recurrences
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                current = _locked_owned_rule(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    recurrence_id=recurrence_id,
+                )
+                if current["status"] == target.value:
+                    return _record(current)
+                updated = (
+                    connection.execute(
+                        update(rules)
+                        .where(
+                            rules.c.id == recurrence_id,
+                            rules.c.installation_id == installation_id,
+                            rules.c.residence_id == residence_id,
+                            rules.c.owner_operator_id == operator_id,
+                            rules.c.version == current["version"],
+                        )
+                        .values(
+                            status=target.value,
+                            version=current["version"] + 1,
+                            updated_at=func.transaction_timestamp(),
+                            updated_by_operator_id=operator_id,
+                        )
+                        .returning(*rules.c)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if updated is None:
+                    raise FinancialRecurrenceVersionConflictError(
+                        "recurrence version is stale"
+                    )
+                return _record(updated)
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except IntegrityError:
+            raise FinancialRecurrenceConflictError("recurrence conflict") from None
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "recurrence could not be persisted"
+            ) from None
+
+    def generate_occurrences(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        recurrence_id: UUID,
+        window: FinancialRecurrenceWindow,
+    ) -> FinancialRecurrenceGenerationResult:
+        """Materialize the due months of a window as PENDING occurrences.
+
+        Explicit, bounded and replay-safe: the rule row is locked for the call, the
+        insert is ``ON CONFLICT DO NOTHING`` on the one-live-occurrence-per-month
+        index, and repeating or racing the call converges on the same set. A PAUSED
+        rule never generates (the database trigger refuses it too). Nothing here
+        reads a clock, writes a Movement or touches a balance.
+        """
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(recurrence_id)
+        if not isinstance(window, FinancialRecurrenceWindow):
+            raise TypeError("window must be FinancialRecurrenceWindow")
+        if window.months > RECURRENCE_GENERATION_MAX_MONTHS:
+            raise FinancialRecurrenceInvalidShapeError(
+                "generation window exceeds the allowed number of months"
+            )
+        occurrences = financial_recurrence_occurrences
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                row = _locked_owned_rule(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    recurrence_id=recurrence_id,
+                )
+                rule = _record(row)
+                if not can_generate_occurrences(rule):
+                    raise FinancialRecurrencePausedError("recurrence is paused")
+                _owned_active_account(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    account_id=rule.account_id,
+                )
+                due = scheduled_occurrences(
+                    start_date=rule.start_date,
+                    day_of_month=rule.day_of_month,
+                    end_date=rule.end_date,
+                    window=window,
+                )
+                created = 0
+                if due:
+                    inserted = connection.execute(
+                        pg_insert(occurrences)
+                        .values(
+                            [
+                                {
+                                    "id": new_financial_resource_id(),
+                                    "installation_id": installation_id,
+                                    "residence_id": residence_id,
+                                    "recurrence_id": rule.id,
+                                    "account_id": rule.account_id,
+                                    "owner_operator_id": rule.owner_operator_id,
+                                    "period_start": item.period_start,
+                                    "scheduled_date": item.scheduled_date,
+                                    "rule_version": rule.version,
+                                    "result_effect": rule.result_effect.value,
+                                    "currency": rule.expected.currency,
+                                    "expected_amount": rule.expected.amount,
+                                    "description": rule.description,
+                                    "status": FinancialOccurrenceStatus.PENDING.value,
+                                    "created_at": func.transaction_timestamp(),
+                                    "updated_at": func.transaction_timestamp(),
+                                }
+                                for item in due
+                            ]
+                        )
+                        .on_conflict_do_nothing(
+                            index_elements=[
+                                occurrences.c.recurrence_id,
+                                occurrences.c.period_start,
+                            ],
+                            index_where=text("status <> 'SUPERSEDED'"),
+                        )
+                        .returning(occurrences.c.id)
+                    )
+                    created = len(inserted.all())
+                live = _select_occurrences(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    window=window,
+                    recurrence_id=rule.id,
+                    status=None,
+                )
+                return FinancialRecurrenceGenerationResult(created, live)
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except IntegrityError:
+            raise FinancialRecurrenceConflictError("recurrence conflict") from None
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "occurrences could not be persisted"
+            ) from None
+
+    def list_occurrences(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        window: FinancialRecurrenceWindow,
+        recurrence_id: UUID | None = None,
+        status: FinancialOccurrenceStatus | None = None,
+    ) -> tuple[FinancialRecurrenceOccurrenceRecord, ...]:
+        """Visible occurrences of a bounded month window.
+
+        SUPERSEDED rows are history and only appear when asked for by status.
+        """
+        _require_scope(installation_id, residence_id, operator_id)
+        if not isinstance(window, FinancialRecurrenceWindow):
+            raise TypeError("window must be FinancialRecurrenceWindow")
+        if window.months > RECURRENCE_WINDOW_MAX_MONTHS:
+            raise FinancialRecurrenceInvalidShapeError(
+                "occurrence window exceeds the allowed number of months"
+            )
+        if recurrence_id is not None:
+            validate_financial_resource_id(recurrence_id)
+        if status is not None and not isinstance(status, FinancialOccurrenceStatus):
+            raise TypeError("status must be FinancialOccurrenceStatus")
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                if (
+                    recurrence_id is not None
+                    and _visible_row(
+                        connection, installation_id, residence_id, recurrence_id
+                    )
+                    is None
+                ):
+                    raise FinancialRecurrenceNotFoundError("recurrence was not found")
+                return _select_occurrences(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    window=window,
+                    recurrence_id=recurrence_id,
+                    status=status,
+                )
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "occurrences could not be read"
+            ) from None
+
+    def get_occurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        occurrence_id: UUID,
+    ) -> FinancialRecurrenceOccurrenceRecord:
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(occurrence_id)
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                row = _visible_occurrence_row(
+                    connection, installation_id, residence_id, occurrence_id
+                )
+                if row is None:
+                    raise FinancialRecurrenceOccurrenceNotFoundError(
+                        "recurrence occurrence was not found"
+                    )
+                return _load_occurrences(connection, [row])[0]
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "occurrence could not be read"
+            ) from None
+
+    def skip_occurrence(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        occurrence_id: UUID,
+    ) -> FinancialRecurrenceOccurrenceRecord:
+        """PENDING -> SKIPPED. Idempotent; REALIZED and SUPERSEDED fail closed."""
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(occurrence_id)
+        occurrences = financial_recurrence_occurrences
+        try:
+            with self._engine.begin() as connection:
+                _prepare(connection, installation_id, residence_id, operator_id)
+                current = _locked_owned_occurrence(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    operator_id=operator_id,
+                    occurrence_id=occurrence_id,
+                )
+                status = FinancialOccurrenceStatus(current["status"])
+                if status is FinancialOccurrenceStatus.SKIPPED:
+                    return _load_occurrences(connection, [current])[0]
+                if not can_transition_occurrence(
+                    status, FinancialOccurrenceStatus.SKIPPED
+                ):
+                    raise FinancialRecurrenceOccurrenceStateError(
+                        "recurrence occurrence cannot be skipped"
+                    )
+                updated = (
+                    connection.execute(
+                        update(occurrences)
+                        .where(
+                            occurrences.c.id == occurrence_id,
+                            occurrences.c.status
+                            == FinancialOccurrenceStatus.PENDING.value,
+                        )
+                        .values(
+                            status=FinancialOccurrenceStatus.SKIPPED.value,
+                            skipped_at=func.transaction_timestamp(),
+                            updated_at=func.transaction_timestamp(),
+                        )
+                        .returning(*occurrences.c)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
+                if updated is None:
+                    raise FinancialRecurrenceOccurrenceStateError(
+                        "recurrence occurrence cannot be skipped"
+                    )
+                return _load_occurrences(connection, [updated])[0]
+        except FinancialMovementAccessError:
+            raise FinancialRecurrenceAccessError("recurrence access denied") from None
+        except FinancialRecurrencePersistenceError:
+            raise
+        except IntegrityError:
+            raise FinancialRecurrenceConflictError("recurrence conflict") from None
+        except DBAPIError:
+            raise FinancialRecurrencePersistenceError(
+                "occurrence could not be persisted"
             ) from None
 
 
@@ -468,6 +835,182 @@ def _visible_row(
     return connection.execute(statement).mappings().one_or_none()
 
 
+def _locked_owned_rule(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    operator_id: UUID,
+    recurrence_id: UUID,
+) -> RowMapping:
+    """Visible -> owned -> locked. Missing and invisible are the same error."""
+    visible = _visible_row(connection, installation_id, residence_id, recurrence_id)
+    if visible is None:
+        raise FinancialRecurrenceNotFoundError("recurrence was not found")
+    if visible["owner_operator_id"] != operator_id:
+        raise FinancialRecurrenceNotEditableError("recurrence is read-only")
+    locked = _visible_row(
+        connection, installation_id, residence_id, recurrence_id, lock=True
+    )
+    if locked is None:
+        raise FinancialRecurrenceNotFoundError("recurrence was not found")
+    return locked
+
+
+def _visible_occurrence_row(
+    connection: Connection,
+    installation_id: UUID,
+    residence_id: UUID,
+    occurrence_id: UUID,
+    *,
+    lock: bool = False,
+) -> RowMapping | None:
+    occurrences = financial_recurrence_occurrences
+    statement = select(occurrences).where(
+        occurrences.c.id == occurrence_id,
+        occurrences.c.installation_id == installation_id,
+        occurrences.c.residence_id == residence_id,
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return connection.execute(statement).mappings().one_or_none()
+
+
+def _locked_owned_occurrence(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    operator_id: UUID,
+    occurrence_id: UUID,
+) -> RowMapping:
+    visible = _visible_occurrence_row(
+        connection, installation_id, residence_id, occurrence_id
+    )
+    if visible is None:
+        raise FinancialRecurrenceOccurrenceNotFoundError(
+            "recurrence occurrence was not found"
+        )
+    if visible["owner_operator_id"] != operator_id:
+        raise FinancialRecurrenceNotEditableError("recurrence occurrence is read-only")
+    locked = _visible_occurrence_row(
+        connection, installation_id, residence_id, occurrence_id, lock=True
+    )
+    if locked is None:
+        raise FinancialRecurrenceOccurrenceNotFoundError(
+            "recurrence occurrence was not found"
+        )
+    return locked
+
+
+def _select_occurrences(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    window: FinancialRecurrenceWindow,
+    recurrence_id: UUID | None,
+    status: FinancialOccurrenceStatus | None,
+) -> tuple[FinancialRecurrenceOccurrenceRecord, ...]:
+    occurrences = financial_recurrence_occurrences
+    statement = select(occurrences).where(
+        occurrences.c.installation_id == installation_id,
+        occurrences.c.residence_id == residence_id,
+        occurrences.c.period_start >= window.from_period,
+        occurrences.c.period_start <= window.through_period,
+    )
+    if recurrence_id is not None:
+        statement = statement.where(occurrences.c.recurrence_id == recurrence_id)
+    if status is None:
+        statement = statement.where(
+            occurrences.c.status != FinancialOccurrenceStatus.SUPERSEDED.value
+        )
+    else:
+        statement = statement.where(occurrences.c.status == status.value)
+    rows = (
+        connection.execute(
+            statement.order_by(
+                occurrences.c.period_start,
+                occurrences.c.scheduled_date,
+                occurrences.c.recurrence_id,
+                occurrences.c.created_at,
+                occurrences.c.id,
+            ).limit(RECURRENCE_OCCURRENCE_LIST_MAX)
+        )
+        .mappings()
+        .all()
+    )
+    return _load_occurrences(connection, rows)
+
+
+def _load_occurrences(
+    connection: Connection, rows: Sequence[RowMapping]
+) -> tuple[FinancialRecurrenceOccurrenceRecord, ...]:
+    """Occurrences with the realized side read from the linked Movement.
+
+    Two statements for any number of rows: the linked Movements and the ids among
+    them that have been reversed. The state of the link is *derived*; nothing here
+    reopens or rewrites an occurrence.
+    """
+    movement_ids = [
+        row["movement_id"] for row in rows if row["movement_id"] is not None
+    ]
+    movements: dict[UUID, RowMapping] = {}
+    reversed_ids: set[UUID] = set()
+    if movement_ids:
+        movements = {
+            row["id"]: row
+            for row in connection.execute(
+                select(financial_movements).where(
+                    financial_movements.c.id.in_(movement_ids)
+                )
+            )
+            .mappings()
+            .all()
+        }
+        reversed_ids = set(
+            connection.scalars(
+                select(financial_movements.c.reversal_of_id).where(
+                    financial_movements.c.reversal_of_id.in_(movement_ids)
+                )
+            ).all()
+        )
+    return tuple(
+        _occurrence_record(row, _realization(row, movements, reversed_ids))
+        for row in rows
+    )
+
+
+def _realization(
+    row: RowMapping, movements: dict[UUID, RowMapping], reversed_ids: set[UUID]
+) -> FinancialRecurrenceRealization | None:
+    movement_id = row["movement_id"]
+    if movement_id is None:
+        return None
+    movement = movements.get(movement_id)
+    if movement is None:
+        raise FinancialRecurrencePersistenceError(
+            "recurrence occurrence state is invalid"
+        )
+    try:
+        return FinancialRecurrenceRealization(
+            movement_id=movement_id,
+            actual=Money(abs(Decimal(movement["amount"])), movement["currency"]),
+            effective_date=movement["effective_date"],
+            competence_date=movement["competence_date"],
+            realized_at=row["realized_at"],
+            movement_state=(
+                FinancialOccurrenceMovementState.REVERSED
+                if movement_id in reversed_ids
+                else FinancialOccurrenceMovementState.ACTIVE
+            ),
+        )
+    except (KeyError, TypeError, ValueError):
+        raise FinancialRecurrencePersistenceError(
+            "recurrence occurrence state is invalid"
+        ) from None
+
+
 def _supersede_stale_future_pending(
     connection: Connection,
     *,
@@ -540,8 +1083,9 @@ def _record(row: RowMapping) -> FinancialRecurrenceRecord:
         ) from None
 
 
-def _occurrence_record(row: RowMapping) -> FinancialRecurrenceOccurrenceRecord:
-    """Occurrence without realization detail (callers only need PENDING rows)."""
+def _occurrence_record(
+    row: RowMapping, realization: FinancialRecurrenceRealization | None = None
+) -> FinancialRecurrenceOccurrenceRecord:
     try:
         return FinancialRecurrenceOccurrenceRecord(
             id=row["id"],
@@ -558,6 +1102,7 @@ def _occurrence_record(row: RowMapping) -> FinancialRecurrenceOccurrenceRecord:
             status=FinancialOccurrenceStatus(row["status"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            realization=realization,
         )
     except (KeyError, TypeError, ValueError):
         raise FinancialRecurrencePersistenceError(
@@ -572,6 +1117,9 @@ __all__ = [
     "FinancialRecurrenceInvalidShapeError",
     "FinancialRecurrenceNotEditableError",
     "FinancialRecurrenceNotFoundError",
+    "FinancialRecurrenceOccurrenceNotFoundError",
+    "FinancialRecurrenceOccurrenceStateError",
+    "FinancialRecurrencePausedError",
     "FinancialRecurrencePersistenceError",
     "FinancialRecurrenceStore",
     "FinancialRecurrenceVersionConflictError",

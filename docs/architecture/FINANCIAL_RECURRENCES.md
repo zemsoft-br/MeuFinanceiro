@@ -1,6 +1,6 @@
 # Recorrências mensais manuais — regra, ocorrência e realização explícita
 
-Status: **em implementação (issue #254)**. Batch 1 de 4 concluído: domínio, ADR, schema, RLS e versionamento. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **em implementação (issue #254)**. Batches 1 e 2 de 4 concluídos: domínio, ADR, schema, RLS, versionamento, geração, skip, pause/resume, serviço e API. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
 
 Normativo: ADR-0027. Este documento descreve o contrato, o schema e a API. Nenhuma regra financeira anterior foi alterada.
 
@@ -25,11 +25,30 @@ Garantias no banco, além do store:
 
 Função pura de `date` (`monthly_occurrence_date`): dia 31 → 28/29 em fevereiro, 30 em abril; ano bissexto e séculos (2100 não é bissexto, 2000 é). `start_date` e `end_date` são inclusivos e comparam com a **data agendada**. Janela de geração: no máximo 12 meses por chamada e nunca além de 24 meses depois do mês de hoje (relógio injetado). Janela de leitura: no máximo 12 meses.
 
+## API (batch 2)
+
+Todas sob `/api/v1/finance`, autenticadas, na residência primária da sessão. Sem `DELETE` nem `PATCH`. Query params desconhecidos são `422`.
+
+| Método e rota | Efeito |
+|---|---|
+| `GET /recurrences[?status=ACTIVE\|PAUSED]` | regras visíveis (audiência da conta), teto de 200 |
+| `POST /recurrences` | cria; `idempotencyKey` obrigatório, replay-safe; conta própria, ativa e na moeda |
+| `GET /recurrences/{id}` | uma regra (`canEdit` decidido no servidor) |
+| `PUT /recurrences/{id}` | edita descrição, valor esperado, dia e término com `expectedVersion`; resposta traz `supersededCount` |
+| `POST /recurrences/{id}/pause` · `resume` | idempotentes por estado; pausar não altera ocorrências; retomar não gera |
+| `POST /recurrences/{id}/occurrences/generate` | `{fromPeriod, throughPeriod}` (`YYYY-MM`), no máximo 12 meses e 24 meses de horizonte; devolve `createdCount` e as ocorrências vivas da janela |
+| `GET /recurrence-occurrences?fromPeriod&throughPeriod[&recurrenceId][&status]` | janela de até 12 meses; `SUPERSEDED` só com `status=SUPERSEDED` |
+| `POST /recurrence-occurrences/{id}/skip` | `PENDING → SKIPPED`, idempotente |
+
+Erros públicos e sanitizados: `404` recurso/conta inexistente ou invisível (indistinguíveis), `403` sem permissão de escrita, `409` versão antiga / regra pausada / estado da ocorrência / conflito de idempotência, `422` pedido inválido, `503` indisponível. Nenhuma resposta vaza SQL, nome de constraint ou identificadores.
+
+O relógio é injetado no serviço (`clock: Callable[[], date]`); a composição da aplicação usa `date.today`. Ele define o horizonte da geração e o limite "futuro" da edição, nada mais.
+
 ## Estado do trabalho
 
 | Batch | Escopo | Estado |
 |---|---|---|
 | 1 | domínio, ADR-0027, schema, RLS, versionamento, criação/leitura/edição CAS com `SUPERSEDED` | concluído |
-| 2 | geração, skip, pause/resume, serviço e API | pendente |
+| 2 | geração, skip, pause/resume, serviço e API | concluído |
 | 3 | realização atômica ligada ao Movement e concorrência | pendente |
 | 4 | Flutter, smoke, desempenho, docs e gates | pendente |

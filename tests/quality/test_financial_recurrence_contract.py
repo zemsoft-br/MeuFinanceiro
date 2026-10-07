@@ -15,6 +15,9 @@ MIGRATION = (PERSISTENCE / "migrations/versions/0025_monthly_recurrences.py").re
 MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
     encoding="utf-8"
 )
+API = ROOT / "apps/api/app"
+ROUTE = (API / "api/routes/finance_recurrences.py").read_text(encoding="utf-8")
+SERVICE = (API / "services/financial_recurrences.py").read_text(encoding="utf-8")
 ADR = (ROOT / "docs/adr/0027-manual-monthly-recurrences.md").read_text(encoding="utf-8")
 DOC = (ROOT / "docs/architecture/FINANCIAL_RECURRENCES.md").read_text(encoding="utf-8")
 
@@ -118,3 +121,48 @@ def test_adr_and_architecture_document_the_decision() -> None:
     assert "FINANCIAL_RECURRENCES.md" in ADR
     adr_index = (ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
     assert "0027-manual-monthly-recurrences.md" in adr_index
+
+
+def test_the_route_has_exactly_the_recurrence_endpoints_and_no_delete_or_patch() -> (
+    None
+):
+    routes = re.findall(r'^@router\.(\w+)\(\s*"([^"]+)"', ROUTE, re.M)
+    assert sorted(routes) == sorted(
+        [
+            ("get", "/recurrences"),
+            ("post", "/recurrences"),
+            ("get", "/recurrences/{recurrence_id}"),
+            ("put", "/recurrences/{recurrence_id}"),
+            ("post", "/recurrences/{recurrence_id}/pause"),
+            ("post", "/recurrences/{recurrence_id}/resume"),
+            ("post", "/recurrences/{recurrence_id}/occurrences/generate"),
+            ("get", "/recurrence-occurrences"),
+            ("post", "/recurrence-occurrences/{occurrence_id}/skip"),
+        ]
+    )
+    assert "@router.delete" not in ROUTE and "@router.patch" not in ROUTE
+
+
+def test_service_and_route_own_no_calendar_or_financial_arithmetic() -> None:
+    for source in (SERVICE, ROUTE):
+        code = _code(source)
+        for forbidden in (
+            "float(",
+            "financial_movements",
+            "monthrange",
+            "timedelta",
+            "quantize(",
+            "datetime.now",
+        ):
+            assert forbidden not in code, forbidden
+    # The only clock is injected; the default lives in the composition root.
+    assert "clock: Callable[[], date]" in _code(SERVICE)
+    assert "date.today" not in _code(SERVICE) and "date.today" not in _code(ROUTE)
+    assert "generation_window(" in _code(SERVICE)
+
+
+def test_the_store_never_reads_a_clock_and_generation_is_replay_safe() -> None:
+    code = _code(STORE)
+    assert "index_where=text(\"status <> 'SUPERSEDED'\")" in code
+    assert ".with_for_update()" in code
+    assert "FinancialRecurrencePausedError" in code

@@ -582,6 +582,29 @@ class FinancialRecurrenceOccurrenceRecord:
         )
 
 
+@dataclass(frozen=True, slots=True, repr=False)
+class FinancialRecurrenceGenerationResult:
+    """What one explicit generation call did and the live occurrences it covers."""
+
+    created_count: int
+    occurrences: tuple[FinancialRecurrenceOccurrenceRecord, ...]
+
+    def __post_init__(self) -> None:
+        if isinstance(self.created_count, bool) or not isinstance(
+            self.created_count, int
+        ):
+            raise TypeError("created_count must be an integer")
+        if not 0 <= self.created_count <= len(self.occurrences):
+            raise ValueError("created_count must fit the returned occurrences")
+
+    def __repr__(self) -> str:
+        return (
+            "FinancialRecurrenceGenerationResult("
+            f"created_count={self.created_count}, "
+            f"occurrences={len(self.occurrences)})"
+        )
+
+
 def is_occurrence_compatible_with_revision(
     *,
     occurrence: FinancialRecurrenceOccurrenceRecord,
@@ -690,6 +713,7 @@ __all__ = [
     "FinancialRecurrenceDraft",
     "FinancialRecurrenceEditOutcome",
     "FinancialRecurrenceFrequency",
+    "FinancialRecurrenceGenerationResult",
     "FinancialRecurrenceOccurrenceRecord",
     "FinancialRecurrenceRealization",
     "FinancialRecurrenceRealizationDraft",
