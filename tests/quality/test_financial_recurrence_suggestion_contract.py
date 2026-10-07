@@ -22,6 +22,14 @@ RECURRENCE_STORE = (PERSISTENCE / "financial_recurrence_store.py").read_text(
 MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
     encoding="utf-8"
 )
+API = ROOT / "apps/api/app"
+ROUTE = (API / "api/routes/finance_recurrence_suggestions.py").read_text(
+    encoding="utf-8"
+)
+SERVICE = (API / "services/financial_recurrence_suggestions.py").read_text(
+    encoding="utf-8"
+)
+MAIN = (API / "main.py").read_text(encoding="utf-8")
 ADR = (ROOT / "docs/adr/0028-assisted-recurrence-suggestions.md").read_text(
     encoding="utf-8"
 )
@@ -171,3 +179,74 @@ def test_the_suggestion_store_never_writes_the_ledger_or_an_occurrence() -> None
     # Reading goes through the detector; commands re-run it for the caller.
     assert code.count("self._candidate(") >= 2
     assert "detect_recurrence_suggestions(" in code
+
+
+def test_the_route_has_exactly_the_three_suggestion_endpoints() -> None:
+    routes = re.findall(r'^@router\.(\w+)\(\s*"([^"]+)"', ROUTE, re.M)
+    assert sorted(routes) == sorted(
+        [
+            ("get", "/recurrence-suggestions"),
+            ("post", "/recurrence-suggestions/{fingerprint}/dismiss"),
+            ("post", "/recurrence-suggestions/{fingerprint}/accept"),
+        ]
+    )
+    for verb in ("put", "patch", "delete"):
+        assert f"@router.{verb}" not in ROUTE
+    assert "finance_recurrence_suggestions_router" in MAIN
+    assert "FinancialRecurrenceSuggestionService(" in MAIN
+
+
+def test_a_read_never_reaches_a_write_and_nothing_is_automatic() -> None:
+    full_service = _code(SERVICE)
+    service = full_service[
+        full_service.index("class FinancialRecurrenceSuggestionService") :
+    ]
+    route = _code(ROUTE)
+    listing = service[
+        service.index("def list_suggestions") : service.index("def dismiss")
+    ]
+    assert "self._store.list_suggestions(" in listing
+    for forbidden in ("_store.dismiss(", "_store.accept(", "create_"):
+        assert forbidden not in listing, forbidden
+    get = route[
+        route.index("def list_recurrence_suggestions") : route.index(
+            "def dismiss_recurrence_suggestion"
+        )
+    ]
+    for forbidden in (".dismiss(", ".accept("):
+        assert forbidden not in get, forbidden
+    for source in (service, route):
+        for forbidden in (
+            "float(",
+            "financial_movements",
+            "monthrange",
+            "timedelta",
+            "datetime.now",
+            "date.today",
+            "background",
+            "scheduler",
+            "Thread(",
+        ):
+            assert forbidden not in source, forbidden
+    # The only clock is injected; the default lives in the composition root.
+    assert "clock: Callable[[], date]" in service
+
+
+def test_the_client_cannot_widen_the_accepted_recurrence() -> None:
+    body = ROUTE[
+        ROUTE.index("class SuggestionAcceptRequest") : ROUTE.index(
+            "class SuggestionEvidenceResponse"
+        )
+    ]
+    assert 'extra="forbid"' in body
+    fields = set(re.findall(r"^    (\w+): ", body, re.M))
+    assert fields == {
+        "idempotency_key",
+        "description",
+        "expected_amount",
+        "start_date",
+        "day_of_month",
+        "end_date",
+    }
+    for forbidden in ("account", "currency", "effect", "owner", "frequency"):
+        assert forbidden not in "".join(sorted(fields)), forbidden

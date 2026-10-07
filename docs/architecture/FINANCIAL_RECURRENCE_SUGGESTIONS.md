@@ -1,6 +1,6 @@
 # Sugestões assistidas de recorrência — padrão detectado, confirmação explícita
 
-Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; batches 1 (domínio, detector puro, fingerprint e ADR) e 2 (decisões persistidas, RLS e store) concluídos. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; batches 1 (domínio, detector puro, fingerprint e ADR), 2 (decisões persistidas, RLS e store) e 3 (API) concluídos. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
 
 Normativo: ADR-0028 (e ADR-0027 para a recorrência criada). Este documento descreve o contrato do detector, do fingerprint e das decisões. Nenhuma regra financeira anterior foi alterada.
 
@@ -59,6 +59,38 @@ Garantias no banco:
 - **Aceite (`accept`)**, tudo em uma transação: contexto e membership → replay de aceite anterior (mesma chave e mesmo material devolve a mesma recorrência, mesmo que a sugestão já tenha sumido) → decisão prévia → **reexecução do detector** → prova de dono → writer da #254 (`create_recurrence_in_transaction`, extraído de `create_recurrence` sem mudar seu comportamento) → decisão `ACCEPTED`. Qualquer falha desfaz recorrência, revisão 1 e decisão. Zero Movement e zero ocorrência.
 - Erros próprios (todos sanitizados): `NotAvailable` (stale, forjado, já decidido, conta invisível ou outra residência, indistinguíveis), `NotEditable` (visível, mas só o dono aceita), `Conflict` (decisão incompatível), `Limit`; erros do writer da #254 passam como estão.
 
+## API (batch 3)
+
+Todas sob `/api/v1/finance`, autenticadas, na residência primária da sessão. Sem `PUT`, `PATCH` nem `DELETE`. Query params são `422`. O relógio é injetado no serviço (`clock`); a composição usa `date.today`.
+
+| Método e rota | Efeito |
+|---|---|
+| `GET /recurrence-suggestions` | sugestões derivadas do operador; **nunca escreve**; `windowFrom`/`windowThrough` informam a janela de 12 meses |
+| `POST /recurrence-suggestions/{fingerprint}/dismiss` | dispensa pessoal, idempotente (`200`, `created` diz se foi nova); sem corpo |
+| `POST /recurrence-suggestions/{fingerprint}/accept` | cria **uma** recorrência canônica e a proveniência (`201`); corpo `{idempotencyKey, description, expectedAmount, startDate, dayOfMonth, endDate?}` |
+
+Cada sugestão traz `fingerprint`, `accountId`, `description`, `normalizedDescription`, `currency`, `evidence` (`movementId`, `effectiveDate`, `amount`), `movementIds`, `observedDates`, `observedAmounts`, `suggestedDayOfMonth`, `suggestedExpectedAmount`, `amountBehavior` (`FIXED`/`VARIABLE`), `minAmount`, `maxAmount`, `lastAmount`, `reasonCodes` e `canAccept` (decidido no servidor: só o dono da conta aceita). Dinheiro é texto decimal.
+
+O corpo do aceite tem `extra="forbid"`: **conta, efeito e moeda não existem no pedido**; vêm da sugestão que o servidor recalcula. Uma revisão malformada (descrição vazia, valor não positivo, dia fora de 1..31, término antes do início, chave inválida) é `422` e nada é gravado.
+
+Erros públicos e sanitizados (sem SQL, constraint, fingerprint ou identificador):
+
+| Situação | Resposta |
+|---|---|
+| sugestão que o operador não recebe agora (obsoleta, forjada, já decidida, conta invisível, outra residência) | `409` "no longer available": o cliente atualiza e decide de novo |
+| decisão incompatível já gravada (aceitar o dispensado, dispensar o aceito, aceitar de novo com outra chave) | `409` conflito com decisão registrada |
+| mesma chave com outro material | `409` conflito de idempotência |
+| visível, mas não é dono da conta | `403` |
+| fingerprint malformado, corpo inválido | `422` |
+| varredura ou resultado no teto | `422` limite |
+| sem membership | `403`; sem sessão `401`; indisponível `503` |
+
+Retry idêntico do aceite (mesma chave e mesmo material) devolve `201` com a mesma recorrência e `decision.created = false`. Aceitações concorrentes, com a mesma chave ou com chaves diferentes, resultam em exatamente **uma** recorrência e **uma** decisão `ACCEPTED`; as demais recebem `409`.
+
+## Smoke vertical
+
+Provado por HTTP contra PostgreSQL 18.4 com role não-superusuário e RLS forçada (`test_smoke_the_issue_vertical_streaming_over_http`): *Streaming* de 39,90 em ago/set/out, mesma conta, uma por mês → `GET` sugere com evidências e motivos, saldo e extrato **inalterados** → o membro dispensa e a sugestão some só para ele (o dono ainda vê) → o dono revisa valor e dia e confirma → **exatamente 1** recorrência e a proveniência `ACCEPTED`, **zero** ocorrência e zero Movement novo, saldo e extrato inalterados → retry com a mesma chave não duplica, outra chave é `409` → a sugestão deixa de aparecer para todos.
+
 ## Limites
 
 Janela fixa de 12 meses; a varredura lê no máximo `SUGGESTION_SCAN_MAX` = 20 000 Movements e a resposta traz no máximo `SUGGESTION_LIST_MAX` = 100 sugestões; ultrapassar qualquer um é erro explícito (nunca truncamento silencioso). Custo constante em statements.
@@ -81,5 +113,5 @@ Criação automática, detecção em segundo plano, ML/LLM/fuzzy, enriquecimento
 |---|---|---|
 | 1 | domínio, detector puro, fingerprint, normalização e ADR-0028 | concluído |
 | 2 | persistência de decisões, RLS, store do detector e writer transacional da recorrência | concluído |
-| 3 | API accept/dismiss, writer transacional da recorrência e concorrência | pendente |
+| 3 | API accept/dismiss e concorrência (o writer transacional veio no batch 2) | concluído |
 | 4 | Flutter, desempenho, smoke, docs e gates | pendente |
