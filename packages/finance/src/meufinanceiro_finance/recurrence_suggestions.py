@@ -42,6 +42,9 @@ from meufinanceiro_finance.money import Money, validate_currency_code
 from meufinanceiro_finance.movements import FinancialResultEffect
 from meufinanceiro_finance.recurrences import (
     FinancialRecurrenceDraft,
+    _clean_description,
+    _require_positive_money,
+    _validate_rule_shape,
     add_months,
     month_start,
     validate_day_of_month,
@@ -520,6 +523,17 @@ class FinancialRecurrenceSuggestionAcceptance:
     day_of_month: int
     end_date: date | None = None
 
+    def __post_init__(self) -> None:
+        # Validated on construction, so a malformed review is refused at the edge
+        # and never reaches a transaction (the same shape rules as a draft).
+        object.__setattr__(self, "description", _clean_description(self.description))
+        _require_positive_money(Money(self.expected_amount, "XXX"), "expected_amount")
+        _validate_rule_shape(
+            start_date=self.start_date,
+            day_of_month=self.day_of_month,
+            end_date=self.end_date,
+        )
+
     def __repr__(self) -> str:
         return "FinancialRecurrenceSuggestionAcceptance(<fields-redacted>)"
 
@@ -529,14 +543,61 @@ class FinancialRecurrenceSuggestionAcceptance:
         """Build the canonical #254 draft; the suggestion fixes what the user cannot."""
         if not isinstance(suggestion, FinancialRecurrenceSuggestion):
             raise TypeError("suggestion must be FinancialRecurrenceSuggestion")
+        return self.to_draft_for(
+            account_id=suggestion.account_id, currency=suggestion.currency
+        )
+
+    def to_draft_for(
+        self, *, account_id: UUID, currency: str
+    ) -> FinancialRecurrenceDraft:
+        """Same draft for an already stored account/currency (idempotent replay)."""
         return FinancialRecurrenceDraft(
-            account_id=suggestion.account_id,
+            account_id=account_id,
             description=self.description,
             result_effect=FinancialResultEffect.EXPENSE,
-            expected=Money(self.expected_amount, suggestion.currency),
+            expected=Money(self.expected_amount, currency),
             start_date=self.start_date,
             day_of_month=self.day_of_month,
             end_date=self.end_date,
+        )
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class FinancialRecurrenceSuggestionDecisionRecord:
+    """One persisted, append-only decision about a suggestion fingerprint."""
+
+    id: UUID
+    account_id: UUID
+    operator_id: UUID
+    currency: str
+    fingerprint: str
+    decision: FinancialRecurrenceSuggestionDecision
+    recurrence_id: UUID | None
+    evidence_digest: str
+    decided_at: datetime
+
+    def __post_init__(self) -> None:
+        validate_financial_resource_id(self.id)
+        validate_financial_resource_id(self.account_id)
+        if not isinstance(self.operator_id, UUID):
+            raise TypeError("operator_id must be UUID")
+        validate_currency_code(self.currency)
+        validate_recurrence_suggestion_fingerprint(self.fingerprint)
+        if not isinstance(self.decision, FinancialRecurrenceSuggestionDecision):
+            raise TypeError("decision must be FinancialRecurrenceSuggestionDecision")
+        accepted = self.decision is FinancialRecurrenceSuggestionDecision.ACCEPTED
+        if accepted != (self.recurrence_id is not None):
+            raise ValueError("only an ACCEPTED decision carries a recurrence")
+        if self.recurrence_id is not None:
+            validate_financial_resource_id(self.recurrence_id)
+        validate_recurrence_suggestion_fingerprint(self.evidence_digest)
+        if not isinstance(self.decided_at, datetime) or self.decided_at.tzinfo is None:
+            raise ValueError("decided_at must be timezone-aware")
+
+    def __repr__(self) -> str:
+        return (
+            "FinancialRecurrenceSuggestionDecisionRecord("
+            f"decision={self.decision.value!r}, <identities-redacted>)"
         )
 
 
@@ -553,6 +614,7 @@ __all__ = [
     "FinancialRecurrenceSuggestionAcceptance",
     "FinancialRecurrenceSuggestionAmountBehavior",
     "FinancialRecurrenceSuggestionDecision",
+    "FinancialRecurrenceSuggestionDecisionRecord",
     "FinancialRecurrenceSuggestionEvidence",
     "FinancialRecurrenceSuggestionReason",
     "detect_recurrence_suggestions",

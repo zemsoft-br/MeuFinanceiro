@@ -1,6 +1,6 @@
 # Sugestões assistidas de recorrência — padrão detectado, confirmação explícita
 
-Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; batch 1 (domínio, detector puro, fingerprint e ADR) concluído. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; batches 1 (domínio, detector puro, fingerprint e ADR) e 2 (decisões persistidas, RLS e store) concluídos. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
 
 Normativo: ADR-0028 (e ADR-0027 para a recorrência criada). Este documento descreve o contrato do detector, do fingerprint e das decisões. Nenhuma regra financeira anterior foi alterada.
 
@@ -40,6 +40,25 @@ Uma lacuna, ou um mês com duas cobranças, **antes** da corrida só encerra a c
 
 `SHA-256` (hex minúsculo de 64 caracteres) com prefixo de tamanho sobre `meufinanceiro:recurrence-suggestion:v1`, instalação, residência, conta, `EXPENSE`, moeda e descrição normalizada. **Não inclui** IDs de Movement nem datas: o feedback sobre a mesma assinatura sobrevive a novas observações. **Não é resource ID e não prova acesso**; o servidor sempre reexecuta o detector para o operador e só age sobre um fingerprint que ele produz agora. Uma forma inválida é `422`; um fingerprint que o operador não produz (inexistente, forjado, de outra conta/residência ou de conta invisível) é o mesmo `404`.
 
+## Persistência (batch 2, migration `0027_recurrence_suggestions`)
+
+Uma sugestão **nunca** é gravada. O que persiste é a decisão explícita do usuário em `finance.recurrence_suggestion_decisions`: `id` (UUID v4), `installation_id`, `residence_id`, `account_id`, `operator_id`, `currency`, `fingerprint` (64 hex), `decision` (`ACCEPTED` | `DISMISSED`), `recurrence_id` (somente `ACCEPTED`), `evidence_digest` (SHA-256 do que foi mostrado) e `decided_at`. CHECK de forma: `(decision = 'ACCEPTED') = (recurrence_id IS NOT NULL)`. FKs compostas com a residência, a conta (moeda), a membership do operador e a recorrência. Único por `(instalação, operador, fingerprint)` e por `recurrence_id`.
+
+Garantias no banco:
+
+- **append-only:** o runtime tem `SELECT` e `INSERT`, sem `UPDATE`, `DELETE` nem `TRUNCATE`; um gatilho `BEFORE UPDATE` recusa qualquer alteração, inclusive do papel privilegiado;
+- **forma decidida pelo banco:** um gatilho `BEFORE INSERT` exige `decided_at` = instante da transação e, para `ACCEPTED`, uma recorrência **criada nesta mesma transação**, da mesma conta, moeda e `EXPENSE`, cujo dono é o operador da decisão: ninguém forja uma proveniência para uma recorrência antiga;
+- **RLS `ENABLE` + `FORCE`:** leitura exige o escopo da residência (instalação, residência, membership ativa), visibilidade da **conta** sob a RLS da conta (PERSONAL, SHARED com grant, HOUSEHOLD) e, para `DISMISSED`, ser o próprio autor; `ACCEPTED` é proveniência de uma regra compartilhada e é legível por toda a audiência da conta. Inserção exige o próprio operador e, para `ACCEPTED`, conta ativa do dono e regra do dono;
+- **unicidade como barreira de concorrência:** duas aceitações simultâneas não duplicam; a transação perdedora, inclusive a recorrência que ela inseriu, é desfeita;
+- índice parcial `ix_finance_movements_expense_scan (residence_id, effective_date) WHERE role = 'STANDARD' AND result_effect = 'EXPENSE'` serve a varredura do detector; `finance.movements` não ganha coluna nem ponteiro.
+
+## Store (`FinancialRecurrenceSuggestionStore`)
+
+- **Leitura (`list_suggestions`)**: papel de runtime com RLS forçada, então um Movement invisível ao operador nunca entra no agrupamento. Quatro statements fixos (contexto, membership, varredura, regras) mais **um** de decisões quando há sugestão, nunca por linha, conta ou regra. Falha explícita (`FinancialRecurrenceSuggestionLimitError`) se a varredura passa de `SUGGESTION_SCAN_MAX` ou o resultado de `SUGGESTION_LIST_MAX`. Nada é escrito.
+- **Dispensa (`dismiss`)**: idempotente (repetir devolve a decisão guardada), por operador, só para um fingerprint que o detector produz **agora** para ele; aceitar o que foi dispensado ou dispensar o que foi aceito é conflito.
+- **Aceite (`accept`)**, tudo em uma transação: contexto e membership → replay de aceite anterior (mesma chave e mesmo material devolve a mesma recorrência, mesmo que a sugestão já tenha sumido) → decisão prévia → **reexecução do detector** → prova de dono → writer da #254 (`create_recurrence_in_transaction`, extraído de `create_recurrence` sem mudar seu comportamento) → decisão `ACCEPTED`. Qualquer falha desfaz recorrência, revisão 1 e decisão. Zero Movement e zero ocorrência.
+- Erros próprios (todos sanitizados): `NotAvailable` (stale, forjado, já decidido, conta invisível ou outra residência, indistinguíveis), `NotEditable` (visível, mas só o dono aceita), `Conflict` (decisão incompatível), `Limit`; erros do writer da #254 passam como estão.
+
 ## Limites
 
 Janela fixa de 12 meses; a varredura lê no máximo `SUGGESTION_SCAN_MAX` = 20 000 Movements e a resposta traz no máximo `SUGGESTION_LIST_MAX` = 100 sugestões; ultrapassar qualquer um é erro explícito (nunca truncamento silencioso). Custo constante em statements.
@@ -61,6 +80,6 @@ Criação automática, detecção em segundo plano, ML/LLM/fuzzy, enriquecimento
 | Batch | Escopo | Estado |
 |---|---|---|
 | 1 | domínio, detector puro, fingerprint, normalização e ADR-0028 | concluído |
-| 2 | persistência de decisões, RLS e store do detector | pendente |
+| 2 | persistência de decisões, RLS, store do detector e writer transacional da recorrência | concluído |
 | 3 | API accept/dismiss, writer transacional da recorrência e concorrência | pendente |
 | 4 | Flutter, desempenho, smoke, docs e gates | pendente |

@@ -183,5 +183,11 @@ Index(
         "role = 'STANDARD' AND result_effect IN ('INCOME', 'EXPENSE')"
     ),
 )
+Index(
+    "ix_finance_movements_expense_scan",
+    financial_movements.c.residence_id,
+    financial_movements.c.effective_date,
+    postgresql_where=text("role = 'STANDARD' AND result_effect = 'EXPENSE'"),
+)
 
 __all__ = ["financial_movements"]

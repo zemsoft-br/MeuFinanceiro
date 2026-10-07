@@ -153,80 +153,18 @@ class FinancialRecurrenceStore:
         if not isinstance(draft, FinancialRecurrenceDraft):
             raise TypeError("draft must be FinancialRecurrenceDraft")
 
-        request_digest = _create_digest(operator_id, draft)
-        rules = financial_recurrences
         try:
             with self._engine.begin() as connection:
                 _prepare(connection, installation_id, residence_id, operator_id)
-                existing = _by_idempotency(connection, installation_id, idempotency_key)
-                if existing is not None:
-                    return _replay(existing, request_digest)
-
-                visible_rules = connection.scalar(
-                    select(func.count())
-                    .select_from(rules)
-                    .where(
-                        rules.c.installation_id == installation_id,
-                        rules.c.residence_id == residence_id,
-                    )
-                )
-                if (visible_rules or 0) >= RECURRENCE_LIST_MAX:
-                    raise FinancialRecurrenceLimitError("recurrence limit reached")
-                account_currency = _owned_active_account(
+                record, _created = create_recurrence_in_transaction(
                     connection,
                     installation_id=installation_id,
                     residence_id=residence_id,
                     operator_id=operator_id,
-                    account_id=draft.account_id,
+                    idempotency_key=idempotency_key,
+                    draft=draft,
                 )
-                if account_currency != draft.expected.currency:
-                    raise FinancialRecurrenceAccountNotFoundError(
-                        "financial account was not found"
-                    )
-                inserted = (
-                    connection.execute(
-                        pg_insert(rules)
-                        .values(
-                            id=new_financial_resource_id(),
-                            installation_id=installation_id,
-                            residence_id=residence_id,
-                            account_id=draft.account_id,
-                            owner_operator_id=operator_id,
-                            description=draft.description,
-                            result_effect=draft.result_effect.value,
-                            currency=draft.expected.currency,
-                            expected_amount=draft.expected.amount,
-                            frequency=FinancialRecurrenceFrequency.MONTHLY.value,
-                            start_date=draft.start_date,
-                            day_of_month=draft.day_of_month,
-                            end_date=draft.end_date,
-                            status=FinancialRecurrenceStatus.ACTIVE.value,
-                            version=1,
-                            idempotency_key=idempotency_key,
-                            request_digest=request_digest,
-                            updated_by_operator_id=operator_id,
-                            created_at=func.transaction_timestamp(),
-                            updated_at=func.transaction_timestamp(),
-                        )
-                        .on_conflict_do_nothing(
-                            index_elements=[
-                                rules.c.installation_id,
-                                rules.c.idempotency_key,
-                            ]
-                        )
-                        .returning(*rules.c)
-                    )
-                    .mappings()
-                    .one_or_none()
-                )
-                if inserted is None:
-                    raced = _by_idempotency(
-                        connection, installation_id, idempotency_key
-                    )
-                    if raced is not None:
-                        return _replay(raced, request_digest)
-                    raise FinancialRecurrenceConflictError("recurrence conflict")
-                return _record(inserted)
+                return record
         except FinancialMovementAccessError:
             raise FinancialRecurrenceAccessError("recurrence access denied") from None
         except FinancialRecurrencePersistenceError:
@@ -965,6 +903,92 @@ class FinancialRecurrenceStore:
             ) from None
 
 
+def create_recurrence_in_transaction(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    operator_id: UUID,
+    idempotency_key: UUID,
+    draft: FinancialRecurrenceDraft,
+) -> tuple[FinancialRecurrenceRecord, bool]:
+    """Canonical rule writer on the caller's transaction: ``(rule, created)``.
+
+    The caller has already set the session context and proved the active membership
+    (``_prepare``). A replay of the same key and material returns the stored rule
+    with ``created=False``; a key reused with other material is a conflict. The
+    database trigger records revision 1 in the very statement that stores the rule,
+    so a caller that shares this transaction (ADR-0028) is atomic with it.
+    """
+    request_digest = _create_digest(operator_id, draft)
+    rules = financial_recurrences
+    existing = _by_idempotency(connection, installation_id, idempotency_key)
+    if existing is not None:
+        return _replay(existing, request_digest), False
+
+    visible_rules = connection.scalar(
+        select(func.count())
+        .select_from(rules)
+        .where(
+            rules.c.installation_id == installation_id,
+            rules.c.residence_id == residence_id,
+        )
+    )
+    if (visible_rules or 0) >= RECURRENCE_LIST_MAX:
+        raise FinancialRecurrenceLimitError("recurrence limit reached")
+    account_currency = _owned_active_account(
+        connection,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=operator_id,
+        account_id=draft.account_id,
+    )
+    if account_currency != draft.expected.currency:
+        raise FinancialRecurrenceAccountNotFoundError("financial account was not found")
+    inserted = (
+        connection.execute(
+            pg_insert(rules)
+            .values(
+                id=new_financial_resource_id(),
+                installation_id=installation_id,
+                residence_id=residence_id,
+                account_id=draft.account_id,
+                owner_operator_id=operator_id,
+                description=draft.description,
+                result_effect=draft.result_effect.value,
+                currency=draft.expected.currency,
+                expected_amount=draft.expected.amount,
+                frequency=FinancialRecurrenceFrequency.MONTHLY.value,
+                start_date=draft.start_date,
+                day_of_month=draft.day_of_month,
+                end_date=draft.end_date,
+                status=FinancialRecurrenceStatus.ACTIVE.value,
+                version=1,
+                idempotency_key=idempotency_key,
+                request_digest=request_digest,
+                updated_by_operator_id=operator_id,
+                created_at=func.transaction_timestamp(),
+                updated_at=func.transaction_timestamp(),
+            )
+            .on_conflict_do_nothing(
+                index_elements=[
+                    rules.c.installation_id,
+                    rules.c.idempotency_key,
+                ]
+            )
+            .returning(*rules.c)
+        )
+        .mappings()
+        .one_or_none()
+    )
+    if inserted is None:
+        raced = _by_idempotency(connection, installation_id, idempotency_key)
+        if raced is not None:
+            return _replay(raced, request_digest), False
+        raise FinancialRecurrenceConflictError("recurrence conflict")
+    return _record(inserted), True
+
+
 def _require_scope(
     installation_id: UUID, residence_id: UUID, operator_id: UUID
 ) -> None:
@@ -1444,6 +1468,7 @@ def _occurrence_record(
 
 
 __all__ = [
+    "create_recurrence_in_transaction",
     "FinancialRecurrenceAccessError",
     "FinancialRecurrenceAccountNotFoundError",
     "FinancialRecurrenceBeforeOpeningBalanceError",

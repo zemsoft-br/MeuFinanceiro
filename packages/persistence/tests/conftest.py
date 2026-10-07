@@ -45,6 +45,9 @@ from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_revisions,
     financial_recurrences,
 )
+from meufinanceiro_persistence.financial_recurrence_suggestion_schema import (
+    financial_recurrence_suggestion_decisions,
+)
 from meufinanceiro_persistence.financial_opening_balance_schema import (
     financial_opening_balances,
 )
@@ -216,6 +219,7 @@ def create_canonical_residences(
 def clean_persistence(engine: Engine) -> Iterator[None]:
     with engine.begin() as connection:
         connection.execute(delete(financial_audit_events))
+        connection.execute(delete(financial_recurrence_suggestion_decisions))
         connection.execute(delete(financial_recurrence_occurrences))
         connection.execute(delete(financial_recurrence_revisions))
         connection.execute(delete(financial_recurrences))

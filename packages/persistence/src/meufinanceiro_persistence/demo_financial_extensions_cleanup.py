@@ -21,6 +21,9 @@ from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_revisions,
     financial_recurrences,
 )
+from meufinanceiro_persistence.financial_recurrence_suggestion_schema import (
+    financial_recurrence_suggestion_decisions,
+)
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
     financial_movement_allocations,
@@ -40,6 +43,7 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
     changed |= bool(audit_result.rowcount)
 
     for planning_table in (
+        financial_recurrence_suggestion_decisions,
         financial_recurrence_occurrences,
         financial_recurrence_revisions,
         financial_recurrences,

@@ -6,6 +6,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 FINANCE = ROOT / "packages/finance/src/meufinanceiro_finance"
 DOMAIN = (FINANCE / "recurrence_suggestions.py").read_text(encoding="utf-8")
+PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
+MIGRATION = (
+    PERSISTENCE / "migrations/versions/0027_recurrence_suggestions.py"
+).read_text(encoding="utf-8")
+SCHEMA = (PERSISTENCE / "financial_recurrence_suggestion_schema.py").read_text(
+    encoding="utf-8"
+)
+STORE = (PERSISTENCE / "financial_recurrence_suggestion_store.py").read_text(
+    encoding="utf-8"
+)
+RECURRENCE_STORE = (PERSISTENCE / "financial_recurrence_store.py").read_text(
+    encoding="utf-8"
+)
+MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
+    encoding="utf-8"
+)
 ADR = (ROOT / "docs/adr/0028-assisted-recurrence-suggestions.md").read_text(
     encoding="utf-8"
 )
@@ -108,3 +124,50 @@ def test_docs_state_that_254_is_closed_and_pr_255_merged() -> None:
         assert "aguardando revisão de PR" not in source
         assert "sem PR ainda):** recorrências" not in source
     assert "PR #255" in sequence and "PR #255" in roadmap and "PR #255" in recurrences
+
+
+def test_decisions_are_append_only_forced_rls_and_never_granted_more() -> None:
+    assert 'down_revision: str | None = "0026_recurrence_revisions"' in MIGRATION
+    for statement in (
+        "ALTER TABLE finance.recurrence_suggestion_decisions ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE finance.recurrence_suggestion_decisions FORCE ROW LEVEL SECURITY",
+    ):
+        assert statement in MIGRATION, statement
+    grants = re.findall(r"GRANT [^\n\"]*", MIGRATION)
+    assert grants == [
+        "GRANT SELECT, INSERT ON finance.recurrence_suggestion_decisions TO {role}"
+    ]
+    assert "SECURITY DEFINER" not in MIGRATION
+    for name in (
+        "uq_finance_recurrence_decisions_operator_fingerprint",
+        "uq_finance_recurrence_decisions_recurrence",
+        "ck_finance_recurrence_decisions_shape",
+        "ck_finance_recurrence_decisions_link",
+        "ck_finance_recurrence_decisions_immutable",
+    ):
+        assert name in MIGRATION, name
+    assert "ALTER TABLE finance.movements" not in MIGRATION
+
+
+def test_the_ledger_and_the_schema_never_hold_a_suggestion_or_a_balance() -> None:
+    assert "suggestion" not in MOVEMENT_SCHEMA.lower()
+    columns = set(re.findall(r'Column\(\s*"(\w+)"', SCHEMA))
+    for forbidden in ("balance", "amount", "expected_amount", "movement_id", "score"):
+        assert forbidden not in columns, forbidden
+    assert {"fingerprint", "decision", "recurrence_id", "evidence_digest"} <= columns
+
+
+def test_the_suggestion_store_never_writes_the_ledger_or_an_occurrence() -> None:
+    code = _code(STORE)
+    for table in ("financial_movements", "financial_recurrence_occurrences"):
+        assert not re.search(rf"(insert|update|delete)\(\s*{table}", code), table
+        assert f"pg_insert({table}" not in code
+    assert "delete(" not in code and ".delete(" not in code
+    assert "float(" not in code.lower() and "retry" not in code.lower()
+    assert "date.today" not in code and "datetime.now" not in code
+    # Acceptance reuses the one canonical writer, on its own transaction.
+    assert "create_recurrence_in_transaction(" in code
+    assert "def create_recurrence_in_transaction" in _code(RECURRENCE_STORE)
+    # Reading goes through the detector; commands re-run it for the caller.
+    assert code.count("self._candidate(") >= 2
+    assert "detect_recurrence_suggestions(" in code
