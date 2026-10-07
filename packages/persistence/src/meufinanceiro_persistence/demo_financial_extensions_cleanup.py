@@ -16,6 +16,11 @@ from meufinanceiro_persistence.financial_categorization_rule_schema import (
     financial_categorization_rules,
     financial_movement_allocation_rule_origins,
 )
+from meufinanceiro_persistence.financial_recurrence_schema import (
+    financial_recurrence_occurrences,
+    financial_recurrence_revisions,
+    financial_recurrences,
+)
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
     financial_movement_allocations,
@@ -23,7 +28,7 @@ from meufinanceiro_persistence.financial_movement_allocation_schema import (
 
 
 def reset_demo_financial_extensions(connection: Connection) -> bool:
-    """Delete audit/budget/allocation/rule rows before their referenced demo resources."""
+    """Delete audit/planning/allocation/rule rows before their referenced demo resources."""
     changed = False
 
     audit_result = connection.execute(
@@ -34,14 +39,20 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
     )
     changed |= bool(audit_result.rowcount)
 
-    for budget_table in (financial_budget_lines, financial_budgets):
-        budget_result = connection.execute(
-            delete(budget_table).where(
-                budget_table.c.installation_id == DEMO_INSTALLATION_ID,
-                budget_table.c.residence_id == DEMO_RESIDENCE_ID,
+    for planning_table in (
+        financial_recurrence_occurrences,
+        financial_recurrence_revisions,
+        financial_recurrences,
+        financial_budget_lines,
+        financial_budgets,
+    ):
+        planning_result = connection.execute(
+            delete(planning_table).where(
+                planning_table.c.installation_id == DEMO_INSTALLATION_ID,
+                planning_table.c.residence_id == DEMO_RESIDENCE_ID,
             )
         )
-        changed |= bool(budget_result.rowcount)
+        changed |= bool(planning_result.rowcount)
 
     origin_result = connection.execute(
         delete(financial_movement_allocation_rule_origins).where(

@@ -1,0 +1,265 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+FINANCE = ROOT / "packages/finance/src/meufinanceiro_finance"
+PERSISTENCE = ROOT / "packages/persistence/src/meufinanceiro_persistence"
+DOMAIN = (FINANCE / "recurrences.py").read_text(encoding="utf-8")
+SCHEMA = (PERSISTENCE / "financial_recurrence_schema.py").read_text(encoding="utf-8")
+STORE = (PERSISTENCE / "financial_recurrence_store.py").read_text(encoding="utf-8")
+MIGRATION = (PERSISTENCE / "migrations/versions/0025_monthly_recurrences.py").read_text(
+    encoding="utf-8"
+)
+REVISIONS_MIGRATION = (
+    PERSISTENCE / "migrations/versions/0026_recurrence_revisions.py"
+).read_text(encoding="utf-8")
+MOVEMENT_SCHEMA = (PERSISTENCE / "financial_movement_schema.py").read_text(
+    encoding="utf-8"
+)
+API = ROOT / "apps/api/app"
+ROUTE = (API / "api/routes/finance_recurrences.py").read_text(encoding="utf-8")
+SERVICE = (API / "services/financial_recurrences.py").read_text(encoding="utf-8")
+ADR = (ROOT / "docs/adr/0027-manual-monthly-recurrences.md").read_text(encoding="utf-8")
+DOC = (ROOT / "docs/architecture/FINANCIAL_RECURRENCES.md").read_text(encoding="utf-8")
+
+
+def _code(source: str) -> str:
+    """Source without docstrings and comments, so prose never trips a contract."""
+    without_docstrings = re.sub(r'"""[\s\S]*?"""', "", source)
+    return re.sub(r"(?m)^\s*#.*$", "", without_docstrings)
+
+
+def test_recurrence_domain_is_pure_provider_and_persistence_neutral() -> None:
+    lowered = _code(DOMAIN).lower()
+    for forbidden in (
+        "sqlalchemy",
+        "meufinanceiro_persistence",
+        "pluggy",
+        "fastapi",
+        "provider_",
+        "float(",
+        ": float",
+        "datetime.now",
+        "date.today",
+        "zoneinfo",
+        "pytz",
+        "astimezone",
+    ):
+        assert forbidden not in lowered, forbidden
+
+
+def test_the_ledger_never_learns_about_recurrences() -> None:
+    lowered = MOVEMENT_SCHEMA.lower()
+    for forbidden in ("recurrence", "occurrence", "expected_amount"):
+        assert forbidden not in lowered, forbidden
+    assert "ALTER TABLE finance.movements" not in MIGRATION
+
+
+def test_recurrence_tables_never_hold_a_balance_or_a_realized_amount() -> None:
+    columns = set(re.findall(r'Column\(\s*"(\w+)"', SCHEMA))
+    for forbidden in ("balance", "realized_amount", "actual_amount", "amount"):
+        assert forbidden not in columns, forbidden
+    # The only monetary columns are the plan; the fact lives in the Movement.
+    assert {c for c in columns if "amount" in c} == {"expected_amount"}
+    assert "movement_id" in columns
+
+
+def test_money_is_decimal_never_float_in_schema_and_store() -> None:
+    for source in (SCHEMA, STORE):
+        lowered = _code(source).lower()
+        assert "float(" not in lowered
+        assert "double" not in lowered
+    assert "Numeric(24, 8)" in SCHEMA
+    assert "numeric(24, 8)" in MIGRATION
+
+
+def test_migration_is_forced_rls_cas_and_never_grants_delete() -> None:
+    assert 'down_revision: str | None = "0024_budget_realization_indexes"' in MIGRATION
+    for table in ("recurrences", "recurrence_occurrences"):
+        assert f"ALTER TABLE finance.{table} ENABLE ROW LEVEL SECURITY" in MIGRATION
+        assert f"ALTER TABLE finance.{table} FORCE ROW LEVEL SECURITY" in MIGRATION
+    grants = re.findall(r"GRANT [^\n\"]*", MIGRATION)
+    assert grants
+    for grant in grants:
+        assert "DELETE" not in grant.upper(), grant
+        assert "TRUNCATE" not in grant.upper(), grant
+    assert "SECURITY DEFINER" not in MIGRATION
+    assert "uq_finance_recurrence_occurrences_month" in MIGRATION
+    assert "WHERE status <> 'SUPERSEDED'" in MIGRATION
+    assert "frequency = 'MONTHLY'" in MIGRATION
+
+
+def test_database_gates_generation_for_paused_rules_and_terminal_states() -> None:
+    assert "rule_row.status IS DISTINCT FROM 'ACTIVE'" in MIGRATION
+    assert "OLD.status IS DISTINCT FROM 'PENDING'" in MIGRATION
+    assert "transaction_timestamp()" in MIGRATION  # Movement written in this txn
+
+
+def test_the_store_has_cas_idempotent_create_and_no_delete() -> None:
+    code = _code(STORE)
+    assert "def create_recurrence" in code and "def replace_recurrence" in code
+    assert "rules.c.version == replacement.expected_version" in code
+    assert "on_conflict_do_nothing" in code
+    assert "delete(" not in code and ".delete(" not in code
+    assert "retry" not in code.lower()
+    assert "date.today" not in code and "datetime.now" not in code
+
+
+def test_adr_and_architecture_document_the_decision() -> None:
+    for term in (
+        "regra",
+        "ocorrência",
+        "Movement",
+        "SUPERSEDED",
+        "expectedVersion",
+        "idempotencyKey",
+        "atomic",
+        "RLS",
+        "relógio",
+    ):
+        assert term in ADR or term in DOC, term
+    assert "ADR-0027" in DOC
+    assert "FINANCIAL_RECURRENCES.md" in ADR
+    adr_index = (ROOT / "docs/adr/README.md").read_text(encoding="utf-8")
+    assert "0027-manual-monthly-recurrences.md" in adr_index
+
+
+def test_the_route_has_exactly_the_recurrence_endpoints_and_no_delete_or_patch() -> (
+    None
+):
+    routes = re.findall(r'^@router\.(\w+)\(\s*"([^"]+)"', ROUTE, re.M)
+    assert sorted(routes) == sorted(
+        [
+            ("get", "/recurrences"),
+            ("post", "/recurrences"),
+            ("get", "/recurrences/{recurrence_id}"),
+            ("put", "/recurrences/{recurrence_id}"),
+            ("post", "/recurrences/{recurrence_id}/pause"),
+            ("post", "/recurrences/{recurrence_id}/resume"),
+            ("post", "/recurrences/{recurrence_id}/occurrences/generate"),
+            ("get", "/recurrence-occurrences"),
+            ("post", "/recurrence-occurrences/{occurrence_id}/skip"),
+            ("post", "/recurrence-occurrences/{occurrence_id}/realize"),
+        ]
+    )
+    assert "@router.delete" not in ROUTE and "@router.patch" not in ROUTE
+
+
+def test_service_and_route_own_no_calendar_or_financial_arithmetic() -> None:
+    for source in (SERVICE, ROUTE):
+        code = _code(source)
+        for forbidden in (
+            "float(",
+            "financial_movements",
+            "monthrange",
+            "timedelta",
+            "quantize(",
+            "datetime.now",
+        ):
+            assert forbidden not in code, forbidden
+    # The only clock is injected; the default lives in the composition root.
+    assert "clock: Callable[[], date]" in _code(SERVICE)
+    assert "date.today" not in _code(SERVICE) and "date.today" not in _code(ROUTE)
+    assert "generation_window(" in _code(SERVICE)
+
+
+def test_the_store_never_reads_a_clock_and_generation_is_replay_safe() -> None:
+    code = _code(STORE)
+    assert "index_where=text(\"status <> 'SUPERSEDED'\")" in code
+    assert ".with_for_update()" in code
+    assert "FinancialRecurrencePausedError" in code
+
+
+MOVEMENT_STORE = (PERSISTENCE / "financial_movement_store.py").read_text(
+    encoding="utf-8"
+)
+
+
+def _method(source: str, name: str) -> str:
+    start = source.index(f"    def {name}(")
+    following = re.search(r"\n    def \w+\(", source[start + 10 :])
+    end = start + 10 + following.start() if following else len(source)
+    return source[start:end]
+
+
+def test_realization_uses_the_canonical_writer_in_one_transaction() -> None:
+    code = _code(STORE)
+    realize = _method(code, "realize_occurrence")
+    assert "create_standard_movement_in_transaction(" in realize
+    assert realize.count("self._engine.begin()") == 1  # one transaction, no second
+    assert "_link_occurrence_to_movement(" in realize
+    assert "new_financial_idempotency_key()" in realize  # the Movement's own key
+    # The recurrence store reads the ledger but never writes it by itself.
+    for forbidden in (
+        "insert(financial_movements",
+        "financial_movements.insert",
+        "update(financial_movements",
+        "delete(financial_movements",
+        "financial_movement_allocation",
+        "category",
+    ):
+        assert forbidden not in code, forbidden
+    assert "retry" not in code.lower()
+
+
+def test_the_public_movement_writer_delegates_to_the_shared_transactional_body() -> (
+    None
+):
+    code = _code(MOVEMENT_STORE)
+    create = _method(code, "create_movement")
+    assert "create_standard_movement_in_transaction(" in create
+    assert "pg_insert(financial_movements)" not in create
+    assert "def create_standard_movement_in_transaction(" in code
+    assert code.count("pg_insert(financial_movements)") == 2  # STANDARD and REVERSAL
+
+
+def test_realization_is_the_only_link_between_an_occurrence_and_the_ledger() -> None:
+    assert "movement_id" in SCHEMA
+    # No other module may mention occurrences when writing Movements.
+    for source in (MOVEMENT_STORE, MOVEMENT_SCHEMA):
+        lowered = _code(source).lower()  # prose may explain; code may not know
+        assert "occurrence" not in lowered
+        assert "recurrence" not in lowered
+    assert "ck_finance_recurrence_occurrences_movement_link" in MIGRATION
+    assert (
+        "movement_row.created_at IS DISTINCT FROM transaction_timestamp()" in MIGRATION
+    )
+
+
+def test_rule_history_is_database_authored_append_only_and_forced_rls() -> None:
+    migration = REVISIONS_MIGRATION
+    assert 'down_revision: str | None = "0025_monthly_recurrences"' in migration
+    for statement in (
+        "ALTER TABLE finance.recurrence_revisions ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE finance.recurrence_revisions FORCE ROW LEVEL SECURITY",
+        "ALTER TABLE finance.recurrences FORCE ROW LEVEL SECURITY",
+    ):
+        assert statement in migration, statement
+    # The revision is written by the database, in the statement that stores the rule.
+    assert "AFTER INSERT OR UPDATE ON finance.recurrences" in migration
+    assert "finance.record_recurrence_revision()" in migration
+    assert "pg_catalog.pg_trigger_depth() > 0" in migration
+    assert "SECURITY DEFINER" not in migration
+    grants = re.findall(r"GRANT [^\n\"]*", migration)
+    assert grants == ["GRANT SELECT, INSERT ON finance.recurrence_revisions TO {role}"]
+    assert "ck_finance_recurrence_revisions_immutable" in migration
+    # Nothing in the ledger or the occurrence tables changes.
+    assert "ALTER TABLE finance.movements" not in migration
+    assert "recurrence_occurrences" not in _code(migration)
+
+
+def test_the_store_only_reads_history_and_the_docs_require_it() -> None:
+    code = _code(STORE)
+    assert "def list_recurrence_revisions" in code
+    for writer in ("insert", "update", "delete"):
+        assert not re.search(
+            rf"{writer}\(\s*(financial_recurrence_revisions|revisions)\b", code
+        ), writer
+    for source in (ADR, DOC):
+        assert "recurrence_revisions" in source
+    assert "append-only" in ADR and "append-only" in DOC
+    # Missing lifecycle history is a defect, never an accepted P2.
+    assert "sem auditoria de ciclo de vida" not in DOC
+    assert "não é histórico" in ADR

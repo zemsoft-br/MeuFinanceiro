@@ -171,8 +171,8 @@ Após o livro estável:
 0. classificação e rateio manual de Movements (#245): implementado em API e Flutter, integrado ao `develop` (PR #246) e consolidado em `main` (PR #251); detalhes em `FINANCIAL_MOVEMENT_CLASSIFICATION_API.md`;
 1. regras determinísticas de categorização (#247): implementado em API e Flutter, integrado ao `develop` (PR #248) e consolidado em `main` (PR #251); detalhes em `FINANCIAL_CATEGORIZATION_RULES.md`;
 2. caixa de pendências (#249): implementada em API e Flutter, integrada ao `develop` (PR #250) e consolidada em `main` (PR #251); derivada, paginada por keyset e sem estado persistido; detalhes em `FINANCIAL_PENDING_INBOX.md` e ADR-0025;
-3. orçamentos (#252): implementados em API e Flutter, aguardando revisão de PR; planejamento persistido com CAS e realizado derivado do ledger e da classificação corrente; detalhes em `FINANCIAL_BUDGETS.md` e ADR-0026;
-4. recorrências;
+3. orçamentos (#252): implementados em API e Flutter, integrados ao `develop` (PR #253); planejamento persistido com CAS e realizado derivado do ledger e da classificação corrente; detalhes em `FINANCIAL_BUDGETS.md` e ADR-0026;
+4. recorrências (#254): implementadas em API e Flutter na branch `feat/finance-recurrences-254` (4 batches), aguardando revisão de PR; regra mensal manual como modelo, ocorrência persistida como instância e Movement como único fato realizado, criado só por Registrar explícito e atômico; detalhes em `FINANCIAL_RECURRENCES.md` e ADR-0027;
 5. assinaturas assistidas;
 6. metas e projetos;
 7. fluxo de caixa;

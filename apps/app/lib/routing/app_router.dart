@@ -15,6 +15,7 @@ import 'package:meufinanceiro_app/features/finance/financial_account_detail_scre
 import 'package:meufinanceiro_app/features/finance/financial_accounts_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_budget_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_pending_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_recurrence_screen.dart';
 import 'package:meufinanceiro_app/features/home/home_screen.dart';
 import 'package:meufinanceiro_app/features/not_found/not_found_screen.dart';
 import 'package:meufinanceiro_app/features/system_health/system_health_screen.dart';
@@ -98,6 +99,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: AppRoutes.financeBudgets,
             pageBuilder: (context, state) {
               return const NoTransitionPage(child: FinancialBudgetScreen());
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financeRecurrencesPath,
+            name: AppRoutes.financeRecurrences,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(child: FinancialRecurrenceScreen());
             },
           ),
           GoRoute(

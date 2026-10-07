@@ -6,6 +6,7 @@ import 'package:meufinanceiro_app/core/auth/authenticated_api_client.dart';
 part 'financial_budget_api.dart';
 part 'financial_categorization_rules_api.dart';
 part 'financial_pending_api.dart';
+part 'financial_recurrence_api.dart';
 
 final _financialResourceIdPattern = RegExp(
   r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
