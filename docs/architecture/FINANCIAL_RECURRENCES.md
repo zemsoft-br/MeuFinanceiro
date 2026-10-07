@@ -1,6 +1,6 @@
 # Recorrências mensais manuais — regra, ocorrência e realização explícita
 
-Status: **implementação completa da issue #254** (4 batches mais a correção do gate pré-PR: histórico append-only da regra) na branch `feat/finance-recurrences-254`. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **entregue** — issue #254 fechada e PR #255 integrada ao `develop` (4 batches mais a correção do gate pré-PR: histórico append-only da regra). Assinaturas assistidas (#256) sugerem a criação de uma recorrência por cima deste contrato, sem alterá-lo: ver `FINANCIAL_RECURRENCE_SUGGESTIONS.md` e ADR-0028.
 
 Normativo: ADR-0027. Este documento descreve o contrato, o schema e a API. Nenhuma regra financeira anterior foi alterada.
 

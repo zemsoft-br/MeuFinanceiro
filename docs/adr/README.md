@@ -26,6 +26,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 - [ADR-0025 — Caixa de pendências derivada, paginada por keyset e sem estado persistido](0025-derived-pending-classification-inbox.md)
 - [ADR-0026 — Orçamentos mensais por categoria como planejamento derivado do ledger](0026-monthly-category-budgets.md)
 - [ADR-0027 — Recorrências mensais manuais: regra é modelo, ocorrência é instância, Movement é o único fato](0027-manual-monthly-recurrences.md)
+- [ADR-0028 — Sugestões assistidas de recorrência: derivadas, determinísticas e sempre confirmadas](0028-assisted-recurrence-suggestions.md)
 
 ## Decisões propostas
 
