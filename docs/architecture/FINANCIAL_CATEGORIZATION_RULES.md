@@ -103,7 +103,7 @@ O lifecycle da regra **não** entra no audit financeiro fechado (`FinancialAudit
 
 ## Fora do escopo desta entrega
 
-ML/LLM, aprendizado, sugestão de regras, fuzzy/regex, condições arbitrárias, faixas de valor/data, regra com rateio, execução em background/agendada ou na importação, Pluggy/Open Finance, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), orçamento (entregue depois pela #252; ver `FINANCIAL_BUDGETS.md`), recorrências, tags, classificação de `NEUTRAL`/`REVERSAL`, histórico visual completo de regras e HML/PROD/deploy.
+ML/LLM, aprendizado, sugestão de regras, fuzzy/regex, condições arbitrárias, faixas de valor/data, regra com rateio, execução em background/agendada ou na importação, Pluggy/Open Finance, caixa de pendências (entregue depois pela #249; ver `FINANCIAL_PENDING_INBOX.md`), orçamento (entregue depois pela #252; ver `FINANCIAL_BUDGETS.md`), recorrências (entregues depois pela #254; ver `FINANCIAL_RECURRENCES.md`), tags, classificação de `NEUTRAL`/`REVERSAL`, histórico visual completo de regras e HML/PROD/deploy.
 
 ## Evidência de fechamento
 

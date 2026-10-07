@@ -1,6 +1,6 @@
 # Recorrências mensais manuais — regra, ocorrência e realização explícita
 
-Status: **em implementação (issue #254)**. Batches 1 a 3 de 4 concluídos: domínio, ADR, schema, RLS, versionamento, geração, skip, pause/resume, serviço, API e realização atômica. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **implementação completa da issue #254** (4 batches) na branch `feat/finance-recurrences-254`. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
 
 Normativo: ADR-0027. Este documento descreve o contrato, o schema e a API. Nenhuma regra financeira anterior foi alterada.
 
@@ -67,6 +67,67 @@ A chave de realização não é a chave de idempotência do Movement (esta é ge
 
 Uma regra `PAUSED` não impede registrar uma ocorrência `PENDING` que já existe: pausar impede *gerar*, não encerra o que foi previsto.
 
+## Limites explícitos
+
+Uma lista nunca é cortada em silêncio. Um visualizador enxerga no máximo **200 regras** (`RECURRENCE_LIST_MAX`): criar além disso é `422 financial recurrence limit reached`. Uma janela de ocorrências tem no máximo **200 × 12 = 2400** linhas (uma viva por regra e mês); se um conjunto ultrapassasse o teto, a leitura falha com o mesmo `422` em vez de devolver parte. Geração: 12 meses por chamada, 24 meses de horizonte. Leitura: janela de 12 meses.
+
+## Cliente Flutter
+
+Tela **Recorrências** (`/app/financas/recorrencias`, atalho em Finanças):
+
+- aviso fixo e em texto: *previsto não altera o saldo nem o extrato; somente Registrar cria um lançamento*;
+- regras **Ativas** e **Pausadas** (descrição, tipo, esperado, dia — com a nota de que dia inexistente cai no último dia do mês —, início/término, conta, status, somente leitura quando não é dono);
+- criar e editar (conta própria e ativa, tipo, valor esperado, descrição, dia, término); na edição, conta, tipo, moeda e início são imutáveis e o diálogo explica que previsões futuras incompatíveis serão substituídas;
+- lista do mês navegável com `PENDING` (**Prevista**), `REALIZED` (**Registrada**) e `SKIPPED` (**Pulada**): o status é sempre dito em texto e com a dica do efeito no ledger; para registradas mostra **previsto × real**, datas e o estado do lançamento (`ACTIVE`/`REVERSED`, sem reabrir);
+- **Gerar {mês}** explícito por regra ativa; **Registrar** (valor real, data efetiva e de competência, pré-preenchidos com a previsão mas sempre confirmados) e **Pular** (pede confirmação); **Pausar/Retomar**;
+- estados de carregamento, vazio, erro (com Tentar novamente explícito), sessão/acesso, resposta inválida, somente leitura e conflito.
+
+Contratos do cliente (provados por testes e pelo contrato de qualidade):
+
+- **sem sucesso otimista:** após qualquer resposta de escrita (sucesso, 409, 403, 404, 422, 5xx, transporte, 2xx inválido) a tela é lida de novo uma vez e só isso muda o estado;
+- **sem retry automático:** uma escrita é enviada uma vez; resultado incerto mantém a chave de idempotência **só** para um retry idêntico e explícito do usuário (o servidor converge) e a mensagem diz que nada será reenviado;
+- um `409` nunca é reaplicado nem rebaseado: a tela mostra o estado atual e exige nova ação;
+- custo fixo por tela: contas, regras e um mês de ocorrências (3 requisições), nunca uma por regra ou ocorrência; sem `double` para dinheiro, sem calendário nem saldo no cliente.
+
+## Smoke vertical
+
+Provado por HTTP contra PostgreSQL 18.4 com role não-superusuário e RLS forçada (`test_smoke_the_issue_vertical_internet_expense_over_http`): regra mensal *Internet*, `EXPENSE`, esperado 120, dia 10 → gera outubro `PENDING` → saldo e extrato **inalterados** → registrar 127.50 com datas explícitas → **exatamente 1 Movement** `EXPENSE` de −127.50, ocorrência `REALIZED` ligada, saldo 872.50 → retry idêntico **não duplica** → gera novembro → pausa → dezembro **não gera** (`409`) → retoma → gera dezembro → pula → **nenhum Movement** de dezembro. A mesma narrativa está nos testes do store e no teste Flutter com backend falso.
+
+## Desempenho
+
+`test_financial_recurrence_performance.py`: o número de statements por chamada é constante para 1 ou 61 regras, para gerar 1 ou 12 meses (um único `INSERT` para a janela) e ler realizadas acrescenta exatamente 2 statements por página (Movements e estornos), nunca um por linha; com 200 regras × 12 meses (2400 ocorrências) a leitura da janela e das regras ficou em ~0,7 s sob RLS forçada (teto de 5 s só contra plano descontrolado) e as consultas de janela e de "futuras pendentes" são servidas por índices (`ix_finance_recurrence_occurrences_period/_rule/_pending`).
+
+## Pontos aceitos (P2), sem bloqueio
+
+- sem paginação além dos tetos acima: o produto prefere recusar a esconder linhas; paginação por cursor fica para quando o uso real pedir;
+- sem auditoria de ciclo de vida da regra em `finance.audit_events` (como orçamentos): a criação do Movement continua auditada pelo writer canônico;
+- `pause/resume` não usam CAS: são comandos de estado alvo, idempotentes;
+- o relógio de produção é `date.today` (composição da aplicação); o domínio e o store não leem relógio;
+- a tela lista um mês por vez: uma previsão vencida e ainda `PENDING` de um mês anterior aparece ao navegar até aquele mês (não há fila agregada de vencidas na v1);
+- registrar uma ocorrência de regra pausada é permitido: pausar impede gerar, não encerra a previsão existente.
+
+## Fora do escopo desta entrega
+
+Outras frequências, assinaturas assistidas e detecção automática, classificação automática, pagamentos parciais, cartões e faturas, transferências recorrentes, valor variável inferido, reajuste automático, alertas e notificações, fluxo de caixa e cenários, importadores e Pluggy, HML/PROD/deploy e GitHub Actions como gate.
+
+## Evidência de fechamento
+
+Validação local (PostgreSQL 18.4 descartável, role não-superusuário, RLS forçada; sem GitHub Actions):
+
+| Gate | Resultado |
+|---|---|
+| segurança do repositório, `git diff --check`, DCO | passou |
+| ruff (check e format), mypy `--strict` | passou |
+| Alembic | head único `0025_monthly_recurrences`; upgrade/downgrade simétricos |
+| pytest completo (finance, banking, security, persistence, API, worker, qualidade) | 2122+ passaram; **1 falha, o baseline #240** (`test_update_contract_is_linked_and_ignored`) |
+| Flutter | format, analyze (sem issues), 703 testes, build web release e contrato PWA |
+| licenças Python e Flutter, pip-audit | passou, sem vulnerabilidades conhecidas |
+| mutação dirigida (36 mutantes: calendário, máquina de estados, CAS, idempotência, atomicidade, gatilhos, RLS, serviço) | 35 mortos; 1 sobrevivente equivalente (abaixo) |
+
+Mutante sobrevivente, aceito: remover o `SELECT … FOR UPDATE` explícito da regra em geração/edição/pausa não altera a segurança, porque a FK da ocorrência (`FOR KEY SHARE`), o CAS do `UPDATE` e o gatilho de inserção (que relê a regra) já serializam ou recusam o mesmo cenário; o lock explícito troca um erro raro por espera. Os locks de **ocorrência** (skip/registrar) são provados por teste de bloqueio.
+
+A mutação encontrou três lacunas reais de teste, todas fechadas: fronteira "hoje" da edição (domínio e SQL), chave de realização adotando um Movement preexistente e unicidade do vínculo Movement→ocorrência.
+
 ## Estado do trabalho
 
 | Batch | Escopo | Estado |
@@ -74,4 +135,4 @@ Uma regra `PAUSED` não impede registrar uma ocorrência `PENDING` que já exist
 | 1 | domínio, ADR-0027, schema, RLS, versionamento, criação/leitura/edição CAS com `SUPERSEDED` | concluído |
 | 2 | geração, skip, pause/resume, serviço e API | concluído |
 | 3 | realização atômica ligada ao Movement e concorrência | concluído |
-| 4 | Flutter, smoke, desempenho, docs e gates | pendente |
+| 4 | Flutter, smoke, desempenho, docs e gates | concluído |

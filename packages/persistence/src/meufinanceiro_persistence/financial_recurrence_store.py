@@ -122,6 +122,10 @@ class FinancialRecurrenceBeforeOpeningBalanceError(FinancialRecurrencePersistenc
     """The realization would precede the account opening-balance anchor."""
 
 
+class FinancialRecurrenceLimitError(FinancialRecurrencePersistenceError):
+    """The visible set is at its cap: a list is never silently cut short."""
+
+
 class FinancialRecurrenceStore:
     """Create, read, list, CAS-edit and run the planning lifecycle of recurrences."""
 
@@ -153,6 +157,16 @@ class FinancialRecurrenceStore:
                 if existing is not None:
                     return _replay(existing, request_digest)
 
+                visible_rules = connection.scalar(
+                    select(func.count())
+                    .select_from(rules)
+                    .where(
+                        rules.c.installation_id == installation_id,
+                        rules.c.residence_id == residence_id,
+                    )
+                )
+                if (visible_rules or 0) >= RECURRENCE_LIST_MAX:
+                    raise FinancialRecurrenceLimitError("recurrence limit reached")
                 account_currency = _owned_active_account(
                     connection,
                     installation_id=installation_id,
@@ -272,12 +286,14 @@ class FinancialRecurrenceStore:
                 rows = (
                     connection.execute(
                         statement.order_by(rules.c.created_at, rules.c.id).limit(
-                            RECURRENCE_LIST_MAX
+                            RECURRENCE_LIST_MAX + 1
                         )
                     )
                     .mappings()
                     .all()
                 )
+                if len(rows) > RECURRENCE_LIST_MAX:
+                    raise FinancialRecurrenceLimitError("recurrence limit reached")
                 return tuple(_record(row) for row in rows)
         except FinancialMovementAccessError:
             raise FinancialRecurrenceAccessError("recurrence access denied") from None
@@ -1088,11 +1104,13 @@ def _select_occurrences(
                 occurrences.c.recurrence_id,
                 occurrences.c.created_at,
                 occurrences.c.id,
-            ).limit(RECURRENCE_OCCURRENCE_LIST_MAX)
+            ).limit(RECURRENCE_OCCURRENCE_LIST_MAX + 1)
         )
         .mappings()
         .all()
     )
+    if len(rows) > RECURRENCE_OCCURRENCE_LIST_MAX:
+        raise FinancialRecurrenceLimitError("recurrence limit reached")
     return _load_occurrences(connection, rows)
 
 
@@ -1341,6 +1359,7 @@ __all__ = [
     "FinancialRecurrenceBeforeOpeningBalanceError",
     "FinancialRecurrenceConflictError",
     "FinancialRecurrenceInvalidShapeError",
+    "FinancialRecurrenceLimitError",
     "FinancialRecurrenceNotEditableError",
     "FinancialRecurrenceNotFoundError",
     "FinancialRecurrenceOccurrenceNotFoundError",

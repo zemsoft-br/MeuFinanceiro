@@ -29,11 +29,14 @@ from meufinanceiro_finance.money import Money, validate_currency_code
 from meufinanceiro_finance.movements import FinancialResultEffect
 
 RECURRENCE_DESCRIPTION_MAX_LENGTH = 256
-RECURRENCE_LIST_MAX = 200
-RECURRENCE_OCCURRENCE_LIST_MAX = 1000
 RECURRENCE_GENERATION_MAX_MONTHS = 12
 RECURRENCE_GENERATION_HORIZON_MONTHS = 24
 RECURRENCE_WINDOW_MAX_MONTHS = 12
+# One viewer sees at most this many rules; creating beyond it is refused, so a
+# list is never silently cut short. A window holds at most one live occurrence
+# per rule and month, so its cap is the product of the two bounds above.
+RECURRENCE_LIST_MAX = 200
+RECURRENCE_OCCURRENCE_LIST_MAX = RECURRENCE_LIST_MAX * RECURRENCE_WINDOW_MAX_MONTHS
 
 _RECURRENCE_EFFECTS = frozenset(
     (FinancialResultEffect.INCOME, FinancialResultEffect.EXPENSE)

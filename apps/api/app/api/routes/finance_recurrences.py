@@ -36,6 +36,7 @@ from meufinanceiro_persistence.financial_recurrence_store import (
     FinancialRecurrenceBeforeOpeningBalanceError,
     FinancialRecurrenceConflictError,
     FinancialRecurrenceInvalidShapeError,
+    FinancialRecurrenceLimitError,
     FinancialRecurrenceNotEditableError,
     FinancialRecurrenceNotFoundError,
     FinancialRecurrenceOccurrenceNotFoundError,
@@ -451,6 +452,11 @@ def _raise_error(error: Exception) -> NoReturn:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="financial recurrence conflicts with canonical state",
+        ) from None
+    if isinstance(error, FinancialRecurrenceLimitError):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="financial recurrence limit reached",
         ) from None
     if isinstance(error, FinancialRecurrenceInvalidShapeError):
         raise _invalid_request() from None

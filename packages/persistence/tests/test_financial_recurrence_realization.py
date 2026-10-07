@@ -44,6 +44,7 @@ from meufinanceiro_persistence.financial_movement_schema import financial_moveme
 from meufinanceiro_persistence.financial_movement_store import (
     FinancialMovementStore,
     _set_context,
+    create_standard_movement_in_transaction,
 )
 from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_occurrences,
@@ -589,6 +590,79 @@ def test_a_realized_occurrence_cannot_be_rewritten_at_the_database(
             connection.execute(text("DELETE FROM finance.movements"))
 
 
+def test_a_realization_key_never_adopts_an_existing_movement(
+    budget_world: BudgetWorld,
+) -> None:
+    """The key of a realization is not the Movement's key.
+
+    A Movement already stored under the very same key (and the very same material)
+    would be *replayed* by the canonical writer; if the realization reused its key
+    it would link a Movement it did not create. It must create its own instead.
+    """
+    rule = _rule(budget_world)
+    occurrence = _pending(budget_world, rule)
+    key = new_financial_idempotency_key()
+    standalone = FinancialMovementStore(budget_world.runtime).create_movement(
+        **budget_world.scope(),
+        idempotency_key=key,
+        draft=FinancialMovementDraft(
+            account_id=rule.account_id,
+            amount=Money(Decimal("-127.50"), "BRL"),
+            result_effect=FinancialResultEffect.EXPENSE,
+            effective_date=date(2026, 10, 11),
+            competence_date=date(2026, 10, 1),
+            description="Internet",
+        ),
+    )
+
+    realized = _realize(budget_world, occurrence, key=key)
+
+    assert realized.realization is not None
+    assert realized.realization.movement_id != standalone.id
+    assert len(_movements(budget_world)) == 2  # the standalone one and its own
+
+
+def test_one_movement_can_never_back_two_occurrences(
+    budget_world: BudgetWorld,
+) -> None:
+    rule = _rule(budget_world)
+    first = _pending(budget_world, rule, _OCT)
+    second = _pending(budget_world, rule, _NOV)
+    scope = budget_world.scope()
+    with pytest.raises(DBAPIError):
+        with budget_world.runtime.begin() as connection:
+            movement = create_standard_movement_in_transaction(
+                connection,
+                **scope,
+                idempotency_key=new_financial_idempotency_key(),
+                draft=FinancialMovementDraft(
+                    account_id=rule.account_id,
+                    amount=Money(Decimal("-120"), "BRL"),
+                    result_effect=FinancialResultEffect.EXPENSE,
+                    effective_date=date(2026, 10, 10),
+                    competence_date=date(2026, 10, 1),
+                    description="Internet",
+                ),
+            )
+            for occurrence in (first, second):
+                connection.execute(
+                    update(financial_recurrence_occurrences)
+                    .where(financial_recurrence_occurrences.c.id == occurrence.id)
+                    .values(
+                        status="REALIZED",
+                        movement_id=movement.id,
+                        realization_idempotency_key=new_financial_idempotency_key(),
+                        realization_request_digest="b" * 64,
+                        realized_at=func.transaction_timestamp(),
+                        realized_by_operator_id=budget_world.owner_id,
+                        updated_at=func.transaction_timestamp(),
+                    )
+                )
+    assert _status(budget_world, first.id) == "PENDING"
+    assert _status(budget_world, second.id) == "PENDING"
+    assert _movements(budget_world) == []  # the whole transaction rolled back
+
+
 # --- concurrency ----------------------------------------------------------------
 
 
@@ -746,3 +820,66 @@ def test_realize_racing_an_edit_never_rewrites_a_realized_occurrence(
         financial_recurrence_occurrences.c.status == "REALIZED",
     )
     assert len(_movements(budget_world)) == realized
+
+
+# --- the row locks really serialize ---------------------------------------------------
+
+
+def _blocked_until_released(
+    budget_world: BudgetWorld, lock_sql: str, params: dict[str, Any], action: Any
+) -> None:
+    """Hold a row lock in another transaction; the action must wait for it."""
+    import threading
+
+    started = threading.Event()
+    done = threading.Event()
+    failure: list[BaseException] = []
+
+    def run() -> None:
+        started.set()
+        try:
+            action()
+        except BaseException as error:  # noqa: BLE001 - reported below
+            failure.append(error)
+        finally:
+            done.set()
+
+    with budget_world.runtime.begin() as holder:
+        _set_context(holder, **budget_world.scope())
+        holder.execute(text(lock_sql), params)
+        worker = threading.Thread(target=run)
+        worker.start()
+        assert started.wait(5)
+        # While the lock is held the action cannot finish.
+        assert not done.wait(1.0)
+    worker.join(10)
+    assert done.is_set() and not failure, failure
+
+
+def test_generation_waits_for_the_rule_row_lock(budget_world: BudgetWorld) -> None:
+    from meufinanceiro_finance import FinancialRecurrenceWindow
+
+    rule = _rule(budget_world)
+    _blocked_until_released(
+        budget_world,
+        "SELECT id FROM finance.recurrences WHERE id = :id FOR UPDATE",
+        {"id": rule.id},
+        lambda: _store(budget_world).generate_occurrences(
+            **budget_world.scope(),
+            recurrence_id=rule.id,
+            window=FinancialRecurrenceWindow(_OCT, _OCT),
+        ),
+    )
+
+
+def test_registering_waits_for_the_occurrence_row_lock(
+    budget_world: BudgetWorld,
+) -> None:
+    occurrence = _pending(budget_world, _rule(budget_world))
+    _blocked_until_released(
+        budget_world,
+        "SELECT id FROM finance.recurrence_occurrences WHERE id = :id FOR UPDATE",
+        {"id": occurrence.id},
+        lambda: _realize(budget_world, occurrence),
+    )
+    assert len(_movements(budget_world)) == 1

@@ -99,7 +99,8 @@ Estado da fase:
 - **entregue (#247, PR #248 em `develop`, consolidada em `main` pela PR #251):** regras determinísticas de categorização (EXACT/CONTAINS, prioridade com empate fail-closed, preview e apply explícitos, proveniência append-only) em API e Flutter, sobre a mesma autoridade de classificação — ver `docs/architecture/FINANCIAL_CATEGORIZATION_RULES.md` e ADR-0024;
 - **entregue (#249, PR #250 em `develop`, consolidada em `main` pela PR #251):** caixa de pendências derivada (Movements `STANDARD` de receita/despesa sem classificação), paginada por cursor keyset, com estado `MATCHED`/`AMBIGUOUS`/`NO_MATCH` da avaliação da #247 e ações reutilizando as escritas da #245 e da #247, sem estado persistido nem segunda autoridade — ver `docs/architecture/FINANCIAL_PENDING_INBOX.md` e ADR-0025;
 - **entregue (#252, PR #253 em `develop`):** orçamentos mensais por categoria como planejamento persistido (CAS por versão, criação replay-safe, RLS por audiência) com realizado sempre derivado do ledger e da classificação corrente, consciente de estornos, e cobertura de não classificados, em API e Flutter — ver `docs/architecture/FINANCIAL_BUDGETS.md` e ADR-0026;
-- pendente: tags, aprendizado, recorrências, metas e dashboard.
+- **entregue em implementação (#254, branch `feat/finance-recurrences-254`, sem PR ainda):** recorrências mensais manuais como planejamento — regra (modelo) e ocorrência (instância) persistidas com RLS por audiência da conta, CAS, geração explícita/limitada/replay-safe, skip, pause/resume e **Registrar** explícito que cria exatamente um Movement `STANDARD` pelo writer canônico, atomicamente, sem classificar e sem reabrir após estorno, em API e Flutter — ver `docs/architecture/FINANCIAL_RECURRENCES.md` e ADR-0027;
+- pendente: tags, aprendizado, assinaturas assistidas, metas e dashboard.
 
 ## Fase 3 — Importação e conciliação
 

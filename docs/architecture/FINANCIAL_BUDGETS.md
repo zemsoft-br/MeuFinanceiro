@@ -143,7 +143,7 @@ Toda resposta de escrita (sucesso, `409`, `403`, `404`, `422`, 5xx, transporte o
 
 ## Fora do escopo desta entrega
 
-Envelopes, rollover, base zero completa, períodos não mensais, subtree/rollup, tags, metas, recorrências, projeções, FX, alertas, IA, Pluggy/provider, arquivamento e `DELETE`, e HML/PROD/deploy.
+Envelopes, rollover, base zero completa, períodos não mensais, subtree/rollup, tags, metas, recorrências (entregues depois pela #254; ver `FINANCIAL_RECURRENCES.md`), projeções, FX, alertas, IA, Pluggy/provider, arquivamento e `DELETE`, e HML/PROD/deploy.
 
 ## Evidência de fechamento
 

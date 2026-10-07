@@ -10,6 +10,9 @@ import pytest
 from meufinanceiro_finance import (
     RECURRENCE_GENERATION_HORIZON_MONTHS,
     RECURRENCE_GENERATION_MAX_MONTHS,
+    RECURRENCE_LIST_MAX,
+    RECURRENCE_OCCURRENCE_LIST_MAX,
+    RECURRENCE_WINDOW_MAX_MONTHS,
     FinancialManualEntryType,
     FinancialOccurrenceStatus,
     FinancialRecurrenceDraft,
@@ -580,3 +583,29 @@ def test_the_domain_stays_pure() -> None:
     source = inspect.getsource(module)
     for forbidden in ("sqlalchemy", "fastapi", "datetime.now", "date.today", "float("):
         assert forbidden not in source, forbidden
+
+
+def test_the_occurrence_cap_is_exactly_the_product_of_the_other_bounds() -> None:
+    # A window holds one live occurrence per rule and month, so the cap can never
+    # silently cut a legitimate window short.
+    assert (
+        RECURRENCE_OCCURRENCE_LIST_MAX
+        == RECURRENCE_LIST_MAX * RECURRENCE_WINDOW_MAX_MONTHS
+    )
+    assert RECURRENCE_GENERATION_MAX_MONTHS <= RECURRENCE_WINDOW_MAX_MONTHS
+
+
+def test_a_pending_scheduled_exactly_today_is_still_future_for_an_edit() -> None:
+    today = date(2026, 10, 10)
+    on_today = _pending(10, 10)
+    yesterday = _pending(9, 10)
+    stale = occurrences_to_supersede(
+        pending=[on_today, yesterday],
+        today=today,
+        description="Internet",
+        expected_amount=Decimal("130"),
+        day_of_month=9,
+        end_date=None,
+    )
+    # The 10th is today: it is not overdue, so a stale one is superseded.
+    assert [item.id for item in stale] == [on_today.id]

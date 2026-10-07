@@ -35,11 +35,13 @@ from meufinanceiro_persistence.financial_recurrence_schema import (
     financial_recurrence_occurrences,
     financial_recurrences,
 )
+import meufinanceiro_persistence.financial_recurrence_store as store_module
 from meufinanceiro_persistence.financial_recurrence_store import (
     FinancialRecurrenceAccessError,
     FinancialRecurrenceAccountNotFoundError,
     FinancialRecurrenceConflictError,
     FinancialRecurrenceInvalidShapeError,
+    FinancialRecurrenceLimitError,
     FinancialRecurrenceNotEditableError,
     FinancialRecurrenceNotFoundError,
     FinancialRecurrenceStore,
@@ -867,3 +869,45 @@ def test_the_ledger_is_untouched(budget_world: BudgetWorld) -> None:
         budget_world,
         _insert_occurrence(budget_world, rule, date(2026, 11, 1)),
     )
+
+
+# --- caps: a list is never silently cut short --------------------------------------
+
+
+def test_creation_stops_at_the_cap_and_a_list_at_the_cap_is_complete(
+    budget_world: BudgetWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(store_module, "RECURRENCE_LIST_MAX", 3)
+    account = budget_world.account()
+    for _ in range(3):
+        _create(budget_world, account)
+    with pytest.raises(FinancialRecurrenceLimitError):
+        _create(budget_world, account)
+    assert _count(budget_world, financial_recurrences) == 3
+    assert len(_store(budget_world).list_recurrences(**budget_world.scope())) == 3
+
+
+def test_a_list_over_its_cap_fails_instead_of_dropping_rows(
+    budget_world: BudgetWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    account = budget_world.account()
+    for _ in range(3):
+        _create(budget_world, account)
+    monkeypatch.setattr(store_module, "RECURRENCE_LIST_MAX", 2)
+    with pytest.raises(FinancialRecurrenceLimitError):
+        _store(budget_world).list_recurrences(**budget_world.scope())
+
+
+def test_an_occurrence_window_over_its_cap_fails_instead_of_dropping_rows(
+    budget_world: BudgetWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meufinanceiro_finance import FinancialRecurrenceWindow
+
+    rule = _create(budget_world, budget_world.account())
+    window = FinancialRecurrenceWindow(date(2026, 10, 1), date(2026, 12, 1))
+    _store(budget_world).generate_occurrences(
+        **budget_world.scope(), recurrence_id=rule.id, window=window
+    )
+    monkeypatch.setattr(store_module, "RECURRENCE_OCCURRENCE_LIST_MAX", 2)
+    with pytest.raises(FinancialRecurrenceLimitError):
+        _store(budget_world).list_occurrences(**budget_world.scope(), window=window)

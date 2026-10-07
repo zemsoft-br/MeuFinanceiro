@@ -1273,3 +1273,17 @@ def test_the_realize_route_is_the_only_writer_of_movements_in_this_surface(
     assert "/api/v1/finance/recurrence-occurrences/{occurrence_id}/realize" in posts
     assert not any(method in ("DELETE", "PATCH") for _, method in operations)
     assert len(operations) == 10
+
+
+def test_the_visible_cap_is_a_clean_422_not_a_silent_truncation(
+    api: Api, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import meufinanceiro_persistence.financial_recurrence_store as store_module
+
+    monkeypatch.setattr(store_module, "RECURRENCE_LIST_MAX", 2)
+    account = api.account("owner")
+    api.create("owner", account)
+    api.create("owner", account)
+    refused = api.post("owner", "/recurrences", api.recurrence_body(account))
+    _clean(refused, 422, "financial recurrence limit reached")
+    assert len(api.get("owner", "/recurrences").json()["items"]) == 2

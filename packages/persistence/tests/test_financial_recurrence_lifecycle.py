@@ -591,3 +591,27 @@ def test_the_vertical_without_a_realization_never_creates_a_movement(
     )
     assert skipped.status is FinancialOccurrenceStatus.SKIPPED
     assert _count(budget_world, financial_movements) == 0
+
+
+def test_a_pending_scheduled_exactly_today_is_superseded_by_a_stale_edit(
+    budget_world: BudgetWorld,
+) -> None:
+    rule = _rule(budget_world, day_of_month=6, start_date=date(2026, 1, 6))
+    on_today = _only(_generate(budget_world, rule, _OCT))
+    assert on_today.scheduled_date == _TODAY
+
+    outcome = _store(budget_world).replace_recurrence(
+        **budget_world.scope(),
+        recurrence_id=rule.id,
+        replacement=FinancialRecurrenceReplacement(
+            expected_version=1,
+            description="Internet",
+            expected_amount=Decimal("130"),
+            day_of_month=6,
+            end_date=None,
+        ),
+        today=_TODAY,
+    )
+
+    # Today is not overdue: the stale forecast is superseded, never reinterpreted.
+    assert outcome.superseded_count == 1
