@@ -1266,7 +1266,7 @@ def test_the_realize_route_is_the_only_writer_of_movements_in_this_surface(
     operations = {
         (path, method.upper())
         for path, item in paths.items()
-        if "recurrence" in path
+        if "recurrence" in path and "recurrence-suggestions" not in path
         for method in item
     }
     posts = {path for path, method in operations if method == "POST"}

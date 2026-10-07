@@ -89,7 +89,7 @@ void main() {
 
   group('loading', () {
     test(
-      'starts in the injected current month and reads exactly three things',
+      'starts in the injected current month and reads exactly four things',
       () async {
         expect(state().period, '2026-10');
         final value = await loaded();
@@ -97,7 +97,9 @@ void main() {
         expect(value.recurrences.single.description, 'Internet');
         expect(value.accounts, hasLength(1));
         expect(value.occurrences, isEmpty);
-        expect(backend.calls, hasLength(3)); // accounts, rules, one month
+        // accounts, rules, one month and the suggestions
+        expect(backend.calls, hasLength(4));
+        expect(backend.suggestionReads, 1);
         expect(backend.listReads, 1);
         expect(backend.occurrenceReads, 1);
         expect(backend.totalWrites, 0);
@@ -109,7 +111,7 @@ void main() {
         backend.rules.add(FakeRule(index: i, accountId: _account));
       }
       await loaded();
-      expect(backend.calls, hasLength(3));
+      expect(backend.calls, hasLength(4));
     });
 
     test('reading never generates a forecast or a Movement', () async {

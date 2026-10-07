@@ -213,3 +213,50 @@ String financialRealizeDraftIssueLabel(FinancialRealizeDraftIssue issue) =>
       FinancialRealizeDraftIssue.competenceDateInvalid =>
         'Informe a data de competência no formato AAAA-MM-DD.',
     };
+
+// --- assisted suggestions (#256, ADR-0028) ----------------------------------------
+
+/// Shown wherever a suggestion is. A suggestion is derived, never a fact.
+const financialRecurrenceSuggestionNotice =
+    'Detectamos um padrão; nada será criado sem sua confirmação.';
+
+/// Shown in the review that creates the recurrence from a suggestion.
+const financialRecurrenceSuggestionReviewNotice =
+    'Criar a recorrência não gera previsões nem lançamentos e não altera o '
+    'saldo. Revise os campos: é você quem confirma.';
+
+String financialSuggestionReasonLabel(FinancialSuggestionReason reason) =>
+    switch (reason) {
+      FinancialSuggestionReason.exactDescription =>
+        'A descrição é igual em todas as cobranças (sem diferenciar '
+            'maiúsculas e sem contar espaços nas pontas).',
+      FinancialSuggestionReason.consecutiveMonths =>
+        'As cobranças aconteceram em meses seguidos.',
+      FinancialSuggestionReason.onePerMonth => 'Há uma única cobrança por mês.',
+      FinancialSuggestionReason.dayWindow =>
+        'As cobranças caem em dias próximos do mês (no máximo 3 dias de '
+            'diferença).',
+      FinancialSuggestionReason.amountFixed =>
+        'O valor é o mesmo em todas as cobranças.',
+      FinancialSuggestionReason.amountVariable =>
+        'O valor variou entre as cobranças.',
+    };
+
+/// "Todo dia 10 · 3 meses seguidos".
+String financialSuggestionPatternLabel(FinancialRecurrenceSuggestion item) =>
+    '${financialRecurrenceScheduleLabel(item.suggestedDayOfMonth)} · '
+    '${item.evidence.length} meses seguidos';
+
+/// First day of the month after [lastObservedDate] (`YYYY-MM-DD`): the review is
+/// pre-filled so the new rule does not start on a month that already happened.
+/// The user can change it; the server validates every field again.
+String financialSuggestionDefaultStartDate(String lastObservedDate) {
+  var year = int.parse(lastObservedDate.substring(0, 4));
+  var month = int.parse(lastObservedDate.substring(5, 7)) + 1;
+  if (month > 12) {
+    month = 1;
+    year += 1;
+  }
+  return '${year.toString().padLeft(4, '0')}-'
+      '${month.toString().padLeft(2, '0')}-01';
+}
