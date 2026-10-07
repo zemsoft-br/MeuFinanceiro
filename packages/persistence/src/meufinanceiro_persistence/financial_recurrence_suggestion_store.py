@@ -19,6 +19,7 @@ them per Movement, account or recurrence.
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 from uuid import UUID
 
 from meufinanceiro_finance import (
@@ -40,7 +41,7 @@ from meufinanceiro_finance import (
     validate_recurrence_suggestion_fingerprint,
 )
 from meufinanceiro_finance.movements import FinancialMovementRole
-from sqlalchemy import Connection, Engine, func, select
+from sqlalchemy import Connection, Engine, Select, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import DBAPIError, IntegrityError
@@ -415,6 +416,15 @@ class FinancialRecurrenceSuggestionStore:
             )
         return shown, hidden
 
+    def _bounded_ids(self, connection: Connection, statement: Select[Any]) -> set[UUID]:
+        """One set of ids, read with an explicit cap (never silently cut short)."""
+        ids = set(connection.scalars(statement.limit(self._scan_max + 1)).all())
+        if len(ids) > self._scan_max:
+            raise FinancialRecurrenceSuggestionLimitError(
+                "recurrence suggestion scan limit reached"
+            )
+        return ids
+
     def _scan(
         self,
         connection: Connection,
@@ -425,8 +435,26 @@ class FinancialRecurrenceSuggestionStore:
         first, last = recurrence_suggestion_window(today)
         movements = financial_movements
         accounts = financial_accounts
-        reversals = financial_movements.alias("reversal")
-        occurrences = financial_recurrence_occurrences
+        # Two set reads instead of per-row anti-joins: a correlated NOT EXISTS lets
+        # the planner pick a nested loop over the whole residence when it has no
+        # statistics yet (right after a large import), which is quadratic. These
+        # are linear scans on unique indexes and the exclusion is done once below.
+        reversed_ids = self._bounded_ids(
+            connection,
+            select(movements.c.reversal_of_id).where(
+                movements.c.installation_id == installation_id,
+                movements.c.residence_id == residence_id,
+                movements.c.reversal_of_id.is_not(None),
+            ),
+        )
+        linked_ids = self._bounded_ids(
+            connection,
+            select(financial_recurrence_occurrences.c.movement_id).where(
+                financial_recurrence_occurrences.c.installation_id == installation_id,
+                financial_recurrence_occurrences.c.residence_id == residence_id,
+                financial_recurrence_occurrences.c.movement_id.is_not(None),
+            ),
+        )
         statement = (
             select(
                 movements.c.id,
@@ -454,12 +482,6 @@ class FinancialRecurrenceSuggestionStore:
                 movements.c.effective_date <= last,
                 movements.c.description.is_not(None),
                 accounts.c.status == "ACTIVE",
-                ~select(reversals.c.id)
-                .where(reversals.c.reversal_of_id == movements.c.id)
-                .exists(),
-                ~select(occurrences.c.id)
-                .where(occurrences.c.movement_id == movements.c.id)
-                .exists(),
             )
             .order_by(movements.c.effective_date, movements.c.id)
             .limit(self._scan_max + 1)
@@ -469,6 +491,8 @@ class FinancialRecurrenceSuggestionStore:
             raise FinancialRecurrenceSuggestionLimitError(
                 "recurrence suggestion scan limit reached"
             )
+        excluded = reversed_ids | linked_ids
+        rows = [row for row in rows if row["id"] not in excluded]
         owners: dict[UUID, UUID] = {}
         observations: list[FinancialRecurrenceObservation] = []
         try:

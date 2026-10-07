@@ -20,8 +20,15 @@ import 'package:meufinanceiro_app/features/finance/financial_core_controller.dar
 //    edits again explicitly. An ambiguous create or registration keeps its
 //    idempotency key only for an explicit, identical retry that the server
 //    replays (so a retry can never register twice);
-//  * the cost per screen is fixed: accounts, rules and one month of occurrences,
-//    never a request per rule or per occurrence.
+//  * the cost per screen is fixed: accounts, rules, one month of occurrences and
+//    the suggestions, never a request per rule, occurrence or suggestion.
+//
+// Assisted suggestions (#256) follow the same contract. A suggestion is derived by
+// the server and never a fact: nothing is created or dismissed without an explicit
+// command, a 409 (the suggestion changed or was already decided) is never
+// re-applied, and only an identical, user-initiated retry reuses the idempotency
+// key of an acceptance whose outcome is unknown. A suggestions read that fails
+// never hides the rules: the section says it is unavailable.
 
 /// What the last action ended with. Never claims more than the server said.
 enum FinancialRecurrenceActionOutcome {
@@ -32,6 +39,16 @@ enum FinancialRecurrenceActionOutcome {
   generated,
   skipped,
   realized,
+
+  /// A suggestion became one canonical recurrence (no occurrence, no Movement).
+  suggestionAccepted,
+
+  /// A suggestion was dismissed for this operator only.
+  suggestionDismissed,
+
+  /// 409 on a suggestion: it changed, vanished or was already decided. Nothing
+  /// was written; the suggestions were read again.
+  suggestionConflict,
 
   /// 409: stale version, paused rule, occurrence no longer pending, or an
   /// idempotency conflict. Nothing was written; the current state was read.
@@ -82,6 +99,8 @@ class FinancialRecurrencesState {
     this.recurrences = const [],
     this.occurrences = const [],
     this.accounts = const [],
+    this.suggestions = const [],
+    this.suggestionsUnavailable = false,
     this.refreshFailure = FinancialRefreshFailure.none,
     this.mutationInFlight = false,
     this.trusted = true,
@@ -99,6 +118,8 @@ class FinancialRecurrencesState {
     required List<FinancialRecurrence> recurrences,
     required List<FinancialRecurrenceOccurrence> occurrences,
     required List<FinancialAccount> accounts,
+    List<FinancialRecurrenceSuggestion> suggestions = const [],
+    bool suggestionsUnavailable = false,
     bool refreshing = false,
     FinancialRefreshFailure refreshFailure = FinancialRefreshFailure.none,
     bool mutationInFlight = false,
@@ -116,6 +137,10 @@ class FinancialRecurrencesState {
            occurrences,
          ),
          accounts: List<FinancialAccount>.unmodifiable(accounts),
+         suggestions: List<FinancialRecurrenceSuggestion>.unmodifiable(
+           suggestions,
+         ),
+         suggestionsUnavailable: suggestionsUnavailable,
          refreshFailure: refreshFailure,
          mutationInFlight: mutationInFlight,
          trusted: trusted,
@@ -131,6 +156,12 @@ class FinancialRecurrencesState {
   /// The month's forecasts and registrations (SUPERSEDED are never listed).
   final List<FinancialRecurrenceOccurrence> occurrences;
   final List<FinancialAccount> accounts;
+
+  /// Derived by the server (#256); never persisted or computed here.
+  final List<FinancialRecurrenceSuggestion> suggestions;
+
+  /// The suggestions read failed (the rules are still shown and trusted).
+  final bool suggestionsUnavailable;
   final FinancialRefreshFailure refreshFailure;
   final bool mutationInFlight;
 
@@ -164,6 +195,13 @@ class FinancialRecurrencesState {
     return null;
   }
 
+  FinancialRecurrenceSuggestion? suggestionByFingerprint(String fingerprint) {
+    for (final suggestion in suggestions) {
+      if (suggestion.fingerprint == fingerprint) return suggestion;
+    }
+    return null;
+  }
+
   FinancialAccount? accountById(String id) {
     for (final account in accounts) {
       if (account.accountId == id) return account;
@@ -180,6 +218,8 @@ class FinancialRecurrencesState {
     recurrences: recurrences,
     occurrences: occurrences,
     accounts: accounts,
+    suggestions: suggestions,
+    suggestionsUnavailable: suggestionsUnavailable,
     refreshing: phase == FinancialLoadPhase.refreshing,
     refreshFailure: refreshFailure,
     mutationInFlight: mutationInFlight ?? this.mutationInFlight,
@@ -216,6 +256,7 @@ class FinancialRecurrencesController
   /// user-initiated retry reuses one (the server replays it).
   final Map<String, String> _createKeys = {};
   final Map<String, String> _realizeKeys = {};
+  final Map<String, String> _acceptKeys = {};
 
   @override
   FinancialRecurrencesState build() {
@@ -265,6 +306,54 @@ class FinancialRecurrencesController
       _createKeys.remove(attempt);
       return const _Done(FinancialRecurrenceActionOutcome.created);
     }, onDefiniteFailure: () => _createKeys.remove(attempt));
+  }
+
+  /// Creates the canonical recurrence a suggestion proposes, after the user
+  /// reviewed every field. One POST; the answer is the only truth. The server
+  /// creates no occurrence and no Movement.
+  Future<FinancialRecurrenceActionResult> acceptSuggestion(
+    FinancialRecurrenceSuggestionAcceptInput input,
+  ) async {
+    final suggestion = state.suggestionByFingerprint(input.fingerprint);
+    if (suggestion == null ||
+        !suggestion.canAccept ||
+        !_canWrite(state) ||
+        input.accountId != suggestion.accountId ||
+        input.currency != suggestion.currency) {
+      return _notAllowed();
+    }
+    final attempt = input.attemptKey;
+    final send = input.withIdempotencyKey(
+      _acceptKeys[attempt] ?? input.idempotencyKey,
+    );
+    _acceptKeys[attempt] = send.idempotencyKey;
+    return _write(
+      () async {
+        await ref
+            .read(financialCoreApiProvider)
+            .acceptRecurrenceSuggestion(send);
+        _acceptKeys.remove(attempt);
+        return const _Done(FinancialRecurrenceActionOutcome.suggestionAccepted);
+      },
+      onDefiniteFailure: () => _acceptKeys.remove(attempt),
+      conflictOutcome: FinancialRecurrenceActionOutcome.suggestionConflict,
+    );
+  }
+
+  /// A personal dismissal: hides the suggestion only for this operator.
+  Future<FinancialRecurrenceActionResult> dismissSuggestion(
+    String fingerprint,
+  ) async {
+    if (state.suggestionByFingerprint(fingerprint) == null ||
+        !_canWrite(state)) {
+      return _notAllowed();
+    }
+    return _write(() async {
+      await ref
+          .read(financialCoreApiProvider)
+          .dismissRecurrenceSuggestion(fingerprint);
+      return const _Done(FinancialRecurrenceActionOutcome.suggestionDismissed);
+    }, conflictOutcome: FinancialRecurrenceActionOutcome.suggestionConflict);
   }
 
   /// Edits [recurrenceId] under CAS. One PUT, never retried or re-based.
@@ -395,6 +484,8 @@ class FinancialRecurrencesController
   Future<FinancialRecurrenceActionResult> _write(
     Future<_Done> Function() send, {
     void Function()? onDefiniteFailure,
+    FinancialRecurrenceActionOutcome conflictOutcome =
+        FinancialRecurrenceActionOutcome.conflict,
   }) async {
     state = state.copyWith(mutationInFlight: true, conflictNotice: false);
     try {
@@ -409,7 +500,7 @@ class FinancialRecurrencesController
       if (status == 409 || status == 404 || status == 422) {
         onDefiniteFailure?.call();
       }
-      return _afterFailedWrite(error);
+      return _afterFailedWrite(error, conflictOutcome);
     } on FormatException {
       // A 2xx that cannot be validated: the write may have happened. The key
       // stays for an explicit identical retry; nothing is resent here.
@@ -419,6 +510,7 @@ class FinancialRecurrencesController
 
   Future<FinancialRecurrenceActionResult> _afterFailedWrite(
     AuthenticatedApiException error,
+    FinancialRecurrenceActionOutcome conflictOutcome,
   ) async {
     if (_disposed) {
       return const FinancialRecurrenceActionResult(
@@ -428,10 +520,7 @@ class FinancialRecurrencesController
     }
     final status = error.statusCode;
     if (status == 409) {
-      return _reconcile(
-        FinancialRecurrenceActionOutcome.conflict,
-        conflict: true,
-      );
+      return _reconcile(conflictOutcome, conflict: true);
     }
     if (status == 404 || status == 422) {
       return _reconcile(FinancialRecurrenceActionOutcome.rejected);
@@ -509,6 +598,8 @@ class FinancialRecurrencesController
             recurrences: preserved.recurrences,
             occurrences: sameMonth ? preserved.occurrences : const [],
             accounts: preserved.accounts,
+            suggestions: preserved.suggestions,
+            suggestionsUnavailable: preserved.suggestionsUnavailable,
             refreshing: true,
             mutationInFlight: afterWrite,
             trusted: preserved.trusted,
@@ -522,12 +613,15 @@ class FinancialRecurrencesController
         fromPeriod: period,
         throughPeriod: period,
       );
+      final suggestionsRead = await _readSuggestions(api);
       if (_disposed || generation != _generation) return false;
       state = FinancialRecurrencesState.loaded(
         period: period,
         recurrences: recurrences,
         occurrences: occurrences,
         accounts: accounts,
+        suggestions: suggestionsRead.suggestions,
+        suggestionsUnavailable: suggestionsRead.unavailable,
         conflictNotice: conflict,
       );
       return true;
@@ -544,6 +638,33 @@ class FinancialRecurrencesController
         conflict: conflict,
       );
       return false;
+    }
+  }
+
+  /// The suggestions are a fourth, fixed-cost read. A failure that is not about
+  /// access only marks the section unavailable: it never hides or distrusts the
+  /// rules. Access failures (401/403/residence) fail the screen like any read.
+  Future<({List<FinancialRecurrenceSuggestion> suggestions, bool unavailable})>
+  _readSuggestions(FinancialCoreApi api) async {
+    try {
+      final list = await api.listRecurrenceSuggestions();
+      return (suggestions: list.items, unavailable: false);
+    } on AuthenticatedApiException catch (error) {
+      final phase = financialPhaseForFailure(error);
+      if (phase == FinancialLoadPhase.authenticationRequired ||
+          phase == FinancialLoadPhase.primaryResidenceRequired ||
+          phase == FinancialLoadPhase.forbidden) {
+        rethrow;
+      }
+      return (
+        suggestions: const <FinancialRecurrenceSuggestion>[],
+        unavailable: true,
+      );
+    } on FormatException {
+      return (
+        suggestions: const <FinancialRecurrenceSuggestion>[],
+        unavailable: true,
+      );
     }
   }
 
@@ -564,6 +685,8 @@ class FinancialRecurrencesController
         recurrences: preserved.recurrences,
         occurrences: preserved.occurrences,
         accounts: preserved.accounts,
+        suggestions: preserved.suggestions,
+        suggestionsUnavailable: preserved.suggestionsUnavailable,
         refreshFailure: phase == FinancialLoadPhase.invalidResponse
             ? FinancialRefreshFailure.invalidResponse
             : FinancialRefreshFailure.temporarilyUnavailable,

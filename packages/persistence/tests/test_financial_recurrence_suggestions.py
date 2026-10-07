@@ -926,8 +926,9 @@ def test_the_statement_count_is_fixed_whatever_the_amount_of_data(
         _expense(budget_world, other, date(2026, 10, 3), description="Avulso")
     many = statements()
 
-    assert empty == 4  # context, membership, scan, rules (no suggestion, no decisions)
-    assert one == many == 5  # plus exactly one decisions lookup, never one per row
+    # context, membership, scan, reversed ids, linked ids, rules (no decisions yet)
+    assert empty == 6
+    assert one == many == 7  # plus exactly one decisions lookup, never one per row
     assert len(_list(budget_world)) == 7
 
 
@@ -950,3 +951,40 @@ def test_the_scan_is_served_by_the_partial_index(budget_world: BudgetWorld) -> N
             )
         )
     assert "ix_finance_movements_expense_scan" in plan
+
+
+def test_the_reversed_id_set_has_its_own_explicit_cap(
+    budget_world: BudgetWorld,
+) -> None:
+    """Reversals of INCOME are not candidates, but their ids are still read."""
+    account = budget_world.account()
+    movements = FinancialMovementStore(budget_world.runtime)
+    for index in range(4):
+        income = movements.create_movement(
+            **budget_world.scope(),
+            idempotency_key=new_financial_idempotency_key(),
+            draft=FinancialMovementDraft(
+                account_id=account,
+                amount=Money(Decimal("10"), "BRL"),
+                result_effect=FinancialResultEffect.INCOME,
+                effective_date=date(2026, 10, 1 + index),
+                competence_date=date(2026, 10, 1 + index),
+                description=f"Entrada {index}",
+            ),
+        )
+        movements.reverse_movement(
+            **budget_world.scope(),
+            idempotency_key=new_financial_idempotency_key(),
+            draft=FinancialMovementReversalDraft(
+                movement_id=income.id,
+                effective_date=date(2026, 10, 10),
+                competence_date=date(2026, 10, 10),
+                reason="Sintético",
+            ),
+        )
+    scope = budget_world.scope()
+    roomy = FinancialRecurrenceSuggestionStore(budget_world.runtime, scan_max=4)
+    assert roomy.list_suggestions(**scope, today=_TODAY) == ()
+    tight = FinancialRecurrenceSuggestionStore(budget_world.runtime, scan_max=3)
+    with pytest.raises(FinancialRecurrenceSuggestionLimitError):
+        tight.list_suggestions(**scope, today=_TODAY)

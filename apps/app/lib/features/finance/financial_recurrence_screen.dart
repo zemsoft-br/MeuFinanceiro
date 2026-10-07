@@ -12,6 +12,8 @@ import 'package:meufinanceiro_app/features/finance/financial_recurrence_controll
 import 'package:meufinanceiro_app/features/finance/financial_recurrence_editor_dialog.dart';
 import 'package:meufinanceiro_app/features/finance/financial_recurrence_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_recurrence_realize_dialog.dart';
+import 'package:meufinanceiro_app/features/finance/financial_recurrence_suggestion_review_dialog.dart';
+import 'package:meufinanceiro_app/features/finance/financial_recurrence_suggestions_section.dart';
 import 'package:meufinanceiro_app/routing/app_routes.dart';
 import 'package:meufinanceiro_app/theme/components/app_badge.dart';
 import 'package:meufinanceiro_app/theme/components/app_state_panel.dart';
@@ -169,6 +171,60 @@ class _FinancialRecurrenceScreenState
     _announce(_message(result));
   }
 
+  /// Opens the review of a suggestion. Nothing is sent until the user confirms
+  /// every field; the server then creates one canonical recurrence.
+  Future<void> _createFromSuggestion(
+    FinancialRecurrencesState state,
+    FinancialRecurrenceSuggestion suggestion,
+  ) async {
+    final input = await showDialog<FinancialRecurrenceSuggestionAcceptInput>(
+      context: context,
+      builder: (_) => FinancialRecurrenceSuggestionReviewDialog(
+        suggestion: suggestion,
+        accountName: state.accountById(suggestion.accountId)?.name,
+      ),
+    );
+    if (input == null || !mounted) return;
+    final result = await ref
+        .read(financialRecurrencesControllerProvider.notifier)
+        .acceptSuggestion(input);
+    if (!mounted) return;
+    _announce(_message(result));
+  }
+
+  Future<void> _dismissSuggestion(
+    FinancialRecurrenceSuggestion suggestion,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Dispensar esta sugestão?'),
+        content: Text(
+          '${suggestion.description} deixa de ser sugerida só para você. '
+          'Outros membros continuam vendo, nada é criado e o saldo não muda.',
+        ),
+        actions: [
+          TextButton(
+            key: FinancialRecurrenceSuggestionsSection.dismissCancelKey,
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            key: FinancialRecurrenceSuggestionsSection.dismissConfirmKey,
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Dispensar sugestão'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final result = await ref
+        .read(financialRecurrencesControllerProvider.notifier)
+        .dismissSuggestion(suggestion.fingerprint);
+    if (!mounted) return;
+    _announce(_message(result));
+  }
+
   Future<void> _skip(FinancialRecurrenceOccurrence occurrence) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -235,6 +291,15 @@ class _FinancialRecurrenceScreenState
       FinancialRecurrenceActionOutcome.realized =>
         'Lançamento registrado e ligado à previsão. O saldo da conta foi '
             'atualizado.',
+      FinancialRecurrenceActionOutcome.suggestionAccepted =>
+        'Recorrência criada a partir da sugestão. Nenhuma previsão nem '
+            'lançamento foi criado: use Gerar no mês desejado.',
+      FinancialRecurrenceActionOutcome.suggestionDismissed =>
+        'Sugestão dispensada só para você. Nada foi criado e o saldo não '
+            'mudou.',
+      FinancialRecurrenceActionOutcome.suggestionConflict =>
+        'A sugestão mudou ou já foi decidida. Nada foi gravado e nada será '
+            'reenviado: revise as sugestões atuais.',
       FinancialRecurrenceActionOutcome.conflict =>
         'O estado mudou desde que você abriu esta tela (versão antiga, '
             'recorrência pausada ou previsão já tratada). Nada foi gravado: '
@@ -409,8 +474,8 @@ class _FinancialRecurrenceScreenState
                     const Expanded(
                       child: Text(
                         'Conflito: o estado mudou desde que você abriu esta '
-                        'tela (versão antiga, recorrência pausada ou previsão '
-                        'já tratada). Sua ação não foi aplicada e nada foi '
+                        'tela (versão antiga, recorrência pausada, previsão ou '
+                        'sugestão já tratada). Sua ação não foi aplicada e nada foi '
                         'reenviado. O que está na tela é o estado atual; faça '
                         'de novo se ainda for necessário.',
                       ),
@@ -436,6 +501,10 @@ class _FinancialRecurrenceScreenState
             onResume: (rule) => unawaited(_run(controller.resume(rule.id))),
             onGenerate: (rule) =>
                 unawaited(_run(controller.generateForShownMonth(rule.id))),
+            onCreateSuggestion: (suggestion) =>
+                unawaited(_createFromSuggestion(state, suggestion)),
+            onDismissSuggestion: (suggestion) =>
+                unawaited(_dismissSuggestion(suggestion)),
             onRegister: (occurrence) => unawaited(_register(state, occurrence)),
             onSkip: (occurrence) => unawaited(_skip(occurrence)),
             onPrevious: () => unawaited(controller.previousMonth()),
@@ -482,6 +551,8 @@ class _Content extends StatelessWidget {
     required this.onPause,
     required this.onResume,
     required this.onGenerate,
+    required this.onCreateSuggestion,
+    required this.onDismissSuggestion,
     required this.onRegister,
     required this.onSkip,
     required this.onPrevious,
@@ -496,6 +567,8 @@ class _Content extends StatelessWidget {
   final ValueChanged<FinancialRecurrence> onPause;
   final ValueChanged<FinancialRecurrence> onResume;
   final ValueChanged<FinancialRecurrence> onGenerate;
+  final ValueChanged<FinancialRecurrenceSuggestion> onCreateSuggestion;
+  final ValueChanged<FinancialRecurrenceSuggestion> onDismissSuggestion;
   final ValueChanged<FinancialRecurrenceOccurrence> onRegister;
   final ValueChanged<FinancialRecurrenceOccurrence> onSkip;
   final VoidCallback onPrevious;
@@ -522,6 +595,13 @@ class _Content extends StatelessWidget {
         key: FinancialRecurrenceScreen.emptyKey,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          FinancialRecurrenceSuggestionsSection(
+            state: state,
+            writable: writable,
+            onCreate: onCreateSuggestion,
+            onDismiss: onDismissSuggestion,
+          ),
+          const SizedBox(height: AppTokens.space24),
           const AppStatePanel(
             kind: AppStateKind.empty,
             title: 'Nenhuma recorrência',
@@ -547,6 +627,13 @@ class _Content extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        FinancialRecurrenceSuggestionsSection(
+          state: state,
+          writable: writable,
+          onCreate: onCreateSuggestion,
+          onDismiss: onDismissSuggestion,
+        ),
+        const SizedBox(height: AppTokens.space24),
         _RuleSection(
           sectionKey: FinancialRecurrenceScreen.activeSectionKey,
           title: 'Ativas (${active.length})',

@@ -63,7 +63,7 @@ Explícita, idempotente e **por operador**; só aceita fingerprint que correspon
 
 ### Limites
 
-A leitura varre no máximo `SUGGESTION_SCAN_MAX` (20 000) Movements da janela e devolve no máximo `SUGGESTION_LIST_MAX` (100) sugestões; ultrapassar qualquer um é erro explícito, nunca truncamento silencioso. O custo em statements é constante: contexto, membership, uma varredura, uma consulta de recorrências e uma de decisões, sem N+1.
+A leitura varre no máximo `SUGGESTION_SCAN_MAX` (20 000) Movements da janela e devolve no máximo `SUGGESTION_LIST_MAX` (100) sugestões; ultrapassar qualquer um é erro explícito, nunca truncamento silencioso. O custo em statements é constante: contexto, membership, uma varredura, a leitura em conjunto dos estornos e dos vínculos com ocorrência, uma consulta de recorrências e uma de decisões, sem N+1. Estornos e vínculos são excluídos uma vez, em memória, e não por `NOT EXISTS` correlacionado, que sem estatísticas do planejador degenerava em laço aninhado quadrático.
 
 ## Alternativas consideradas
 

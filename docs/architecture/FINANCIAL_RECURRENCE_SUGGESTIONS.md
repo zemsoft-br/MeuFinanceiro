@@ -1,6 +1,6 @@
 # Sugestões assistidas de recorrência — padrão detectado, confirmação explícita
 
-Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; batches 1 (domínio, detector puro, fingerprint e ADR), 2 (decisões persistidas, RLS e store) e 3 (API) concluídos. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; os 4 batches (domínio, persistência, API e Flutter/desempenho/smoke/docs) estão concluídos. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
 
 Normativo: ADR-0028 (e ADR-0027 para a recorrência criada). Este documento descreve o contrato do detector, do fingerprint e das decisões. Nenhuma regra financeira anterior foi alterada.
 
@@ -54,7 +54,7 @@ Garantias no banco:
 
 ## Store (`FinancialRecurrenceSuggestionStore`)
 
-- **Leitura (`list_suggestions`)**: papel de runtime com RLS forçada, então um Movement invisível ao operador nunca entra no agrupamento. Quatro statements fixos (contexto, membership, varredura, regras) mais **um** de decisões quando há sugestão, nunca por linha, conta ou regra. Falha explícita (`FinancialRecurrenceSuggestionLimitError`) se a varredura passa de `SUGGESTION_SCAN_MAX` ou o resultado de `SUGGESTION_LIST_MAX`. Nada é escrito.
+- **Leitura (`list_suggestions`)**: papel de runtime com RLS forçada, então um Movement invisível ao operador nunca entra no agrupamento. Seis statements fixos (contexto, membership, varredura da janela, ids estornados, ids ligados a ocorrência e regras) mais **um** de decisões quando há sugestão, nunca por linha, conta ou regra. Estornos e vínculos com ocorrência são lidos como **conjuntos** (índices únicos) e excluídos uma única vez, em vez de `NOT EXISTS` correlacionado por linha: sem estatísticas (logo após uma importação grande) o planejador escolhia um laço aninhado quadrático (20 001 linhas levaram ~257 s; agora ~2 s), e a forma em conjunto não depende de estimativa de cardinalidade. Falha explícita (`FinancialRecurrenceSuggestionLimitError`) se a varredura passa de `SUGGESTION_SCAN_MAX` ou o resultado de `SUGGESTION_LIST_MAX`. Nada é escrito.
 - **Dispensa (`dismiss`)**: idempotente (repetir devolve a decisão guardada), por operador, só para um fingerprint que o detector produz **agora** para ele; aceitar o que foi dispensado ou dispensar o que foi aceito é conflito.
 - **Aceite (`accept`)**, tudo em uma transação: contexto e membership → replay de aceite anterior (mesma chave e mesmo material devolve a mesma recorrência, mesmo que a sugestão já tenha sumido) → decisão prévia → **reexecução do detector** → prova de dono → writer da #254 (`create_recurrence_in_transaction`, extraído de `create_recurrence` sem mudar seu comportamento) → decisão `ACCEPTED`. Qualquer falha desfaz recorrência, revisão 1 e decisão. Zero Movement e zero ocorrência.
 - Erros próprios (todos sanitizados): `NotAvailable` (stale, forjado, já decidido, conta invisível ou outra residência, indistinguíveis), `NotEditable` (visível, mas só o dono aceita), `Conflict` (decisão incompatível), `Limit`; erros do writer da #254 passam como estão.
@@ -87,6 +87,23 @@ Erros públicos e sanitizados (sem SQL, constraint, fingerprint ou identificador
 
 Retry idêntico do aceite (mesma chave e mesmo material) devolve `201` com a mesma recorrência e `decision.created = false`. Aceitações concorrentes, com a mesma chave ou com chaves diferentes, resultam em exatamente **uma** recorrência e **uma** decisão `ACCEPTED`; as demais recebem `409`.
 
+## Cliente Flutter (batch 4)
+
+Na tela **Recorrências**, a seção **Sugestões** vem antes das regras (também quando ainda não há nenhuma recorrência):
+
+- aviso fixo: *Detectamos um padrão; nada será criado sem sua confirmação.*;
+- cada cartão mostra descrição, conta e moeda, o padrão (*Todo dia 10 · 3 meses seguidos*), as **cobranças observadas** (data e valor), o valor (**fixo** ou **variável**, este com mínimo, máximo e último) e os **motivos** traduzidos em texto (nunca um número de confiança);
+- **Criar recorrência** abre uma **revisão** com todos os campos preenchidos (descrição, valor esperado, início no mês seguinte à última cobrança, dia, término opcional); conta, tipo (despesa) e moeda aparecem fixos e não podem mudar; só ao confirmar a revisão uma requisição é enviada, e o servidor valida tudo de novo;
+- **Dispensar** pede confirmação leve e vale só para o operador;
+- quem vê a conta mas não é dono vê **Somente leitura**, sem Criar recorrência (só Dispensar, que é pessoal);
+- estados: carregando (junto da tela), vazio (*Nenhum padrão mensal detectado nos últimos 12 meses.*), erro da seção (*não foi possível carregar as sugestões agora; as suas recorrências não foram afetadas*, sem retry automático) e conflito (banner e mensagem: nada foi gravado e nada será reenviado).
+
+Contratos do cliente (provados por testes e pelo contrato de qualidade): **sem sucesso otimista** (a sugestão só some depois da releitura canônica após a resposta), **sem retry automático** (uma escrita é enviada uma vez; resultado incerto mantém a chave de idempotência **só** para um retry idêntico e explícito do usuário), um `409` nunca é reaplicado, custo fixo por tela (contas, regras, um mês de ocorrências e as sugestões: 4 requisições, nunca uma por item), uma falha ao ler sugestões não esconde nem desconfia das regras, sem `double`, sem detecção, calendário ou saldo no cliente.
+
+## Desempenho
+
+`test_financial_recurrence_suggestion_performance.py`: com 6 120 Movements e 40 padrões em 4 contas o número de statements é fixo (7) e a leitura sob RLS forçada fica em ~1 s (teto de 5 s só contra plano descontrolado); a varredura é servida por `ix_finance_movements_expense_scan`; com `SUGGESTION_SCAN_MAX + 1` Movements a leitura **falha explicitamente** (`FinancialRecurrenceSuggestionLimitError`, `422`) em ~2 s, mesmo sem estatísticas do planejador, e nunca devolve resposta truncada.
+
 ## Smoke vertical
 
 Provado por HTTP contra PostgreSQL 18.4 com role não-superusuário e RLS forçada (`test_smoke_the_issue_vertical_streaming_over_http`): *Streaming* de 39,90 em ago/set/out, mesma conta, uma por mês → `GET` sugere com evidências e motivos, saldo e extrato **inalterados** → o membro dispensa e a sugestão some só para ele (o dono ainda vê) → o dono revisa valor e dia e confirma → **exatamente 1** recorrência e a proveniência `ACCEPTED`, **zero** ocorrência e zero Movement novo, saldo e extrato inalterados → retry com a mesma chave não duplica, outra chave é `409` → a sugestão deixa de aparecer para todos.
@@ -114,4 +131,4 @@ Criação automática, detecção em segundo plano, ML/LLM/fuzzy, enriquecimento
 | 1 | domínio, detector puro, fingerprint, normalização e ADR-0028 | concluído |
 | 2 | persistência de decisões, RLS, store do detector e writer transacional da recorrência | concluído |
 | 3 | API accept/dismiss e concorrência (o writer transacional veio no batch 2) | concluído |
-| 4 | Flutter, desempenho, smoke, docs e gates | pendente |
+| 4 | Flutter, desempenho, smoke, docs e gates | concluído |

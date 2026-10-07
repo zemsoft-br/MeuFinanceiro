@@ -17,6 +17,9 @@ String recurrenceTestId(int index) =>
 String occurrenceTestId(int index) =>
     'd5000000-0000-4000-8000-${index.toString().padLeft(12, '0')}';
 
+String suggestionTestMovementId(int suggestion, int evidence) =>
+    'd7000000-0000-4000-8000-${(suggestion * 100 + evidence).toString().padLeft(12, '0')}';
+
 String recurrenceTestAccountId(int index) =>
     'd3000000-0000-4000-8000-${index.toString().padLeft(12, '0')}';
 
@@ -142,6 +145,54 @@ class FakeOccurrence {
   String get id => occurrenceTestId(index);
 }
 
+String suggestionTestFingerprint(int index) =>
+    index.toRadixString(16).padLeft(64, '0');
+
+class FakeSuggestionEvidence {
+  const FakeSuggestionEvidence(this.date, this.amount);
+
+  final String date;
+  final String amount;
+}
+
+/// One monthly pattern the fake *server* derived. The client never detects one.
+class FakeSuggestion {
+  FakeSuggestion({
+    required this.index,
+    required this.accountId,
+    this.owner = financeTestOwnerId,
+    this.description = 'Streaming',
+    this.currency = 'BRL',
+    this.day = 10,
+    List<FakeSuggestionEvidence>? evidence,
+  }) : evidence =
+           evidence ??
+           const [
+             FakeSuggestionEvidence('2026-08-10', '39.9'),
+             FakeSuggestionEvidence('2026-09-10', '39.9'),
+             FakeSuggestionEvidence('2026-10-10', '39.9'),
+           ];
+
+  final int index;
+  String accountId;
+  String owner;
+  String description;
+  String currency;
+  int day;
+  List<FakeSuggestionEvidence> evidence;
+
+  /// OPEN | DISMISSED | ACCEPTED. Only OPEN is listed.
+  String status = 'OPEN';
+  String? acceptKey;
+  String? acceptMaterial;
+  String? ruleId;
+
+  String get fingerprint => suggestionTestFingerprint(index);
+
+  bool get variable =>
+      evidence.map((e) => _canonicalText(e.amount)).toSet().length > 1;
+}
+
 class FakeLedgerEntry {
   FakeLedgerEntry(this.movementId, this.accountId, this.amount);
 
@@ -170,6 +221,7 @@ class FakeRecurrenceBackend {
   List<FakeRule> rules;
   final List<FakeOccurrence> occurrences = [];
   final List<FakeLedgerEntry> ledger = [];
+  final List<FakeSuggestion> suggestions = [];
   final String operatorId;
 
   /// The server's own "today" (the clock lives on the server).
@@ -179,6 +231,7 @@ class FakeRecurrenceBackend {
   int _nextMovement = 5000;
   final Map<String, String> _createKeys = {};
   final Map<String, String> _realizeKeys = {};
+  final Map<String, String> _acceptKeys = {};
 
   // --- failures / gates ---
   int? accountsStatus;
@@ -186,6 +239,9 @@ class FakeRecurrenceBackend {
   bool listThrows = false;
   String? listBodyOverride;
   Completer<void>? listGate;
+  int? suggestionsStatus;
+  bool suggestionsThrows = false;
+  String? suggestionsBodyOverride;
   int? occurrencesStatus;
   bool occurrencesThrows = false;
   String? occurrencesBodyOverride;
@@ -226,6 +282,31 @@ class FakeRecurrenceBackend {
             call.uri.path == '/api/v1/finance/recurrences',
       )
       .length;
+  int get suggestionReads => calls
+      .where(
+        (call) =>
+            call.method == AuthHttpMethod.get &&
+            call.uri.path == '/api/v1/finance/recurrence-suggestions',
+      )
+      .length;
+  int get acceptCalls => calls
+      .where(
+        (call) =>
+            call.uri.path.startsWith(
+              '/api/v1/finance/recurrence-suggestions/',
+            ) &&
+            call.uri.path.endsWith('/accept'),
+      )
+      .length;
+  int get dismissCalls => calls
+      .where(
+        (call) =>
+            call.uri.path.startsWith(
+              '/api/v1/finance/recurrence-suggestions/',
+            ) &&
+            call.uri.path.endsWith('/dismiss'),
+      )
+      .length;
   int get occurrenceReads => calls
       .where(
         (call) =>
@@ -253,6 +334,13 @@ class FakeRecurrenceBackend {
   FakeOccurrence? occurrenceById(String id) {
     for (final occurrence in occurrences) {
       if (occurrence.id == id) return occurrence;
+    }
+    return null;
+  }
+
+  FakeSuggestion? suggestionByFingerprint(String fingerprint) {
+    for (final suggestion in suggestions) {
+      if (suggestion.fingerprint == fingerprint) return suggestion;
     }
     return null;
   }
@@ -344,6 +432,55 @@ class FakeRecurrenceBackend {
         '"canEdit":${rule.owner == operatorId},"realization":$realization}';
   }
 
+  String suggestionJson(FakeSuggestion item) {
+    final amounts = item.evidence.map((e) => _scaled(e.amount)).toList();
+    var minimum = amounts.first;
+    var maximum = amounts.first;
+    for (final value in amounts) {
+      if (value < minimum) minimum = value;
+      if (value > maximum) maximum = value;
+    }
+    final last = item.evidence.last.amount;
+    final evidence = [
+      for (var i = 0; i < item.evidence.length; i += 1)
+        '{"movementId":"${suggestionTestMovementId(item.index, i)}",'
+            '"effectiveDate":"${item.evidence[i].date}",'
+            '"amount":${_money(_canonicalText(item.evidence[i].amount), item.currency)}}',
+    ];
+    final reasons = [
+      '"EXACT_DESCRIPTION"',
+      '"CONSECUTIVE_MONTHS"',
+      '"ONE_PER_MONTH"',
+      '"DAY_WINDOW"',
+      item.variable ? '"AMOUNT_VARIABLE"' : '"AMOUNT_FIXED"',
+    ];
+    return '{"fingerprint":"${item.fingerprint}","accountId":"${item.accountId}",'
+        '"description":"${item.description}",'
+        '"normalizedDescription":"${item.description.toLowerCase()}",'
+        '"currency":"${item.currency}","evidence":[${evidence.join(',')}],'
+        '"movementIds":[${[for (var i = 0; i < item.evidence.length; i += 1) '"${suggestionTestMovementId(item.index, i)}"'].join(',')}],'
+        '"observedDates":[${item.evidence.map((e) => '"${e.date}"').join(',')}],'
+        '"observedAmounts":[${item.evidence.map((e) => _money(_canonicalText(e.amount), item.currency)).join(',')}],'
+        '"suggestedDayOfMonth":${item.day},'
+        '"suggestedExpectedAmount":${_money(_canonicalText(last), item.currency)},'
+        '"amountBehavior":"${item.variable ? 'VARIABLE' : 'FIXED'}",'
+        '"minAmount":${_money(_canonical(minimum), item.currency)},'
+        '"maxAmount":${_money(_canonical(maximum), item.currency)},'
+        '"lastAmount":${_money(_canonicalText(last), item.currency)},'
+        '"reasonCodes":[${reasons.join(',')}],'
+        '"canAccept":${item.owner == operatorId}}';
+  }
+
+  String decisionJson(
+    FakeSuggestion item, {
+    required bool accepted,
+    required bool created,
+  }) =>
+      '{"fingerprint":"${item.fingerprint}","accountId":"${item.accountId}",'
+      '"decision":"${accepted ? 'ACCEPTED' : 'DISMISSED'}",'
+      '"recurrenceId":${accepted ? '"${item.ruleId}"' : 'null'},'
+      '"decidedAt":"2026-10-06T12:00:00Z","created":$created}';
+
   // --- routing ---
 
   static const _base = '/api/v1/finance';
@@ -360,6 +497,7 @@ class FakeRecurrenceBackend {
       if (path == '$_base/accounts') return _accounts();
       if (path == '$_base/recurrences') return _list();
       if (path == '$_base/recurrence-occurrences') return _occurrences(uri);
+      if (path == '$_base/recurrence-suggestions') return _suggestions();
       return const AuthHttpResponse(statusCode: 404, body: '{}');
     }
     final decoded = body == null
@@ -367,6 +505,15 @@ class FakeRecurrenceBackend {
         : jsonDecode(body) as Map<String, dynamic>;
     if (method == AuthHttpMethod.post && path == '$_base/recurrences') {
       return _write(() => _create(decoded), decoded);
+    }
+    final suggestion = RegExp(
+      r'^/api/v1/finance/recurrence-suggestions/([^/]+)/(dismiss|accept)$',
+    ).firstMatch(path);
+    if (method == AuthHttpMethod.post && suggestion != null) {
+      final fingerprint = suggestion.group(1)!;
+      return suggestion.group(2) == 'dismiss'
+          ? _write(() => _dismissSuggestion(fingerprint), decoded)
+          : _write(() => _acceptSuggestion(fingerprint, decoded), decoded);
     }
     final put = RegExp(
       r'^/api/v1/finance/recurrences/([^/]+)$',
@@ -426,6 +573,87 @@ class FakeRecurrenceBackend {
     return AuthHttpResponse(
       statusCode: 200,
       body: '{"items":[${rules.map(ruleJson).join(',')}]}',
+    );
+  }
+
+  Future<AuthHttpResponse> _suggestions() async {
+    if (suggestionsThrows) throw const FormatException('simulated transport');
+    final status = suggestionsStatus;
+    if (status != null) return AuthHttpResponse(statusCode: status, body: '{}');
+    final override = suggestionsBodyOverride;
+    if (override != null) {
+      return AuthHttpResponse(statusCode: 200, body: override);
+    }
+    final open = suggestions.where((item) => item.status == 'OPEN');
+    return AuthHttpResponse(
+      statusCode: 200,
+      body:
+          '{"windowFrom":"2025-11-01","windowThrough":"$today",'
+          '"items":[${open.map(suggestionJson).join(',')}]}',
+    );
+  }
+
+  AuthHttpResponse _dismissSuggestion(String fingerprint) {
+    final item = suggestionByFingerprint(fingerprint);
+    if (item == null || item.status == 'ACCEPTED') {
+      return const AuthHttpResponse(statusCode: 409, body: '{}');
+    }
+    final created = item.status == 'OPEN';
+    item.status = 'DISMISSED';
+    return AuthHttpResponse(
+      statusCode: 200,
+      body: decisionJson(item, accepted: false, created: created),
+    );
+  }
+
+  AuthHttpResponse _acceptSuggestion(
+    String fingerprint,
+    Map<String, dynamic> body,
+  ) {
+    final item = suggestionByFingerprint(fingerprint);
+    final key = body['idempotencyKey'] as String;
+    final material = jsonEncode({...body}..remove('idempotencyKey'));
+    if (item != null && item.acceptKey == key) {
+      if (item.acceptMaterial != material) {
+        return const AuthHttpResponse(statusCode: 409, body: '{}');
+      }
+      return AuthHttpResponse(
+        statusCode: 201,
+        body:
+            '{"recurrence":${ruleJson(ruleById(item.ruleId!)!)},'
+            '"decision":${decisionJson(item, accepted: true, created: false)}}',
+      );
+    }
+    if (item == null || item.status != 'OPEN') {
+      return const AuthHttpResponse(statusCode: 409, body: '{}');
+    }
+    if (item.owner != operatorId) {
+      return const AuthHttpResponse(statusCode: 403, body: '{}');
+    }
+    final rule = FakeRule(
+      index: _nextRule++,
+      accountId: item.accountId,
+      owner: operatorId,
+      description: body['description'] as String,
+      effect: 'EXPENSE',
+      expected: _canonicalText(body['expectedAmount'] as String),
+      currency: item.currency,
+      startDate: body['startDate'] as String,
+      dayOfMonth: body['dayOfMonth'] as int,
+      endDate: body['endDate'] as String?,
+    );
+    rules.add(rule);
+    item
+      ..status = 'ACCEPTED'
+      ..acceptKey = key
+      ..acceptMaterial = material
+      ..ruleId = rule.id;
+    _acceptKeys[key] = rule.id;
+    return AuthHttpResponse(
+      statusCode: 201,
+      body:
+          '{"recurrence":${ruleJson(rule)},'
+          '"decision":${decisionJson(item, accepted: true, created: true)}}',
     );
   }
 
