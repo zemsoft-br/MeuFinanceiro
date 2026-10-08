@@ -23,6 +23,8 @@ from meufinanceiro_persistence.financial_account_store import (
 )
 from meufinanceiro_persistence.financial_balance_query import (
     FinancialBalanceQueryService,
+)
+from meufinanceiro_persistence.financial_balance_transaction import (
     read_account_balance_in_transaction,
 )
 from meufinanceiro_persistence.financial_movement_store import (

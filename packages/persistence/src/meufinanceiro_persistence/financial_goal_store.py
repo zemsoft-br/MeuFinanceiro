@@ -49,7 +49,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from meufinanceiro_persistence.financial_account_store import (
     get_account_in_transaction,
 )
-from meufinanceiro_persistence.financial_balance_query import (
+from meufinanceiro_persistence.financial_balance_transaction import (
     read_account_balance_in_transaction,
 )
 from meufinanceiro_persistence.financial_goal_schema import (
