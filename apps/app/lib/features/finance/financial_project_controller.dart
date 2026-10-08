@@ -123,10 +123,13 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     _createKeys[attempt] = sent.idempotencyKey;
     state = state.copyWith(busy: true, conflict: false);
     FinancialProjectWriteOutcome outcome;
+    String? createdId;
     try {
       final project = await ref.read(financialCoreApiProvider).createProject(sent);
       if (_disposed) return FinancialProjectWriteOutcome.unknown;
-      _createKeys.remove(attempt);
+      createdId = project.id;
+      // Selection is tentative until list AND summary are read canonically.
+      // Keep the same idempotency key if that read cannot be verified.
       state = state.copyWith(selectedId: project.id);
       outcome = FinancialProjectWriteOutcome.confirmed;
     } on AuthenticatedApiException catch (error) {
@@ -141,8 +144,11 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     } catch (_) {
       outcome = FinancialProjectWriteOutcome.unknown;
     }
-    await _afterWrite(outcome);
-    return outcome;
+    final result = await _afterWrite(outcome, createdId: createdId);
+    if (result == FinancialProjectWriteOutcome.confirmed) {
+      _createKeys.remove(attempt);
+    }
+    return result;
   }
 
   Future<FinancialProjectWriteOutcome> replace(
@@ -169,8 +175,7 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     } catch (_) {
       outcome = FinancialProjectWriteOutcome.unknown;
     }
-    await _afterWrite(outcome);
-    return outcome;
+    return _afterWrite(outcome);
   }
 
   Future<FinancialProjectWriteOutcome> reviseLink(
@@ -180,10 +185,12 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     if (!_canWrite()) return FinancialProjectWriteOutcome.notAllowed;
     state = state.copyWith(busy: true, conflict: false);
     FinancialProjectWriteOutcome outcome;
+    String? writtenId;
     try {
-      await ref.read(financialCoreApiProvider).reviseProjectLink(
+      final revision = await ref.read(financialCoreApiProvider).reviseProjectLink(
         movementId, input,
       );
+      writtenId = revision.id;
       outcome = FinancialProjectWriteOutcome.confirmed;
     } on AuthenticatedApiException catch (error) {
       outcome = _outcome(error);
@@ -193,15 +200,25 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
       outcome = FinancialProjectWriteOutcome.unknown;
     }
     // Reconciliation must not infer link state from project totals alone.
-    await _afterWrite(outcome);
-    if (!_disposed && state.trusted) {
-      try {
-        await ref.read(financialCoreApiProvider).getProjectLink(movementId);
-      } catch (_) {
-        state = state.copyWith(trusted: false);
-      }
+    final reconciled = await _afterWrite(outcome);
+    if (_disposed || !state.trusted) {
+      return FinancialProjectWriteOutcome.unknown;
     }
-    return outcome;
+    try {
+      final current = await ref
+          .read(financialCoreApiProvider)
+          .getProjectLink(movementId);
+      if (reconciled == FinancialProjectWriteOutcome.confirmed &&
+          current?.id != writtenId) {
+        // A second writer may already have superseded our successful POST.
+        // Do not announce that the requested project is currently selected.
+        return FinancialProjectWriteOutcome.unknown;
+      }
+    } catch (_) {
+      state = state.copyWith(trusted: false);
+      return FinancialProjectWriteOutcome.unknown;
+    }
+    return reconciled;
   }
 
   FinancialProjectWriteOutcome _outcome(AuthenticatedApiException error) {
@@ -218,14 +235,26 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     return FinancialProjectWriteOutcome.unknown;
   }
 
-  Future<void> _afterWrite(FinancialProjectWriteOutcome outcome) async {
-    if (_disposed) return;
-    await _refresh(true, afterWrite: true);
-    if (_disposed) return;
+  /// A write response is not a reconciled success. No extra POST is sent.
+  Future<FinancialProjectWriteOutcome> _afterWrite(
+    FinancialProjectWriteOutcome outcome, {
+    String? createdId,
+  }) async {
+    if (_disposed) return FinancialProjectWriteOutcome.unknown;
+    final readSucceeded = await _refresh(true, afterWrite: true);
+    if (_disposed) return FinancialProjectWriteOutcome.unknown;
+    final createdVisible = createdId == null ||
+        (state.selectedId == createdId &&
+         state.summary?.project.id == createdId &&
+         state.projects.any((project) => project.id == createdId));
+    final trusted = readSucceeded && state.trusted && createdVisible;
     state = state.copyWith(
       busy: false,
-      conflict: outcome == FinancialProjectWriteOutcome.conflict,
+      trusted: trusted,
+      conflict: trusted && outcome == FinancialProjectWriteOutcome.conflict,
     );
+    if (!trusted) return FinancialProjectWriteOutcome.unknown;
+    return outcome;
   }
 
   Future<bool> _refresh(bool refresh, {bool afterWrite = false}) async {
