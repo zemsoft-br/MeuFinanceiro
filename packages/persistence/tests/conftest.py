@@ -35,6 +35,10 @@ from meufinanceiro_persistence.financial_budget_schema import (
     financial_budgets,
 )
 from meufinanceiro_persistence.financial_category_schema import financial_categories
+from meufinanceiro_persistence.financial_goal_schema import (
+    financial_goal_allocation_events,
+    financial_goals,
+)
 from meufinanceiro_persistence.financial_movement_allocation_schema import (
     financial_movement_allocation_sets,
     financial_movement_allocations,
@@ -223,6 +227,8 @@ def clean_persistence(engine: Engine) -> Iterator[None]:
         connection.execute(delete(financial_recurrence_occurrences))
         connection.execute(delete(financial_recurrence_revisions))
         connection.execute(delete(financial_recurrences))
+        connection.execute(delete(financial_goal_allocation_events))
+        connection.execute(delete(financial_goals))
         connection.execute(delete(financial_budget_lines))
         connection.execute(delete(financial_budgets))
         connection.execute(delete(reconciled_transaction_ledger_links))
