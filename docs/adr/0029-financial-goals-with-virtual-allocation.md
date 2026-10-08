@@ -38,11 +38,11 @@ Uma destinação **não é** Movement, transferência, receita, despesa, linha d
 
 ### Disponibilidade: o saldo canônico, sob lock por conta
 
-A disponibilidade de uma conta é `saldo canônico − Σ destinado (todas as metas, líquido de liberações)`. O saldo **não é recalculado por uma agregação própria**: o store lê, na mesma transação, a conta, o saldo de abertura e os Movements pelos mesmos leitores do ledger e chama `derive_financial_account_balance_and_statement` (a função que já define abertura + Movements + estornos + pernas de transferência `NEUTRAL` como movimento de caixa). A extração foi mínima: os três leitores transacionais (`get_account`, `get_opening_balance`, `list_movements`) ganharam uma variante que aceita a `Connection`, e os métodos antigos delegam a ela (uma só implementação da consulta).
+A disponibilidade de uma conta é `saldo canônico − Σ destinado (todas as metas, líquido de liberações)`. O saldo **não é recalculado por uma agregação própria**: o store lê, na mesma transação, a conta, o saldo de abertura e os Movements pelos mesmos leitores do ledger e chama `derive_financial_account_balance_and_statement` (a função que já define abertura + Movements + estornos + pernas de transferência `NEUTRAL` como movimento de caixa). A extração foi mínima: os três leitores transacionais (`get_account`, `get_opening_balance`, `list_movements`) ganharam uma variante que aceita a `Connection`, e os métodos antigos delegam a ela (uma só implementação da consulta). A composição transacional vive em `financial_balance_transaction.py`, para que `financial_balance_query.py` continue neutro de SQLAlchemy; um teste prova que o saldo transacional é igual ao do serviço canônico num ledger com despesa, receita, estorno e transferência.
 
 Atomicidade: toda destinação (e liberação) adquire `pg_advisory_xact_lock(hashtextextended('meufinanceiro:goal-account:' || account_id, 0))` **antes** de ler saldo e total destinado. O lock é por conta e de transação: duas destinações concorrentes à mesma conta (metas diferentes ou a mesma) se serializam, e a segunda, em `READ COMMITTED`, já enxerga o evento da primeira. A mesma chave é adquirida (reentrante) pelo gatilho `BEFORE INSERT` dos eventos, de modo que nem um caminho de aplicação que esqueça o lock consegue violar o saldo virtual por meta/conta. O lock não impede Movements: eles não adquirem esse lock e **nunca são bloqueados** por metas.
 
-O banco garante a estrutura (gatilho): audiência/dono/moeda/status da conta, sinal do evento, `saldo virtual (meta, conta) ≥ 0`, no máximo 500 eventos por meta e 25 contas por meta. A regra de disponibilidade contra o saldo canônico é do store, sob o lock, e não é duplicada em SQL (isso seria uma segunda implementação de saldo, exatamente o que a decisão evita). Se a atomicidade acima não fosse segura, a tarefa seria bloqueada e documentada; ela é segura porque lock e leitura do saldo vivem na mesma transação.
+O banco garante a estrutura (gatilho): audiência/dono/moeda/status da conta, sinal do evento, `saldo virtual (meta, conta) ≥ 0`, no máximo 500 eventos e 25 contas por meta (a partir de 475 eventos só `RELEASE` é aceito: 25 ficam reservados para devolver uma vez cada conta). A regra de disponibilidade contra o saldo canônico é do store, sob o lock, e não é duplicada em SQL (isso seria uma segunda implementação de saldo, exatamente o que a decisão evita). Se a atomicidade acima não fosse segura, a tarefa seria bloqueada e documentada; ela é segura porque lock e leitura do saldo vivem na mesma transação.
 
 ### Saldo que cai depois: reportar, nunca reparar
 
@@ -57,7 +57,7 @@ Despesas posteriores reduzem o saldo canônico e **não alteram nenhum evento**.
 
 ### Append-only no banco
 
-O runtime recebe `SELECT, INSERT` em `goal_allocation_events` e **nenhum** `UPDATE`/`DELETE`; gatilhos `BEFORE UPDATE OR DELETE` rejeitam qualquer tentativa também do dono das tabelas. Em `goals` o runtime atualiza apenas `title, description, target_amount, target_date, version, updated_at, updated_by_operator_id`; um gatilho exige versão + 1 e identidade imutável. Não há `DELETE` de meta.
+O runtime recebe `SELECT, INSERT` em `goal_allocation_events` e **nenhum** `UPDATE`/`DELETE`; um gatilho `BEFORE UPDATE` rejeita a reescrita também do dono das tabelas (como nas demais tabelas append-only do projeto, `DELETE` não é concedido ao runtime; a limpeza administrativa de demonstração e de testes é do dono). Em `goals` o runtime atualiza apenas `title, description, target_amount, target_date, version, updated_at, updated_by_operator_id`; um gatilho exige versão + 1 e identidade imutável. Não há `DELETE` de meta.
 
 ### RLS
 
@@ -86,7 +86,7 @@ Como orçamentos e recorrências, metas não são mutação do ledger nem da cla
 ## Consequências
 
 - o destinado de uma meta pode ficar acima do saldo atual da conta e a UI mostra o alerta como o servidor entrega;
-- toda destinação paga a leitura canônica do saldo da conta (proporcional aos Movements dela); o custo é medido e documentado em `FINANCIAL_GOALS.md`;
+- toda destinação paga a leitura canônica do saldo da conta, proporcional aos Movements **dela** e não ao ledger: ~0,85 s numa conta com 20 mil Movements, ~0,03 s numa conta tranquila (inalterado por 60 mil Movements de outras contas) e ~1,9 s para o resumo de 25 contas / 50 mil Movements (PG 18.4, runtime não-superuser, RLS forçada); contas com ledger muito maior que isso seriam o gatilho para uma decisão própria de saldo materializado, sem tocar esta regra;
 - metas não são arquivadas nem apagadas na v1 (o teto de 200 por dono é o limite explícito até existir um ciclo de vida).
 
 ## Validação

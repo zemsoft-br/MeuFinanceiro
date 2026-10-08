@@ -15,6 +15,7 @@ class FinancialAccountsScreen extends ConsumerStatefulWidget {
   static const createButtonKey = Key('financial-accounts-create');
   static const pendingButtonKey = Key('financial-accounts-pending');
   static const budgetsButtonKey = Key('financial-accounts-budgets');
+  static const goalsButtonKey = Key('financial-accounts-goals');
   static const recurrencesButtonKey = Key('financial-accounts-recurrences');
   static const refreshButtonKey = Key('financial-accounts-refresh');
   static const emptyKey = Key('financial-accounts-empty');
@@ -129,6 +130,12 @@ class _FinancialAccountsScreenState
                     onPressed: () => context.go(AppRoutes.financeBudgetsPath),
                     icon: const Icon(Icons.pie_chart_outline_rounded),
                     label: const Text('Orçamentos'),
+                  ),
+                  OutlinedButton.icon(
+                    key: FinancialAccountsScreen.goalsButtonKey,
+                    onPressed: () => context.go(AppRoutes.financeGoalsPath),
+                    icon: const Icon(Icons.flag_outlined),
+                    label: const Text('Metas'),
                   ),
                   OutlinedButton.icon(
                     key: FinancialAccountsScreen.recurrencesButtonKey,

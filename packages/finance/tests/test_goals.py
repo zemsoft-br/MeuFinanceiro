@@ -424,6 +424,30 @@ def test_summary_flags_insufficient_backing_without_rewriting_anything() -> None
     assert summary.events == tuple(events)
 
 
+def test_backing_boundary_is_exact_not_pessimistic() -> None:
+    goal = _goal(target=_money("1000"))
+    account_id = new_financial_resource_id()
+    events = [_event(goal, account_id, A, "100")]
+
+    equal = summarize_goal(
+        goal, events, [_inputs(goal, account_id, balance="100", total="100")]
+    )
+    one_unit_short = summarize_goal(
+        goal,
+        events,
+        [_inputs(goal, account_id, balance="99.99999999", total="100")],
+    )
+
+    assert equal.accounts[0].backing_status is FinancialGoalBackingStatus.COVERED
+    assert equal.accounts[0].shortfall == _money("0")
+    assert equal.has_insufficient_backing is False
+    assert (
+        one_unit_short.accounts[0].backing_status
+        is FinancialGoalBackingStatus.INSUFFICIENT
+    )
+    assert one_unit_short.accounts[0].shortfall == _money("0.00000001")
+
+
 def test_summary_backing_is_account_wide_not_goal_local() -> None:
     goal = _goal(target=_money("1000"))
     account_id = new_financial_resource_id()

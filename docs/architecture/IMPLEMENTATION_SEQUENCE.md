@@ -174,7 +174,7 @@ Após o livro estável:
 3. orçamentos (#252): implementados em API e Flutter, integrados ao `develop` (PR #253); planejamento persistido com CAS e realizado derivado do ledger e da classificação corrente; detalhes em `FINANCIAL_BUDGETS.md` e ADR-0026;
 4. recorrências (#254, fechada): implementadas em API e Flutter e integradas ao `develop` (PR #255); regra mensal manual como modelo, ocorrência persistida como instância e Movement como único fato realizado, criado só por Registrar explícito e atômico; detalhes em `FINANCIAL_RECURRENCES.md` e ADR-0027;
 5. assinaturas assistidas (#256): implementadas em API e Flutter e integradas ao `develop` (PR #257); sugestões derivadas e determinísticas que, só com confirmação, criam uma recorrência da #254; detalhes em `FINANCIAL_RECURRENCE_SUGGESTIONS.md` e ADR-0028;
-6. metas (#260): destinação virtual de saldo existente, em implementação na branch `feat/financial-goals-260` (ainda sem PR); detalhes em `FINANCIAL_GOALS.md` e ADR-0029;
+6. metas (#260): destinação virtual de saldo existente, implementada em API e Flutter na branch `feat/financial-goals-260` (4 batches, ainda sem PR); detalhes em `FINANCIAL_GOALS.md` e ADR-0029;
 7. projetos;
 8. fluxo de caixa;
 9. cenários.

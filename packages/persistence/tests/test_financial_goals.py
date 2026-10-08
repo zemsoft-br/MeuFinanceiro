@@ -375,6 +375,52 @@ def test_cas_edit_rejects_currency_change_and_parallel_edits_lose(
     assert store.get_goal(**budget_world.scope(), goal_id=goal).version == 2
 
 
+def test_cas_loses_a_race_that_happens_between_the_read_and_the_write(
+    budget_world: BudgetWorld, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A competing edit commits right after our read: the UPDATE must lose."""
+    from meufinanceiro_persistence import financial_goal_store as module
+
+    store = FinancialGoalStore(budget_world.runtime)
+    goal = _goal(budget_world)
+    real = module._visible_goal
+    raced = {"done": False}
+
+    def read_then_lose_the_race(*args: Any, **kwargs: Any):
+        row = real(*args, **kwargs)
+        if not raced["done"]:
+            raced["done"] = True
+            store.replace_goal(
+                **budget_world.scope(),
+                goal_id=goal,
+                replacement=FinancialGoalReplacement(
+                    expected_version=1,
+                    title="Vencedora",
+                    description=None,
+                    target=_money("20"),
+                    target_date=None,
+                ),
+            )
+        return row
+
+    monkeypatch.setattr(module, "_visible_goal", read_then_lose_the_race)
+    with pytest.raises(FinancialGoalVersionConflictError):
+        store.replace_goal(
+            **budget_world.scope(),
+            goal_id=goal,
+            replacement=FinancialGoalReplacement(
+                expected_version=1,
+                title="Perdedora",
+                description=None,
+                target=_money("30"),
+                target_date=None,
+            ),
+        )
+    monkeypatch.undo()
+    current = store.get_goal(**budget_world.scope(), goal_id=goal)
+    assert current.title == "Vencedora" and current.version == 2
+
+
 def test_owner_goal_limit_is_explicit(budget_world: BudgetWorld) -> None:
     store = FinancialGoalStore(budget_world.runtime)
     for index in range(200):
