@@ -28,6 +28,7 @@ class FinancialProjectLinkDialog extends ConsumerStatefulWidget {
   static const errorKey = Key('financial-project-link-error');
   static const loadingKey = Key('financial-project-link-loading');
   static const currentKey = Key('financial-project-link-current');
+  static const historyKey = Key('financial-project-link-history');
 
   @override
   ConsumerState<FinancialProjectLinkDialog> createState() =>
@@ -37,6 +38,7 @@ class FinancialProjectLinkDialog extends ConsumerStatefulWidget {
 class _FinancialProjectLinkDialogState
     extends ConsumerState<FinancialProjectLinkDialog> {
   bool _loading = true;
+  bool _historyLoading = false;
   String? _loadError;
   List<FinancialProject> _eligible = const [];
   FinancialProjectLink? _current;
@@ -104,6 +106,66 @@ class _FinancialProjectLinkDialogState
         expectedPredecessorId: _current?.id,
       ),
     );
+  }
+
+  /// History is an explicitly requested bounded GET, not a statement N+1.
+  Future<void> _showHistory() async {
+    if (_historyLoading || _current == null) return;
+    setState(() => _historyLoading = true);
+    try {
+      final revisions = await ref
+          .read(financialCoreApiProvider)
+          .getProjectLinkHistory(widget.movement.movementId);
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Histórico de associação'),
+          content: SizedBox(
+            width: 520,
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                for (final revision in revisions)
+                  ListTile(
+                    title: Text(
+                      revision.projectId == null
+                          ? 'Revisão ${revision.revision} — desvinculado'
+                          : 'Revisão ${revision.revision} — '
+                              '${_projectTitle(revision.projectId!)}',
+                    ),
+                    subtitle: Text(
+                      'Registrado em: ${revision.createdAt.toLocal()}',
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Fechar'),
+            ),
+          ],
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Não foi possível consultar o histórico.'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _historyLoading = false);
+    }
+  }
+
+  String _projectTitle(String id) {
+    for (final item in _eligible) {
+      if (item.id == id) return item.title;
+    }
+    return 'Projeto indisponível';
   }
 
   @override
@@ -176,6 +238,13 @@ class _FinancialProjectLinkDialogState
                 const Text(
                   'Nenhum projeto compatível. Crie um projeto do mesmo '
                   'proprietário, audiência e moeda.',
+                ),
+              if (_current != null)
+                TextButton.icon(
+                  key: FinancialProjectLinkDialog.historyKey,
+                  onPressed: _historyLoading ? null : _showHistory,
+                  icon: const Icon(Icons.history),
+                  label: const Text('Ver histórico'),
                 ),
               if (_current?.projectId != null)
                 TextButton.icon(
