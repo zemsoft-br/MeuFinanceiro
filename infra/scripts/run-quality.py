@@ -5,15 +5,22 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
+import uuid
 import venv
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 VENV_DIR = ROOT / ".quality-venv"
+QUALITY_TMP_ROOT = ROOT / ".quality-tmp"
+BASETEMP_NAME_PATTERN = re.compile(r"pytest-[0-9a-f]{32}")
+BASETEMP_CREATE_ATTEMPTS = 8
+FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 SUPPORTED_PYTHON_MIN = (3, 13)
 SUPPORTED_PYTHON_MAX = (3, 14)
 TEST_DATABASE_ENV_VARS = ("TEST_DATABASE_URL", "TEST_APP_DATABASE_USER")
@@ -23,6 +30,18 @@ TOOLS = (
     "mypy==2.3.0",
     "pip-audit==2.10.1",
     "ruff==0.15.22",
+)
+PYTEST_PATHS = (
+    "packages/finance/tests",
+    "packages/banking/tests",
+    "packages/banking-pluggy/tests",
+    "packages/banking-pluggy-execution/tests",
+    "packages/banking-sync/tests",
+    "packages/security/tests",
+    "packages/persistence/tests",
+    "apps/api/tests",
+    "apps/worker/tests",
+    "tests/quality",
 )
 PYTHON_PATHS = (
     "packages/finance",
@@ -69,6 +88,124 @@ def run(
 ) -> None:
     print(f"+ {' '.join(command)}", flush=True)
     subprocess.run(prepare_subprocess_command(command), cwd=cwd, env=env, check=True)
+
+
+class BasetempError(RuntimeError):
+    """Base class for pytest basetemp isolation failures."""
+
+
+class UnsafeBasetempError(BasetempError):
+    """The path is not an exact, regular child of the dedicated temp root."""
+
+
+class BasetempCleanupError(BasetempError):
+    """The basetemp of a passing run could not be removed."""
+
+
+def is_link_or_reparse_point(
+    path: Path, *, lstat: Callable[[Path], os.stat_result] = os.lstat
+) -> bool:
+    """Detect symlinks and any Windows reparse point (junction, mount point)."""
+    info = lstat(path)
+    if stat.S_ISLNK(info.st_mode):
+        return True
+    attributes: int = getattr(info, "st_file_attributes", 0)
+    return bool(attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _require_regular_directory(path: Path, description: str) -> None:
+    try:
+        redirected = is_link_or_reparse_point(path)
+    except OSError as exc:
+        raise UnsafeBasetempError(f"{description} cannot be inspected: {exc}") from exc
+    if redirected or not path.is_dir():
+        raise UnsafeBasetempError(
+            f"{description} must be a regular directory, not a link or junction: {path}"
+        )
+
+
+def _require_exact_child(basetemp: Path, root: Path) -> None:
+    """Lexical check only: no resolve() that could authorize root or a parent."""
+    if not root.is_absolute() or ".." in root.parts:
+        raise UnsafeBasetempError(f"temp root must be absolute and normalized: {root}")
+    if not basetemp.is_absolute() or basetemp.parent != root:
+        raise UnsafeBasetempError(
+            f"basetemp must be a direct child of the dedicated root {root}: {basetemp}"
+        )
+    if BASETEMP_NAME_PATTERN.fullmatch(basetemp.name) is None:
+        raise UnsafeBasetempError(
+            f"basetemp name must match pytest-<32 hex run id>: {basetemp.name!r}"
+        )
+
+
+def create_pytest_basetemp(
+    root: Path = QUALITY_TMP_ROOT,
+    *,
+    token_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
+) -> Path:
+    """Atomically reserve a unique basetemp directory under the dedicated root."""
+    if not root.is_absolute() or ".." in root.parts:
+        raise UnsafeBasetempError(f"temp root must be absolute and normalized: {root}")
+    root.mkdir(exist_ok=True)
+    _require_regular_directory(root, "temp root")
+
+    for _ in range(BASETEMP_CREATE_ATTEMPTS):
+        basetemp = root / f"pytest-{token_factory()}"
+        _require_exact_child(basetemp, root)
+        try:
+            basetemp.mkdir(mode=0o700)
+        except FileExistsError:
+            continue
+        return basetemp
+    raise BasetempError(f"could not reserve a unique basetemp under {root}")
+
+
+def remove_pytest_basetemp(basetemp: Path, root: Path = QUALITY_TMP_ROOT) -> None:
+    """Remove exactly one basetemp; never glob, never fall back to another path."""
+    _require_exact_child(basetemp, root)
+    _require_regular_directory(root, "temp root")
+    try:
+        if is_link_or_reparse_point(basetemp):
+            raise UnsafeBasetempError(
+                f"basetemp is a link or junction and will not be removed: {basetemp}"
+            )
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        raise UnsafeBasetempError(f"basetemp cannot be inspected: {exc}") from exc
+    if not basetemp.is_dir():
+        raise UnsafeBasetempError(f"basetemp is not a directory: {basetemp}")
+
+    try:
+        shutil.rmtree(basetemp)
+    except OSError as exc:
+        raise BasetempCleanupError(
+            f"pytest passed but its basetemp could not be removed: {basetemp} ({exc}). "
+            "No other path was touched. Close whatever holds a handle on this exact "
+            "directory and remove it by its literal path."
+        ) from exc
+
+
+def run_pytest_with_isolated_basetemp(
+    python: Path,
+    *,
+    test_env: dict[str, str],
+    tmp_root: Path = QUALITY_TMP_ROOT,
+    runner: Callable[..., None] | None = None,
+) -> None:
+    """Run pytest in a per-run basetemp: removed on success, preserved on failure."""
+    basetemp = create_pytest_basetemp(tmp_root)
+    command = [str(python), "-m", "pytest", f"--basetemp={basetemp}", *PYTEST_PATHS]
+    try:
+        (runner or run)(command, env=test_env)
+    except BaseException:
+        print(
+            f"pytest did not pass; basetemp preserved for diagnosis: {basetemp}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise
+    remove_pytest_basetemp(basetemp, tmp_root)
 
 
 def validate_python_version(version: tuple[int, int] | None = None) -> None:
@@ -208,24 +345,7 @@ def run_python_quality(python: Path, *, test_env: dict[str, str]) -> None:
             "tools/pluggy-spike/pluggy_spike.py",
         ]
     )
-    run(
-        [
-            str(python),
-            "-m",
-            "pytest",
-            "packages/finance/tests",
-            "packages/banking/tests",
-            "packages/banking-pluggy/tests",
-            "packages/banking-pluggy-execution/tests",
-            "packages/banking-sync/tests",
-            "packages/security/tests",
-            "packages/persistence/tests",
-            "apps/api/tests",
-            "apps/worker/tests",
-            "tests/quality",
-        ],
-        env=test_env,
-    )
+    run_pytest_with_isolated_basetemp(python, test_env=test_env)
     run([str(python), "infra/scripts/check-python-licenses.py"])
     run([str(python), "-m", "pip_audit", "--local"])
 
@@ -309,7 +429,11 @@ def main() -> int:
     run([sys.executable, "infra/scripts/check-repository-safety.py"])
     python = ensure_python_environment(args.recreate)
 
-    run_python_quality(python, test_env=test_env)
+    try:
+        run_python_quality(python, test_env=test_env)
+    except BasetempError as exc:
+        print(f"Quality runner temp isolation error: {exc}", file=sys.stderr)
+        return 1
     run_flutter_quality()
 
     print("All mandatory quality gates passed.")

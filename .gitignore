@@ -17,6 +17,7 @@ __pycache__/
 .mypy_cache/
 .venv/
 .quality-venv/
+.quality-tmp/
 venv/
 *.egg-info/
 

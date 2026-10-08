@@ -104,6 +104,35 @@ python infra/scripts/run-quality.py --recreate --use-test-database-env
 
 `--allow-skipped-postgres-tests` serve apenas para diagnóstico parcial e nunca aprova uma PR.
 
+### Diretório temporário isolado do pytest
+
+O runner nunca usa o temp root global do pytest (`%TEMP%\pytest-of-<usuário>`, `pytest-current` e a política de retenção compartilhada). No Windows, esse namespace pode ficar preso por handle de outra sessão e produzir `PermissionError` durante a rotação, sem relação com o código testado (Issue 258).
+
+Cada execução do runner:
+
+1. cria, de forma atômica, `.quality-tmp/pytest-<uuid4 hex de 32 caracteres>` na raiz do repositório (ignorada pelo Git); o identificador é opaco e nunca depende só de timestamp, e uma colisão nunca reaproveita um diretório existente;
+2. chama o pytest com `--basetemp=<esse caminho exato>`;
+3. em sucesso, remove somente esse diretório;
+4. em falha do pytest (ou interrupção), **preserva** o diretório e imprime no stderr a linha `pytest did not pass; basetemp preserved for diagnosis: <caminho exato>`;
+5. se o pytest passar mas a remoção falhar, o runner termina com código 1, informa o caminho exato e não tenta nenhum outro caminho.
+
+Proteções do cleanup (`remove_pytest_basetemp`):
+
+- o alvo deve ser filho direto da raiz `.quality-tmp`, com nome exatamente `pytest-<32 hex>`; a raiz, seus pais, caminhos aninhados, relativos ou com `..` são rejeitados por comparação léxica, sem `resolve()` que pudesse autorizar a raiz ou um pai por engano;
+- a raiz e o alvo não podem ser symlink nem junction/reparse point do Windows; nesse caso o runner recusa e não remove nada;
+- links dentro do basetemp são removidos como links, sem seguir o destino;
+- não há glob, wildcard, limpeza de `%TEMP%` nem encerramento de processos por nome.
+
+`--recreate` continua recriando apenas `.quality-venv`; ele nunca varre nem apaga `.quality-tmp`. Resíduos de execuções anteriores (falhas preservadas) não são apagados automaticamente. Depois de diagnosticar, remova **somente o caminho exato** impresso pelo runner, por exemplo no PowerShell:
+
+```powershell
+Remove-Item -LiteralPath .quality-tmp\pytest-<id-impresso> -Recurse -Force
+```
+
+Se a remoção falhar por lock no Windows, identifique o dono do handle desse diretório (por exemplo, no Monitor de Recursos) e feche-o; não encerre `python.exe` por nome e não limpe `%TEMP%`.
+
+A suíte e o baseline conhecido não mudam: o runner continua abortando na primeira falha do pytest, inclusive a baseline da Issue 240.
+
 Gate de containers:
 
 ```bash
