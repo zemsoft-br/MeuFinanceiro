@@ -35,10 +35,6 @@ from meufinanceiro_persistence.financial_budget_schema import (
     financial_budgets,
 )
 from meufinanceiro_persistence.financial_category_schema import financial_categories
-from meufinanceiro_persistence.financial_project_schema import (
-    financial_project_link_revisions,
-    financial_projects,
-)
 from meufinanceiro_persistence.financial_goal_schema import (
     financial_goal_allocation_events,
     financial_goals,
@@ -231,8 +227,14 @@ def clean_persistence(engine: Engine) -> Iterator[None]:
         connection.execute(delete(financial_recurrence_occurrences))
         connection.execute(delete(financial_recurrence_revisions))
         connection.execute(delete(financial_recurrences))
-        connection.execute(delete(financial_project_link_revisions))
-        connection.execute(delete(financial_projects))
+        # Disposable integration DB only. Project-link history is protected by an
+        # unconditional UPDATE/DELETE rejection trigger: DELETE on an empty table
+        # still fires the statement as a trigger-safe contract risk. TRUNCATE is
+        # privileged (never granted to the runtime role), and both tables must
+        # be cleared together because links reference projects and themselves.
+        connection.exec_driver_sql(
+            "TRUNCATE TABLE finance.project_movement_link_revisions, finance.projects"
+        )
         connection.execute(delete(financial_goal_allocation_events))
         connection.execute(delete(financial_goals))
         connection.execute(delete(financial_budget_lines))
