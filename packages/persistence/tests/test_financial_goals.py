@@ -272,6 +272,22 @@ def test_new_goal_guard_runs_only_for_a_fresh_insert(
     assert store.list_goals(**budget_world.scope()) == ((created, _money("0")),)
 
 
+def test_a_non_member_is_denied_before_the_new_goal_guard_runs(
+    budget_world: BudgetWorld,
+) -> None:
+    store = FinancialGoalStore(budget_world.runtime)
+    guarded: list[FinancialGoalDraft] = []
+
+    with pytest.raises(FinancialGoalAccessError):
+        store.create_goal(
+            **budget_world.scope(budget_world.outsider_id, budget_world.residence_id),
+            idempotency_key=new_financial_idempotency_key(),
+            draft=_draft(),
+            new_goal_guard=guarded.append,
+        )
+    assert guarded == []  # authorization decides first; the date never leaks
+
+
 def test_concurrent_creates_of_one_key_run_the_guard_once_and_replay_the_rest(
     budget_world: BudgetWorld,
 ) -> None:
