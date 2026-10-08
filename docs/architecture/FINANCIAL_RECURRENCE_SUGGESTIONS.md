@@ -1,6 +1,6 @@
 # Sugestões assistidas de recorrência — padrão detectado, confirmação explícita
 
-Status: **em implementação (#256)** na branch `feat/finance-assisted-subscriptions-256`; os 4 batches (domínio, persistência, API e Flutter/desempenho/smoke/docs) estão concluídos. Pull Request, merge e integração ao `develop` **ainda não ocorreram**.
+Status: **entregue** — issue #256 e PR #257 integrada ao `develop` (4 batches: domínio, persistência, API e Flutter/desempenho/smoke/docs).
 
 Normativo: ADR-0028 (e ADR-0027 para a recorrência criada). Este documento descreve o contrato do detector, do fingerprint e das decisões. Nenhuma regra financeira anterior foi alterada.
 

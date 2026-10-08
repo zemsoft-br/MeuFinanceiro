@@ -173,7 +173,8 @@ Regras:
 - destinação virtual classifica parte de saldo existente;
 - não cria caixa;
 - não aumenta patrimônio;
-- não pode alocar a mesma unidade monetária integralmente a duas metas sem sobrealocação explícita;
+- não pode alocar a mesma unidade monetária integralmente a duas metas sem sobrealocação explícita: a disponibilidade é o saldo canônico menos tudo o que já foi destinado, verificada sob lock por conta no instante da destinação (ADR-0029);
+- Movements posteriores nunca são bloqueados: se o saldo cair abaixo do destinado, a insuficiência de lastro é exibida, sem reescrever eventos;
 - contribuição planejada só afeta projeção;
 - contribuição real referencia movimento ou transferência.
 
