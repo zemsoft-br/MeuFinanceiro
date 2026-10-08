@@ -416,6 +416,46 @@ class FinancialProjectStore:
                 "project link could not be read"
             ) from None
 
+    def read_link_history(
+        self,
+        *,
+        installation_id: UUID,
+        residence_id: UUID,
+        operator_id: UUID,
+        movement_id: UUID,
+    ) -> tuple[FinancialProjectLinkRevisionRecord, ...]:
+        """Read a bounded complete chain for one visible Movement.
+
+        An unlinked Movement returns an empty history. Every revision must be
+        visible under the same audience or the result fails closed.
+        """
+        _require_scope(installation_id, residence_id, operator_id)
+        validate_financial_resource_id(movement_id)
+        h = financial_project_link_revisions
+        try:
+            with self._engine.begin() as conn:
+                _prepare(conn, installation_id, residence_id, operator_id)
+                rows = conn.execute(
+                    select(h).where(
+                        h.c.installation_id == installation_id,
+                        h.c.residence_id == residence_id,
+                        h.c.movement_id == movement_id,
+                    ).order_by(h.c.revision).limit(PROJECT_REVISIONS_MAX + 1)
+                ).mappings().all()
+                if len(rows) > PROJECT_REVISIONS_MAX:
+                    raise FinancialProjectLimitError(
+                        "project link history exceeds bound"
+                    )
+                return tuple(_link_record(row) for row in rows)
+        except FinancialMovementAccessError:
+            raise FinancialProjectAccessError("project access denied") from None
+        except FinancialProjectPersistenceError:
+            raise
+        except DBAPIError:
+            raise FinancialProjectPersistenceError(
+                "project link history could not be read"
+            ) from None
+
     def read_project_facts(
         self,
         *,
