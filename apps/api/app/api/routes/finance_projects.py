@@ -17,7 +17,6 @@ from meufinanceiro_finance import (
     FinancialProjectDraft,
     FinancialProjectLinkRevisionDraft,
     FinancialProjectLinkRevisionRecord,
-    FinancialProjectRecord,
     FinancialProjectReplacement,
     FinancialVisibilityScope,
     Money,
