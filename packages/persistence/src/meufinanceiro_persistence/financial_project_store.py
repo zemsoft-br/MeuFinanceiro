@@ -401,6 +401,9 @@ class FinancialProjectStore:
         try:
             with self._engine.begin() as conn:
                 _prepare(conn, installation_id, residence_id, operator_id)
+                _require_visible_original_expense(
+                    conn, installation_id, residence_id, movement_id
+                )
                 row = conn.execute(
                     select(h).where(
                         h.c.installation_id == installation_id,
@@ -435,6 +438,9 @@ class FinancialProjectStore:
         try:
             with self._engine.begin() as conn:
                 _prepare(conn, installation_id, residence_id, operator_id)
+                _require_visible_original_expense(
+                    conn, installation_id, residence_id, movement_id
+                )
                 rows = conn.execute(
                     select(h).where(
                         h.c.installation_id == installation_id,
@@ -557,6 +563,29 @@ class FinancialProjectStore:
             raise FinancialProjectPersistenceError(
                 "project realization could not be read"
             ) from None
+
+
+def _require_visible_original_expense(
+    conn: Connection, installation_id: UUID,
+    residence_id: UUID, movement_id: UUID,
+) -> None:
+    """The absence of a link is not evidence that an expense exists.
+
+    Use the canonical Movement RLS policy. A wrong residence, invisible account,
+    forged ID or ineligible Movement must not be reported as an unlinked expense.
+    """
+    movements = financial_movements
+    present = conn.scalar(
+        select(movements.c.id).where(
+            movements.c.id == movement_id,
+            movements.c.installation_id == installation_id,
+            movements.c.residence_id == residence_id,
+            movements.c.role == FinancialMovementRole.STANDARD.value,
+            movements.c.result_effect == FinancialResultEffect.EXPENSE.value,
+        )
+    )
+    if present is None:
+        raise FinancialProjectNotFoundError("expense was not found")
 
 
 def _require_scope(
