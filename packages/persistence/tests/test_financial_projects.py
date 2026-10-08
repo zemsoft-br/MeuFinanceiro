@@ -228,6 +228,38 @@ def test_link_replay_reassign_unlink_and_canonical_reversal(
     assert _count(world, financial_movements) == 2
 
 
+def test_returning_to_original_project_counts_only_the_current_link(
+    budget_world: BudgetWorld,
+) -> None:
+    """A -> B -> A must realize A once, not twice from its historical links."""
+    world = budget_world
+    account = world.account()
+    first_project = _new(world, title="Pintura")
+    second_project = _new(world, title="Móveis")
+    expense_id = _expense(world, account, "140")
+
+    first = _link(world, expense_id, first_project)
+    second = _link(world, expense_id, second_project, prev=first.id)
+    third = _link(world, expense_id, first_project, prev=second.id)
+
+    first_summary = _summary(world, first_project)
+    second_summary = _summary(world, second_project)
+    assert first_summary.expense_count == 1
+    assert first_summary.realized.amount == Decimal("140")
+    assert second_summary.expense_count == 0
+    assert second_summary.realized.amount == 0
+    assert FinancialProjectStore(world.runtime).get_link(
+        **world.scope(), movement_id=expense_id,
+    ).id == third.id
+    history = FinancialProjectStore(world.runtime).read_link_history(
+        **world.scope(), movement_id=expense_id,
+    )
+    assert [event.revision for event in history] == [1, 2, 3]
+    assert [event.project_id for event in history] == [
+        first_project, second_project, first_project,
+    ]
+
+
 def test_project_link_audience_and_archived_unlink(
     budget_world: BudgetWorld,
 ) -> None:
