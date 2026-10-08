@@ -16,7 +16,10 @@ from collections.abc import Iterable
 from uuid import UUID
 
 from meufinanceiro_finance.access import FinancialVisibilityScope
-from meufinanceiro_finance.accounts import FinancialAccountRecord, FinancialAccountStatus
+from meufinanceiro_finance.accounts import (
+    FinancialAccountRecord,
+    FinancialAccountStatus,
+)
 from meufinanceiro_finance.ids import validate_financial_resource_id
 from meufinanceiro_finance.money import Money
 from meufinanceiro_finance.movement_records import FinancialMovementRecord
@@ -44,9 +47,13 @@ def _text(value: str, field: str, maximum: int) -> str:
 
 
 def _optional_text(value: str | None) -> str | None:
-    return None if value is None or value == "" else _text(
-        value, "description", PROJECT_DESCRIPTION_MAX_LENGTH
-    )
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise TypeError("description must be a string")
+    if not value.strip():
+        return None
+    return _text(value, "description", PROJECT_DESCRIPTION_MAX_LENGTH)
 
 
 def _scope(value: FinancialVisibilityScope) -> None:
@@ -62,7 +69,9 @@ def _positive_money(value: Money) -> None:
 
 
 def _date(value: date | None) -> None:
-    if value is not None and (isinstance(value, datetime) or not isinstance(value, date)):
+    if value is not None and (
+        isinstance(value, datetime) or not isinstance(value, date)
+    ):
         raise TypeError("target_date must be a plain date")
 
 
@@ -72,7 +81,11 @@ def _version(value: int) -> None:
 
 
 def _aware(value: datetime) -> None:
-    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+    if (
+        not isinstance(value, datetime)
+        or value.tzinfo is None
+        or value.utcoffset() is None
+    ):
         raise ValueError("timestamp must be timezone-aware")
 
 
@@ -91,7 +104,9 @@ class FinancialProjectDraft:
     target_date: date | None
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "title", _text(self.title, "title", PROJECT_TITLE_MAX_LENGTH))
+        object.__setattr__(
+            self, "title", _text(self.title, "title", PROJECT_TITLE_MAX_LENGTH)
+        )
         object.__setattr__(self, "description", _optional_text(self.description))
         _scope(self.visibility_scope)
         _positive_money(self.planned)
@@ -121,7 +136,9 @@ class FinancialProjectReplacement:
 
     def __post_init__(self) -> None:
         _version(self.expected_version)
-        object.__setattr__(self, "title", _text(self.title, "title", PROJECT_TITLE_MAX_LENGTH))
+        object.__setattr__(
+            self, "title", _text(self.title, "title", PROJECT_TITLE_MAX_LENGTH)
+        )
         object.__setattr__(self, "description", _optional_text(self.description))
         _positive_money(self.planned)
         _date(self.target_date)
@@ -145,10 +162,15 @@ class FinancialProjectRecord:
     updated_at: datetime
 
     def __post_init__(self) -> None:
-        for value in (self.id, self.residence_id, self.owner_operator_id):
-            validate_financial_resource_id(value)
+        validate_financial_resource_id(self.id)
+        # Membership and residence identifiers are UUIDs, not required UUIDv4.
+        for value in (self.residence_id, self.owner_operator_id):
+            if not isinstance(value, UUID):
+                raise TypeError("residence and owner must be UUID")
         _scope(self.visibility_scope)
-        object.__setattr__(self, "title", _text(self.title, "title", PROJECT_TITLE_MAX_LENGTH))
+        object.__setattr__(
+            self, "title", _text(self.title, "title", PROJECT_TITLE_MAX_LENGTH)
+        )
         object.__setattr__(self, "description", _optional_text(self.description))
         _positive_money(self.planned)
         _date(self.target_date)
@@ -201,15 +223,19 @@ class FinancialProjectLinkRevisionRecord:
     created_at: datetime
 
     def __post_init__(self) -> None:
-        for value in (self.id, self.movement_id, self.actor_operator_id):
-            validate_financial_resource_id(value)
+        validate_financial_resource_id(self.id)
+        validate_financial_resource_id(self.movement_id)
+        if not isinstance(self.actor_operator_id, UUID):
+            raise TypeError("actor_operator_id must be UUID")
         if self.project_id is not None:
             validate_financial_resource_id(self.project_id)
         if self.supersedes_id is not None:
             validate_financial_resource_id(self.supersedes_id)
         _version(self.revision)
         _aware(self.created_at)
-        if self.revision == 1 and (self.supersedes_id is not None or self.project_id is None):
+        if self.revision == 1 and (
+            self.supersedes_id is not None or self.project_id is None
+        ):
             raise ValueError("first link must select one project without predecessor")
         if self.revision > 1 and self.supersedes_id is None:
             raise ValueError("link revision must refer to predecessor")
@@ -217,7 +243,10 @@ class FinancialProjectLinkRevisionRecord:
             raise ValueError("link cannot supersede itself")
 
     def __repr__(self) -> str:
-        return f"FinancialProjectLinkRevisionRecord(revision={self.revision}, <ids-redacted>)"
+        return (
+            f"FinancialProjectLinkRevisionRecord(revision={self.revision}, "
+            "<ids-redacted>)"
+        )
 
 
 def is_project_expense_eligible(

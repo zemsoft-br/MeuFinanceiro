@@ -1,5 +1,6 @@
 """Pure v1 project contracts; no tests here depend on a database."""
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import uuid4
@@ -111,12 +112,16 @@ def test_project_eligibility_limits_scope_owner_and_movement() -> None:
         project=project, account=account, movement=expense, for_new_link=True
     )
     assert not is_project_expense_eligible(
-        project=project, account=_account(project, scope=FinancialVisibilityScope.PERSONAL),
-        movement=expense, for_new_link=True,
+        project=project,
+        account=replace(account, visibility_scope=FinancialVisibilityScope.PERSONAL),
+        movement=expense,
+        for_new_link=True,
     )
     assert not is_project_expense_eligible(
-        project=project, account=_account(project, owner=uuid4()),
-        movement=expense, for_new_link=True,
+        project=project,
+        account=replace(account, owner_operator_id=uuid4()),
+        movement=expense,
+        for_new_link=True,
     )
     assert not is_project_expense_eligible(
         project=project, account=account,
@@ -186,7 +191,9 @@ def test_project_summary_over_budget_and_bad_reversal_fail_closed() -> None:
     project = _project()
     account = _account(project)
     expense = _movement(account, amount="-401")
-    result = summarize_project(project, [FinancialProjectExpenseFact(project.id, expense)])
+    result = summarize_project(
+        project, [FinancialProjectExpenseFact(project.id, expense)]
+    )
     assert result.progress_status is FinancialProjectProgressStatus.OVER
     assert result.remaining.amount == 0
     assert result.excess.amount == 1
