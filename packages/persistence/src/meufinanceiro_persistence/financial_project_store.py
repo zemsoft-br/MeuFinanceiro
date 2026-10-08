@@ -105,28 +105,35 @@ class FinancialProjectStore:
                 existing = _project_by_key(conn, installation_id, idempotency_key)
                 if existing is not None:
                     return _replay_project(existing, digest)
-                inserted = conn.execute(
-                    pg_insert(p).values(
-                        id=new_financial_resource_id(),
-                        installation_id=installation_id,
-                        residence_id=residence_id,
-                        owner_operator_id=operator_id,
-                        visibility_scope=draft.visibility_scope.value,
-                        title=draft.title,
-                        description=draft.description,
-                        currency=draft.planned.currency,
-                        planned_amount=draft.planned.amount,
-                        target_date=draft.target_date,
-                        version=1,
-                        idempotency_key=idempotency_key,
-                        request_digest=digest,
-                        updated_by_operator_id=operator_id,
-                        created_at=func.transaction_timestamp(),
-                        updated_at=func.transaction_timestamp(),
-                    ).on_conflict_do_nothing(
-                        index_elements=[p.c.installation_id, p.c.idempotency_key]
-                    ).returning(*p.c)
-                ).mappings().one_or_none()
+                inserted = (
+                    conn.execute(
+                        pg_insert(p)
+                        .values(
+                            id=new_financial_resource_id(),
+                            installation_id=installation_id,
+                            residence_id=residence_id,
+                            owner_operator_id=operator_id,
+                            visibility_scope=draft.visibility_scope.value,
+                            title=draft.title,
+                            description=draft.description,
+                            currency=draft.planned.currency,
+                            planned_amount=draft.planned.amount,
+                            target_date=draft.target_date,
+                            version=1,
+                            idempotency_key=idempotency_key,
+                            request_digest=digest,
+                            updated_by_operator_id=operator_id,
+                            created_at=func.transaction_timestamp(),
+                            updated_at=func.transaction_timestamp(),
+                        )
+                        .on_conflict_do_nothing(
+                            index_elements=[p.c.installation_id, p.c.idempotency_key]
+                        )
+                        .returning(*p.c)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 if inserted is not None:
                     return _project_record(inserted)
                 raced = _project_by_key(conn, installation_id, idempotency_key)
@@ -182,12 +189,19 @@ class FinancialProjectStore:
         try:
             with self._engine.begin() as conn:
                 _prepare(conn, installation_id, residence_id, operator_id)
-                rows = conn.execute(
-                    select(p).where(
-                        p.c.installation_id == installation_id,
-                        p.c.residence_id == residence_id,
-                    ).order_by(p.c.created_at, p.c.id).limit(PROJECT_LIST_MAX + 1)
-                ).mappings().all()
+                rows = (
+                    conn.execute(
+                        select(p)
+                        .where(
+                            p.c.installation_id == installation_id,
+                            p.c.residence_id == residence_id,
+                        )
+                        .order_by(p.c.created_at, p.c.id)
+                        .limit(PROJECT_LIST_MAX + 1)
+                    )
+                    .mappings()
+                    .all()
+                )
                 if len(rows) > PROJECT_LIST_MAX:
                     raise FinancialProjectLimitError("project list exceeds bound")
                 return tuple(_project_record(row) for row in rows)
@@ -224,23 +238,30 @@ class FinancialProjectStore:
                     raise FinancialProjectNotEditableError("project is read-only")
                 if replacement.planned.currency != row["currency"]:
                     raise FinancialProjectConflictError("project currency is immutable")
-                updated = conn.execute(
-                    update(p).where(
-                        p.c.id == project_id,
-                        p.c.installation_id == installation_id,
-                        p.c.residence_id == residence_id,
-                        p.c.owner_operator_id == operator_id,
-                        p.c.version == replacement.expected_version,
-                    ).values(
-                        title=replacement.title,
-                        description=replacement.description,
-                        planned_amount=replacement.planned.amount,
-                        target_date=replacement.target_date,
-                        version=replacement.expected_version + 1,
-                        updated_at=func.transaction_timestamp(),
-                        updated_by_operator_id=operator_id,
-                    ).returning(*p.c)
-                ).mappings().one_or_none()
+                updated = (
+                    conn.execute(
+                        update(p)
+                        .where(
+                            p.c.id == project_id,
+                            p.c.installation_id == installation_id,
+                            p.c.residence_id == residence_id,
+                            p.c.owner_operator_id == operator_id,
+                            p.c.version == replacement.expected_version,
+                        )
+                        .values(
+                            title=replacement.title,
+                            description=replacement.description,
+                            planned_amount=replacement.planned.amount,
+                            target_date=replacement.target_date,
+                            version=replacement.expected_version + 1,
+                            updated_at=func.transaction_timestamp(),
+                            updated_by_operator_id=operator_id,
+                        )
+                        .returning(*p.c)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 if updated is None:
                     raise FinancialProjectConflictError("project version is stale")
                 return _project_record(updated)
@@ -288,26 +309,35 @@ class FinancialProjectStore:
                 if raced is not None:
                     return _replay_link(raced, digest)
 
-                target = conn.execute(
-                    select(
-                        m.c.id, m.c.account_id, m.c.currency,
-                        m.c.role, m.c.result_effect,
-                        a.c.owner_operator_id, a.c.visibility_scope,
-                        a.c.status,
-                    ).join(a, m.c.account_id == a.c.id).where(
-                        m.c.id == draft.movement_id,
-                        m.c.installation_id == installation_id,
-                        m.c.residence_id == residence_id,
-                        m.c.role == FinancialMovementRole.STANDARD.value,
-                        m.c.result_effect == FinancialResultEffect.EXPENSE.value,
+                target = (
+                    conn.execute(
+                        select(
+                            m.c.id,
+                            m.c.account_id,
+                            m.c.currency,
+                            m.c.role,
+                            m.c.result_effect,
+                            a.c.owner_operator_id,
+                            a.c.visibility_scope,
+                            a.c.status,
+                        )
+                        .join(a, m.c.account_id == a.c.id)
+                        .where(
+                            m.c.id == draft.movement_id,
+                            m.c.installation_id == installation_id,
+                            m.c.residence_id == residence_id,
+                            m.c.role == FinancialMovementRole.STANDARD.value,
+                            m.c.result_effect == FinancialResultEffect.EXPENSE.value,
+                        )
                     )
-                ).mappings().one_or_none()
+                    .mappings()
+                    .one_or_none()
+                )
                 if target is None:
                     raise FinancialProjectNotFoundError("expense was not found")
-                if (
-                    target["owner_operator_id"] != operator_id
-                    or target["visibility_scope"] not in ("PERSONAL", "HOUSEHOLD")
-                ):
+                if target["owner_operator_id"] != operator_id or target[
+                    "visibility_scope"
+                ] not in ("PERSONAL", "HOUSEHOLD"):
                     raise FinancialProjectConflictError("expense is not eligible")
                 if draft.project_id is not None:
                     project = _visible_project(
@@ -323,19 +353,22 @@ class FinancialProjectStore:
                     ):
                         raise FinancialProjectConflictError("project link is invalid")
 
-                latest = conn.execute(
-                    select(h).where(
-                        h.c.installation_id == installation_id,
-                        h.c.residence_id == residence_id,
-                        h.c.movement_id == draft.movement_id,
-                    ).order_by(h.c.revision.desc()).limit(1)
-                ).mappings().one_or_none()
-                if (
-                    (latest is None and draft.expected_predecessor_id is not None)
-                    or (
-                        latest is not None
-                        and latest["id"] != draft.expected_predecessor_id
+                latest = (
+                    conn.execute(
+                        select(h)
+                        .where(
+                            h.c.installation_id == installation_id,
+                            h.c.residence_id == residence_id,
+                            h.c.movement_id == draft.movement_id,
+                        )
+                        .order_by(h.c.revision.desc())
+                        .limit(1)
                     )
+                    .mappings()
+                    .one_or_none()
+                )
+                if (latest is None and draft.expected_predecessor_id is not None) or (
+                    latest is not None and latest["id"] != draft.expected_predecessor_id
                 ):
                     raise FinancialProjectConflictError("link predecessor is stale")
                 if latest is None and draft.project_id is None:
@@ -345,29 +378,36 @@ class FinancialProjectStore:
                 revision = 1 if latest is None else latest["revision"] + 1
                 if revision > PROJECT_REVISIONS_MAX:
                     raise FinancialProjectLimitError("link revision limit reached")
-                inserted = conn.execute(
-                    pg_insert(h).values(
-                        id=new_financial_resource_id(),
-                        installation_id=installation_id,
-                        residence_id=residence_id,
-                        movement_id=draft.movement_id,
-                        account_id=target["account_id"],
-                        currency=target["currency"],
-                        result_effect=target["result_effect"],
-                        role=target["role"],
-                        owner_operator_id=operator_id,
-                        visibility_scope=target["visibility_scope"],
-                        project_id=draft.project_id,
-                        supersedes_id=latest["id"] if latest is not None else None,
-                        revision=revision,
-                        actor_operator_id=operator_id,
-                        idempotency_key=idempotency_key,
-                        request_digest=digest,
-                        created_at=func.transaction_timestamp(),
-                    ).on_conflict_do_nothing(
-                        index_elements=[h.c.installation_id, h.c.idempotency_key]
-                    ).returning(*h.c)
-                ).mappings().one_or_none()
+                inserted = (
+                    conn.execute(
+                        pg_insert(h)
+                        .values(
+                            id=new_financial_resource_id(),
+                            installation_id=installation_id,
+                            residence_id=residence_id,
+                            movement_id=draft.movement_id,
+                            account_id=target["account_id"],
+                            currency=target["currency"],
+                            result_effect=target["result_effect"],
+                            role=target["role"],
+                            owner_operator_id=operator_id,
+                            visibility_scope=target["visibility_scope"],
+                            project_id=draft.project_id,
+                            supersedes_id=latest["id"] if latest is not None else None,
+                            revision=revision,
+                            actor_operator_id=operator_id,
+                            idempotency_key=idempotency_key,
+                            request_digest=digest,
+                            created_at=func.transaction_timestamp(),
+                        )
+                        .on_conflict_do_nothing(
+                            index_elements=[h.c.installation_id, h.c.idempotency_key]
+                        )
+                        .returning(*h.c)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 if inserted is not None:
                     return _link_record(inserted)
                 # A concurrent key on a different Movement can win independently;
@@ -404,13 +444,20 @@ class FinancialProjectStore:
                 _require_visible_original_expense(
                     conn, installation_id, residence_id, movement_id
                 )
-                row = conn.execute(
-                    select(h).where(
-                        h.c.installation_id == installation_id,
-                        h.c.residence_id == residence_id,
-                        h.c.movement_id == movement_id,
-                    ).order_by(h.c.revision.desc()).limit(1)
-                ).mappings().one_or_none()
+                row = (
+                    conn.execute(
+                        select(h)
+                        .where(
+                            h.c.installation_id == installation_id,
+                            h.c.residence_id == residence_id,
+                            h.c.movement_id == movement_id,
+                        )
+                        .order_by(h.c.revision.desc())
+                        .limit(1)
+                    )
+                    .mappings()
+                    .one_or_none()
+                )
                 return None if row is None else _link_record(row)
         except FinancialMovementAccessError:
             raise FinancialProjectAccessError("project access denied") from None
@@ -441,13 +488,20 @@ class FinancialProjectStore:
                 _require_visible_original_expense(
                     conn, installation_id, residence_id, movement_id
                 )
-                rows = conn.execute(
-                    select(h).where(
-                        h.c.installation_id == installation_id,
-                        h.c.residence_id == residence_id,
-                        h.c.movement_id == movement_id,
-                    ).order_by(h.c.revision).limit(PROJECT_REVISIONS_MAX + 1)
-                ).mappings().all()
+                rows = (
+                    conn.execute(
+                        select(h)
+                        .where(
+                            h.c.installation_id == installation_id,
+                            h.c.residence_id == residence_id,
+                            h.c.movement_id == movement_id,
+                        )
+                        .order_by(h.c.revision)
+                        .limit(PROJECT_REVISIONS_MAX + 1)
+                    )
+                    .mappings()
+                    .all()
+                )
                 if len(rows) > PROJECT_REVISIONS_MAX:
                     raise FinancialProjectLimitError(
                         "project link history exceeds bound"
@@ -497,46 +551,61 @@ class FinancialProjectStore:
                     # window-sort the entire residence's link history. The
                     # linear chain and RLS are SQL-enforced (migration 0029).
                     successor = h.alias("project_link_successor")
-                    linked = conn.execute(
-                        select(h.c.movement_id).where(
-                            h.c.installation_id == installation_id,
-                            h.c.residence_id == residence_id,
-                            h.c.project_id == project_id,
-                            ~select(successor.c.id).where(
-                                successor.c.supersedes_id == h.c.id
-                            ).exists(),
-                        ).order_by(h.c.movement_id).limit(PROJECT_LINKS_MAX + 1)
-                    ).scalars().all()
+                    linked = (
+                        conn.execute(
+                            select(h.c.movement_id)
+                            .where(
+                                h.c.installation_id == installation_id,
+                                h.c.residence_id == residence_id,
+                                h.c.project_id == project_id,
+                                ~select(successor.c.id)
+                                .where(successor.c.supersedes_id == h.c.id)
+                                .exists(),
+                            )
+                            .order_by(h.c.movement_id)
+                            .limit(PROJECT_LINKS_MAX + 1)
+                        )
+                        .scalars()
+                        .all()
+                    )
                     if len(linked) > PROJECT_LINKS_MAX:
                         raise FinancialProjectLimitError(
                             "project expense list exceeds bound"
                         )
                     if not linked:
                         return project, ()
-                    originals = conn.execute(
-                        select(m).where(
-                            m.c.id.in_(linked),
-                            m.c.installation_id == installation_id,
-                            m.c.residence_id == residence_id,
-                            m.c.role == FinancialMovementRole.STANDARD.value,
-                            m.c.result_effect == FinancialResultEffect.EXPENSE.value,
+                    originals = (
+                        conn.execute(
+                            select(m).where(
+                                m.c.id.in_(linked),
+                                m.c.installation_id == installation_id,
+                                m.c.residence_id == residence_id,
+                                m.c.role == FinancialMovementRole.STANDARD.value,
+                                m.c.result_effect
+                                == FinancialResultEffect.EXPENSE.value,
+                            )
                         )
-                    ).mappings().all()
+                        .mappings()
+                        .all()
+                    )
                     if len(originals) != len(linked):
                         raise FinancialProjectPersistenceError(
                             "project expenses are unavailable"
                         )
-                    reversals = conn.execute(
-                        select(m).where(
-                            m.c.reversal_of_id.in_(linked),
-                            m.c.installation_id == installation_id,
-                            m.c.residence_id == residence_id,
-                            m.c.role == FinancialMovementRole.REVERSAL.value,
+                    reversals = (
+                        conn.execute(
+                            select(m).where(
+                                m.c.reversal_of_id.in_(linked),
+                                m.c.installation_id == installation_id,
+                                m.c.residence_id == residence_id,
+                                m.c.role == FinancialMovementRole.REVERSAL.value,
+                            )
                         )
-                    ).mappings().all()
+                        .mappings()
+                        .all()
+                    )
                     by_original = {
-                        row["reversal_of_id"]: movement_record(row)
-                        for row in reversals
+                        row["reversal_of_id"]: movement_record(row) for row in reversals
                     }
                     try:
                         facts = tuple(
@@ -563,8 +632,10 @@ class FinancialProjectStore:
 
 
 def _require_visible_original_expense(
-    conn: Connection, installation_id: UUID,
-    residence_id: UUID, movement_id: UUID,
+    conn: Connection,
+    installation_id: UUID,
+    residence_id: UUID,
+    movement_id: UUID,
 ) -> None:
     """The absence of a link is not evidence that an expense exists.
 
@@ -601,29 +672,36 @@ def _prepare(
     conn: Connection, installation_id: UUID, residence_id: UUID, operator_id: UUID
 ) -> None:
     _set_context(
-        conn, installation_id=installation_id,
-        residence_id=residence_id, operator_id=operator_id,
+        conn,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=operator_id,
     )
     _require_active_membership(
-        conn, installation_id=installation_id,
-        residence_id=residence_id, operator_id=operator_id,
+        conn,
+        installation_id=installation_id,
+        residence_id=residence_id,
+        operator_id=operator_id,
     )
 
 
 def _lock_movement(conn: Connection, movement_id: UUID) -> None:
     conn.execute(
-        select(func.pg_advisory_xact_lock(
-            func.hashtextextended(
-                "meufinanceiro:project-movement:" + str(movement_id), 0
+        select(
+            func.pg_advisory_xact_lock(
+                func.hashtextextended(
+                    "meufinanceiro:project-movement:" + str(movement_id), 0
+                )
             )
-        ))
+        )
     )
 
 
 def _digest(namespace: str, operator_id: UUID, material: Sequence[object]) -> str:
     serialized = json.dumps(
         [namespace, str(operator_id), material],
-        ensure_ascii=True, separators=(",", ":"),
+        ensure_ascii=True,
+        separators=(",", ":"),
     )
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
@@ -632,37 +710,49 @@ def _visible_project(
     conn: Connection, installation_id: UUID, residence_id: UUID, project_id: UUID
 ) -> RowMapping | None:
     p = financial_projects
-    return conn.execute(
-        select(p).where(
-            p.c.id == project_id,
-            p.c.installation_id == installation_id,
-            p.c.residence_id == residence_id,
+    return (
+        conn.execute(
+            select(p).where(
+                p.c.id == project_id,
+                p.c.installation_id == installation_id,
+                p.c.residence_id == residence_id,
+            )
         )
-    ).mappings().one_or_none()
+        .mappings()
+        .one_or_none()
+    )
 
 
 def _project_by_key(
     conn: Connection, installation_id: UUID, key: UUID
 ) -> RowMapping | None:
     p = financial_projects
-    return conn.execute(
-        select(p).where(
-            p.c.installation_id == installation_id,
-            p.c.idempotency_key == key,
+    return (
+        conn.execute(
+            select(p).where(
+                p.c.installation_id == installation_id,
+                p.c.idempotency_key == key,
+            )
         )
-    ).mappings().one_or_none()
+        .mappings()
+        .one_or_none()
+    )
 
 
 def _link_by_key(
     conn: Connection, installation_id: UUID, key: UUID
 ) -> RowMapping | None:
     h = financial_project_link_revisions
-    return conn.execute(
-        select(h).where(
-            h.c.installation_id == installation_id,
-            h.c.idempotency_key == key,
+    return (
+        conn.execute(
+            select(h).where(
+                h.c.installation_id == installation_id,
+                h.c.idempotency_key == key,
+            )
         )
-    ).mappings().one_or_none()
+        .mappings()
+        .one_or_none()
+    )
 
 
 def _replay_project(row: RowMapping, digest: str) -> FinancialProjectRecord:
