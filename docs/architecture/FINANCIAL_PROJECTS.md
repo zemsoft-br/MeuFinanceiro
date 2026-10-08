@@ -81,12 +81,15 @@ ou inexistente não deve parecer apenas "sem vínculo".
 ## Flutter (em implementação)
 
 Cliente `financial_project_api.dart` foi incluído como `part` do
-`financial_core_api.dart`. Ele valida os corpos e as respostas,
-as identidades, a cadeia de revisões, limites e moeda. **Nenhuma tela
-foi habilitada na navegação nesta etapa.** A interface deverá suportar
-lista, criação/edição, resumo, associação/desvinculação a partir do
-extrato, `HOUSEHOLD` read-only, conflitos, estados incertos e
-reconciliação server-side após cada escrita.
+`financial_core_api.dart`. Ele valida corpos e respostas, identidades,
+cadeia de revisões, limites e moeda. O controlador
+`financial_project_controller.dart` reconcilia lista e resumo após
+escritas, sem retry automático. A tela `financial_project_screen.dart`
+e a rota `/app/financas/projetos` estão implementadas como candidato:
+listagem, criação, edição e resumo do plano, incluindo leitura
+`HOUSEHOLD` sem edição por membro. **A seleção e correção de vínculo
+a partir do extrato continuam pendentes**; a tela não é aceite final.
+Tudo requer Flutter format/analyze/test/build e widgets adversariais.
 
 ## Evidências e pendências antes da PR
 
