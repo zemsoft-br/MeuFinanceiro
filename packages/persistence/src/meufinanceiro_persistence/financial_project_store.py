@@ -491,24 +491,21 @@ class FinancialProjectStore:
                     if visible is None:
                         raise FinancialProjectNotFoundError("project was not found")
                     project = _project_record(visible)
-                    # One chain per movement: the highest revision must target
-                    # this project. A previous link is not current.
-                    ranked = select(
-                        h.c.movement_id,
-                        h.c.project_id,
-                        func.row_number().over(
-                            partition_by=h.c.movement_id,
-                            order_by=h.c.revision.desc(),
-                        ).label("ranking"),
-                    ).where(
-                        h.c.installation_id == installation_id,
-                        h.c.residence_id == residence_id,
-                    ).subquery()
+                    # A revision is current precisely when it has no
+                    # successor. Start from the *project-specific* index and
+                    # anti-join via the unique supersedes_id index; do not
+                    # window-sort the entire residence's link history. The
+                    # linear chain and RLS are SQL-enforced (migration 0029).
+                    successor = h.alias("project_link_successor")
                     linked = conn.execute(
-                        select(ranked.c.movement_id).where(
-                            ranked.c.ranking == 1,
-                            ranked.c.project_id == project_id,
-                        ).limit(PROJECT_LINKS_MAX + 1)
+                        select(h.c.movement_id).where(
+                            h.c.installation_id == installation_id,
+                            h.c.residence_id == residence_id,
+                            h.c.project_id == project_id,
+                            ~select(successor.c.id).where(
+                                successor.c.supersedes_id == h.c.id
+                            ).exists(),
+                        ).order_by(h.c.movement_id).limit(PROJECT_LINKS_MAX + 1)
                     ).scalars().all()
                     if len(linked) > PROJECT_LINKS_MAX:
                         raise FinancialProjectLimitError(
