@@ -87,9 +87,18 @@ cadeia de revisões, limites e moeda. O controlador
 escritas, sem retry automático. A tela `financial_project_screen.dart`
 e a rota `/app/financas/projetos` estão implementadas como candidato:
 listagem, criação, edição e resumo do plano, incluindo leitura
-`HOUSEHOLD` sem edição por membro. **A seleção e correção de vínculo
-a partir do extrato continuam pendentes**; a tela não é aceite final.
-Tudo requer Flutter format/analyze/test/build e widgets adversariais.
+`HOUSEHOLD` sem edição por membro. O detalhe apresenta descrição,
+data e valores das despesas do ledger canônico, sem duplicar registros.
+O extrato agora inclui uma ação sob demanda **Associar a projeto** para
+despesas originais de contas PERSONAL/HOUSEHOLD do proprietário. O editor
+`financial_project_link_dialog.dart` faz apenas duas leituras ao abrir
+(projetos compatíveis e vínculo atual), permite associar, trocar,
+desvincular (inclusive histórico de conta arquivada) e consultar
+revisões auditáveis sob demanda. O comando leva `expectedPredecessorId`
+e chave de idempotência; a tela reconcilia com GET mesmo após falha
+ambígua, sem retries automáticos. Não existe leitura por linha do extrato.
+**A implementação ainda não constitui aceite final**: exige Flutter
+format/analyze/test/build e testes adversariais de integração.
 
 ## Evidências e pendências antes da PR
 
@@ -98,8 +107,14 @@ Tudo requer Flutter format/analyze/test/build e widgets adversariais.
 - Batch 2B: primeiro gate BLOQUEADO na limpeza da fixture
   append-only (não foi falha de operação do store).
 - Correção de fixture publicada; **reexecução pendente**.
-- Serviço/API, testes HTTP e cliente/testes Dart publicados após o
-  bloqueio, **todos pendentes de execução local**.
+- Serviço/API, testes HTTP, tela Flutter e editor de vínculos publicados
+  após o bloqueio, **todos pendentes de execução local**.
+- O resumo usa pesquisa indexada por projeto e anti-join contra sucessor
+  para localizar vínculos correntes, sem window-sort de toda a residência;
+  exige EXPLAIN e stress com histórico amplo para comprovar boundedness.
+- A regressão `A -> B -> A` valida realizado único após retorno ao
+  projeto original, e testes do editor verificam leitura sob demanda e
+  desvinculação de conta arquivada. **Ainda não executados.**
 - Pendente: testes adversariais completos de concorrência, digest/CAS,
   cross-residence, replay após troca, plano de desempenho FORCED RLS,
   mutação dirigida e Flutter UI/widget/build.
