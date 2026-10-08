@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -19,6 +20,7 @@ from meufinanceiro_finance import (
     Money,
     new_financial_resource_id,
 )
+from meufinanceiro_persistence.financial_goal_store import FinancialGoalConflictError
 
 from app.services.financial_goals import FinancialGoalService, GoalRequestError
 
@@ -54,9 +56,26 @@ class _Store:
         self.calls: list[str] = []
         self.allocated = _money("250")
         self.account_id = new_financial_resource_id()
+        self.created: dict[UUID, FinancialGoalDraft] = {}
 
-    def create_goal(self, **kwargs: object) -> FinancialGoalRecord:
+    def create_goal(
+        self,
+        *,
+        idempotency_key: UUID,
+        draft: FinancialGoalDraft,
+        new_goal_guard: Callable[[FinancialGoalDraft], None] | None = None,
+        **kwargs: object,
+    ) -> FinancialGoalRecord:
+        """Mirror the real store: the key decides replay vs. new; only new is guarded."""
         self.calls.append("create")
+        previous = self.created.get(idempotency_key)
+        if previous is not None:
+            if previous != draft:
+                raise FinancialGoalConflictError("goal idempotency conflict")
+            return self.record
+        if new_goal_guard is not None:
+            new_goal_guard(draft)
+        self.created[idempotency_key] = draft
         return self.record
 
     def get_goal(self, **kwargs: object) -> FinancialGoalRecord:
@@ -195,7 +214,67 @@ def test_create_validates_the_target_date_against_the_clock(
             service.create_goal(
                 **_scope(), idempotency_key=uuid4(), draft=_draft(target_date)
             )
-        assert store.calls == []
+        assert store.created == {}
+
+
+class _MovingClock:
+    def __init__(self, today: date) -> None:
+        self.today = today
+
+    def __call__(self) -> date:
+        return self.today
+
+
+def test_replay_after_the_window_moved_returns_the_same_resource() -> None:
+    clock = _MovingClock(date(2026, 10, 7))
+    store = _Store(_record())
+    service = FinancialGoalService(store, clock=clock)
+    scope = _scope()
+    key = uuid4()
+    draft = _draft(date(2026, 10, 7))  # the earliest accepted day today
+
+    first = service.create_goal(**scope, idempotency_key=key, draft=draft)
+    clock.today = date(2026, 10, 9)  # the same date is now outside the window
+    replay = service.create_goal(**scope, idempotency_key=key, draft=draft)
+
+    assert replay == first
+    assert len(store.created) == 1
+
+
+def test_changed_material_after_the_window_moved_is_still_a_conflict() -> None:
+    clock = _MovingClock(date(2026, 10, 7))
+    store = _Store(_record())
+    service = FinancialGoalService(store, clock=clock)
+    scope = _scope()
+    key = uuid4()
+    service.create_goal(**scope, idempotency_key=key, draft=_draft(date(2026, 10, 7)))
+    clock.today = date(2026, 10, 9)
+
+    # Same key, same expired date, different material: conflict, not a date error.
+    changed = FinancialGoalDraft(
+        title="Outra",
+        description=None,
+        visibility_scope=FinancialVisibilityScope.HOUSEHOLD,
+        target=_money("1000"),
+        target_date=date(2026, 10, 7),
+    )
+    with pytest.raises(FinancialGoalConflictError):
+        service.create_goal(**scope, idempotency_key=key, draft=changed)
+    assert len(store.created) == 1
+
+
+def test_a_new_creation_with_an_aged_out_date_is_still_rejected() -> None:
+    clock = _MovingClock(date(2026, 10, 7))
+    store = _Store(_record())
+    service = FinancialGoalService(store, clock=clock)
+    scope = _scope()
+    draft = _draft(date(2026, 10, 7))
+    service.create_goal(**scope, idempotency_key=uuid4(), draft=draft)
+    clock.today = date(2026, 10, 9)
+
+    with pytest.raises(GoalRequestError):
+        service.create_goal(**scope, idempotency_key=uuid4(), draft=draft)
+    assert len(store.created) == 1
 
 
 def test_replace_only_revalidates_a_changed_target_date() -> None:

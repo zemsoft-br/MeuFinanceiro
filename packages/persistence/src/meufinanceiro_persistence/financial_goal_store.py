@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 from uuid import UUID
@@ -129,7 +129,17 @@ class FinancialGoalStore:
         operator_id: UUID,
         idempotency_key: UUID,
         draft: FinancialGoalDraft,
+        new_goal_guard: Callable[[FinancialGoalDraft], None] | None = None,
     ) -> FinancialGoalRecord:
+        """Create the goal, or replay the one this key already created.
+
+        ``new_goal_guard`` validates only a *genuinely new* goal (e.g. the target-date
+        window). The ``INSERT .. ON CONFLICT DO NOTHING`` is the single authority for
+        replay vs. new, so the guard runs only on a row this very transaction
+        inserted; if it raises, the transaction rolls back and nothing persists. A
+        replay (same key and digest) never runs it, and a lookup that merely missed a
+        concurrent, uncommitted winner is resolved by that insert, not by the guard.
+        """
         _require_scope(installation_id, residence_id, operator_id)
         validate_financial_idempotency_key(idempotency_key)
         if not isinstance(draft, FinancialGoalDraft):
@@ -185,6 +195,8 @@ class FinancialGoalStore:
                     if raced is not None:
                         return _replay_goal(raced, request_digest)
                     raise FinancialGoalConflictError("goal conflict")
+                if new_goal_guard is not None:
+                    new_goal_guard(draft)
                 return _goal_record(inserted)
         except FinancialMovementAccessError:
             raise FinancialGoalAccessError("goal access denied") from None

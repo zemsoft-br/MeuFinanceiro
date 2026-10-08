@@ -212,6 +212,7 @@ class Api:
         self.authentication = authentication
         self.pg_env = pg_env
         self._tokens: dict[str, str] = {}
+        self.today: list[date] = [date(2026, 10, 7)]  # the injected clock (mutable)
 
     def login(self, who: str, operator_id: UUID, residence_id: UUID) -> None:
         token = secrets.token_urlsafe(32)
@@ -319,11 +320,13 @@ def api(pg_env: PgEnv, household: Household, tmp_path: Path) -> Iterator[Api]:
             FinancialCategoryStore(engine),
             FinancialMovementAllocationStore(engine),
         )
+        today = [date(2026, 10, 7)]
         client.app.state.financial_goals = FinancialGoalService(
             FinancialGoalStore(engine),
-            clock=lambda: date(2026, 10, 7),
+            clock=lambda: today[0],
         )
         facade = Api(client, authentication, pg_env)
+        facade.today = today
         facade.login("owner", household.owner_id, household.residence_id)
         facade.login("member", household.member_id, household.residence_id)
         yield facade
@@ -559,6 +562,38 @@ def test_create_is_replay_safe_and_conflicts_fail_closed(api: Api) -> None:
         409,
         "financial goal conflicts with canonical state",
     )
+    assert len(api.get("owner", "/goals").json()["items"]) == 1
+
+
+def test_replay_survives_the_window_moving_and_new_creation_stays_strict(
+    api: Api,
+) -> None:
+    body = _goal_body(targetDate="2026-10-07")  # the earliest day accepted today
+    first = api.post("owner", "/goals", body)
+    assert first.status_code == 201, first.text
+
+    api.today[0] = date(2026, 10, 9)  # the clock advances: that date is now expired
+
+    # Same key and material: the same resource, even though the date aged out.
+    replay = api.post("owner", "/goals", body)
+    assert replay.status_code == 201, replay.text
+    assert replay.json() == first.json()
+    # Same key, different material (expired date kept): a conflict, not a date error.
+    _clean(
+        api.post("owner", "/goals", {**body, "targetAmount": "999"}),
+        409,
+        "financial goal conflicts with canonical state",
+    )
+    # Another operator cannot replay it either.
+    _clean(
+        api.post("member", "/goals", body),
+        409,
+        "financial goal conflicts with canonical state",
+    )
+    # A genuinely new creation with the expired date is rejected and writes nothing.
+    rejected = api.post("owner", "/goals", {**body, "idempotencyKey": str(uuid4())})
+    assert rejected.status_code == 422, rejected.text
+    assert rejected.json() == {"detail": "invalid financial goal request"}
     assert len(api.get("owner", "/goals").json()["items"]) == 1
 
 

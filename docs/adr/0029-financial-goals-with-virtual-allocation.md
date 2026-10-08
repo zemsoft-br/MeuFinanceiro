@@ -50,7 +50,7 @@ Despesas posteriores reduzem o saldo canônico e **não alteram nenhum evento**.
 
 ### Escrita: replay-safe, CAS e idempotência
 
-- criar meta usa `idempotencyKey` UUID v4 e digest SHA-256 do material canônico (operador + título, descrição, escopo, moeda, alvo, prazo): mesma chave e mesmo material é replay; mesma chave com outro material ou outro operador é `409`;
+- criar meta usa `idempotencyKey` UUID v4 e digest SHA-256 do material canônico (operador + título, descrição, escopo, moeda, alvo, prazo): mesma chave e mesmo material é replay; mesma chave com outro material ou outro operador é `409`; a janela do prazo vale só para criação realmente nova (decidida pelo `INSERT .. ON CONFLICT DO NOTHING`, com rollback se falhar), nunca para replay, que continua devolvendo a meta original depois que o prazo envelhece;
 - cada evento usa a própria `idempotencyKey` (UUID v4) e digest de operador + meta + tipo + conta + valor; replay devolve o evento original sem novo lançamento; material diferente é `409`;
 - editar é `UPDATE ... WHERE version = :expected`: versão antiga é `409` sem gravar;
 - o Flutter nunca reenvia automaticamente nem refaz o CAS após `409`: relê o estado canônico e exige nova ação explícita.

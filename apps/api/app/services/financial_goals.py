@@ -48,6 +48,7 @@ class GoalStoreBoundary(Protocol):
         operator_id: UUID,
         idempotency_key: UUID,
         draft: FinancialGoalDraft,
+        new_goal_guard: Callable[[FinancialGoalDraft], None] | None = None,
     ) -> FinancialGoalRecord: ...
 
     def get_goal(
@@ -190,13 +191,16 @@ class FinancialGoalService:
         idempotency_key: UUID,
         draft: FinancialGoalDraft,
     ) -> GoalView:
-        self._require_valid_date(draft.target_date)
+        # The window applies to a goal that is really new, never to a replay: the
+        # store decides which it is (atomically, by the idempotency key) and calls the
+        # guard only for a fresh insert, so an aged-out date cannot break a replay.
         record = self._store.create_goal(
             installation_id=installation_id,
             residence_id=residence_id,
             operator_id=operator_id,
             idempotency_key=idempotency_key,
             draft=draft,
+            new_goal_guard=lambda fresh: self._require_valid_date(fresh.target_date),
         )
         return _view(record, operator_id)
 

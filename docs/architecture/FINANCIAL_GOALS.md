@@ -79,7 +79,7 @@ Ao exceder, a escrita falha com `409`; um estado já fora do limite falha na lei
 
 ## Prazo
 
-Ao criar, ou ao alterar o prazo, a data deve estar entre `hoje(UTC) − 1 dia` e 100 anos à frente. Manter o prazo já gravado numa edição não revalida.
+Ao criar, ou ao alterar o prazo, a data deve estar entre `hoje(UTC) − 1 dia` e 100 anos à frente. Manter o prazo já gravado numa edição não revalida. Um replay de criação (mesma chave e mesmo material) devolve a meta original mesmo que o prazo já esteja fora da janela: quem decide replay × criação nova é o `INSERT .. ON CONFLICT DO NOTHING` do store, e a janela só é aplicada (na mesma transação, com rollback se falhar) a uma linha realmente nova.
 
 ## Contrato HTTP
 

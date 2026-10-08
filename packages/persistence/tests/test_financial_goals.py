@@ -228,6 +228,104 @@ def test_create_idempotency_conflicts_fail_closed(budget_world: BudgetWorld) -> 
     assert len(store.list_goals(**budget_world.scope())) == 1
 
 
+def test_new_goal_guard_runs_only_for_a_fresh_insert(
+    budget_world: BudgetWorld,
+) -> None:
+    store = FinancialGoalStore(budget_world.runtime)
+    key = new_financial_idempotency_key()
+    draft = _draft()
+    seen: list[FinancialGoalDraft] = []
+
+    created = store.create_goal(
+        **budget_world.scope(),
+        idempotency_key=key,
+        draft=draft,
+        new_goal_guard=seen.append,
+    )
+    replay = store.create_goal(
+        **budget_world.scope(),
+        idempotency_key=key,
+        draft=draft,
+        new_goal_guard=seen.append,
+    )
+    assert replay == created and seen == [draft]  # the replay never reaches the guard
+
+    def reject(_: FinancialGoalDraft) -> None:
+        raise ValueError("window")
+
+    # A changed digest is a conflict decided before any guard.
+    with pytest.raises(FinancialGoalConflictError):
+        store.create_goal(
+            **budget_world.scope(),
+            idempotency_key=key,
+            draft=_draft(target="999"),
+            new_goal_guard=reject,
+        )
+    # A rejecting guard on a fresh key rolls the insert back: nothing persists.
+    with pytest.raises(ValueError, match="window"):
+        store.create_goal(
+            **budget_world.scope(),
+            idempotency_key=new_financial_idempotency_key(),
+            draft=_draft(title="Nova"),
+            new_goal_guard=reject,
+        )
+    assert store.list_goals(**budget_world.scope()) == ((created, _money("0")),)
+
+
+def test_concurrent_creates_of_one_key_run_the_guard_once_and_replay_the_rest(
+    budget_world: BudgetWorld,
+) -> None:
+    store = FinancialGoalStore(budget_world.runtime)
+    key = new_financial_idempotency_key()
+    draft = _draft()
+    barrier = threading.Barrier(6)
+    guarded: list[int] = []
+
+    def create(index: int) -> UUID:
+        barrier.wait()
+        return store.create_goal(
+            **budget_world.scope(),
+            idempotency_key=key,
+            draft=draft,
+            new_goal_guard=lambda _: guarded.append(index),
+        ).id
+
+    with ThreadPoolExecutor(6) as pool:
+        ids = list(pool.map(create, range(6)))
+    assert len(set(ids)) == 1 and len(guarded) == 1
+    assert len(store.list_goals(**budget_world.scope())) == 1
+
+
+def test_concurrent_creates_with_a_rejecting_guard_persist_nothing(
+    budget_world: BudgetWorld,
+) -> None:
+    store = FinancialGoalStore(budget_world.runtime)
+    key = new_financial_idempotency_key()
+    draft = _draft()
+    barrier = threading.Barrier(4)
+
+    def reject(_: FinancialGoalDraft) -> None:
+        raise ValueError("window")
+
+    def create(_: int) -> str:
+        barrier.wait()
+        try:
+            store.create_goal(
+                **budget_world.scope(),
+                idempotency_key=key,
+                draft=draft,
+                new_goal_guard=reject,
+            )
+        except ValueError:
+            return "rejected"
+        return "created"
+
+    with ThreadPoolExecutor(4) as pool:
+        outcomes = list(pool.map(create, range(4)))
+    assert outcomes == ["rejected"] * 4
+    assert store.list_goals(**budget_world.scope()) == ()
+
+
 def test_a_non_member_cannot_touch_goals(budget_world: BudgetWorld) -> None:
     store = FinancialGoalStore(budget_world.runtime)
     with pytest.raises(FinancialGoalAccessError):
