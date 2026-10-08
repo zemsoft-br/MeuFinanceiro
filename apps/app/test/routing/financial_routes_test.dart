@@ -26,6 +26,11 @@ void main() {
       ),
       same(finance),
     );
+    expect(AppRoutes.financeProjectsPath, '/app/financas/projetos');
+    expect(
+      AppRoutes.destinationForLocation(AppRoutes.financeProjectsPath),
+      same(finance),
+    );
   });
 
   test('all financial routes remain behind the existing app auth guard', () {
@@ -33,6 +38,7 @@ void main() {
       AppRoutes.financePath,
       AppRoutes.financeAccountCreatePath,
       AppRoutes.financeCategorizationRulesPath,
+      AppRoutes.financeProjectsPath,
       AppRoutes.financeAccountDetailLocation(
         '40000000-0000-4000-8000-000000000004',
       ),
