@@ -11,6 +11,7 @@ import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
 import 'package:meufinanceiro_app/features/finance/financial_money_format.dart';
 import 'package:meufinanceiro_app/features/finance/financial_operation_date_policy.dart';
+import 'package:meufinanceiro_app/features/finance/financial_project_link_dialog.dart';
 import 'package:meufinanceiro_app/features/finance/financial_transfer_reversal_policy.dart';
 import 'package:meufinanceiro_app/features/finance/financial_money_input.dart';
 import 'package:meufinanceiro_app/features/finance/financial_registration_time_format.dart';
@@ -65,6 +66,8 @@ class _FinancialAccountDetailScreenState
   final _headingFocusNode = FocusNode(
     debugLabel: 'financial-account-detail-heading',
   );
+  bool _projectLinkMutationInFlight = false;
+  final Map<String, String> _projectLinkRetryKeys = {};
 
   @override
   void initState() {
@@ -86,6 +89,7 @@ class _FinancialAccountDetailScreenState
 
   @override
   void dispose() {
+    _projectLinkRetryKeys.clear();
     _headingFocusNode.dispose();
     super.dispose();
   }
@@ -270,6 +274,90 @@ class _FinancialAccountDetailScreenState
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Fetch a single Movement's current association only after human action.
+  ///
+  /// No per-row HTTP calls, retries, optimism or recomputation of realized.
+  /// An ambiguous result retains the identical idempotency key for an
+  /// *explicit* retry with the same predecessor/material.
+  Future<void> _editProjectLink(
+    FinancialAccount account,
+    FinancialMovement movement,
+  ) async {
+    if (_projectLinkMutationInFlight) return;
+    final input = await showDialog<FinancialProjectLinkInput>(
+      context: context,
+      builder: (_) => FinancialProjectLinkDialog(
+        account: account,
+        movement: movement,
+      ),
+    );
+    if (!mounted || input == null || _projectLinkMutationInFlight) return;
+    final attempt = '${movement.movementId}\u001e${input.attemptKey}';
+    final send = input.withIdempotencyKey(
+      _projectLinkRetryKeys[attempt] ?? input.idempotencyKey,
+    );
+    _projectLinkRetryKeys[attempt] = send.idempotencyKey;
+    setState(() => _projectLinkMutationInFlight = true);
+    FinancialProjectLink? persisted;
+    bool writeConfirmed = false;
+    String message;
+    try {
+      persisted = await ref.read(financialCoreApiProvider).reviseProjectLink(
+        movement.movementId,
+        send,
+      );
+      writeConfirmed = true;
+      message = 'Associação enviada. Conferindo o estado persistido.';
+    } on AuthenticatedApiException catch (error) {
+      if (error.statusCode == 409 ||
+          error.statusCode == 404 ||
+          error.statusCode == 422) {
+        _projectLinkRetryKeys.remove(attempt);
+      }
+      message = switch (error.statusCode) {
+        409 => 'A associação mudou antes de salvar. '
+            'Abra o editor e escolha novamente.',
+        403 => 'Você não tem permissão para alterar esta associação.',
+        404 => 'A despesa ou o projeto não está mais disponível.',
+        422 => 'A associação não foi aceita.',
+        _ => 'Resultado incerto. Não envie novamente sem conferir.',
+      };
+    } on FormatException {
+      message = 'Resposta inválida; resultado incerto. Confira antes de repetir.';
+    } catch (_) {
+      message = 'Resultado incerto. Confira a associação persistida.';
+    }
+
+    // A canonical GET is mandatory after every write outcome. It does not
+    // repeat the POST; a successful POST without the GET is not "reconciled".
+    try {
+      final current = await ref
+          .read(financialCoreApiProvider)
+          .getProjectLink(movement.movementId);
+      if (writeConfirmed && persisted?.id == current?.id) {
+        _projectLinkRetryKeys.remove(attempt);
+        message = current?.projectId == null
+            ? 'Despesa desvinculada; associação confirmada no servidor.'
+            : 'Despesa vinculada; associação confirmada no servidor.';
+      } else if (writeConfirmed) {
+        message = 'A associação foi alterada novamente. '
+            'O estado persistido foi consultado; revise antes de editar.';
+      } else {
+        message = '$message Estado atual consultado no servidor.';
+      }
+    } catch (_) {
+      // Even a successful POST must not claim a reconciled state here.
+      message = 'Não foi possível reconciliar a associação. '
+          'Resultado da operação incerto; atualize antes de editar novamente.';
+    } finally {
+      if (mounted) setState(() => _projectLinkMutationInFlight = false);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   Future<void> _reverseMovement(
@@ -533,6 +621,15 @@ class _FinancialAccountDetailScreenState
                 operatorId: operatorId,
                 allowClassification:
                     !state.isBusy && state.classificationTrusted,
+                allowProjectLink:
+                    !state.isBusy &&
+                    !_projectLinkMutationInFlight &&
+                    operatorId != null &&
+                    account.ownerOperatorId == operatorId &&
+                    (account.visibilityScope == FinancialVisibilityScope.personal ||
+                        account.visibilityScope == FinancialVisibilityScope.household),
+                onProjectLink: (movement) =>
+                    unawaited(_editProjectLink(account, movement)),
                 onClassify: (movement) =>
                     unawaited(_classifyMovement(account, movement, operatorId)),
                 onRevise: (movement, current) => unawaited(
@@ -883,6 +980,9 @@ class _StatementCard extends StatelessWidget {
     required this.ruleOriginsBySetId,
     required this.operatorId,
     required this.allowClassification,
+    required this.allowProjectLink,
+    required this.onProjectLink,
+    required this.onProjectLink,
     required this.onClassify,
     required this.onRevise,
     required this.allowReversal,
@@ -898,6 +998,8 @@ class _StatementCard extends StatelessWidget {
   final Map<String, FinancialRuleOrigin> ruleOriginsBySetId;
   final String? operatorId;
   final bool allowClassification;
+  final bool allowProjectLink;
+  final ValueChanged<FinancialMovement> onProjectLink;
   final ValueChanged<FinancialMovement> onClassify;
   final void Function(FinancialMovement, FinancialMovementAllocation) onRevise;
   final bool allowReversal;
@@ -943,6 +1045,10 @@ class _StatementCard extends StatelessWidget {
                       )
                     : null;
                 final allocation = currentAllocations[movement.movementId];
+                final canLinkProject =
+                    allowProjectLink &&
+                    movement.role == FinancialMovementRole.standard &&
+                    movement.resultEffect == FinancialResultEffect.expense;
                 final canClassify =
                     allowClassification &&
                     canClassifyFinancialMovementSimply(
@@ -992,6 +1098,9 @@ class _StatementCard extends StatelessWidget {
                           allocation.allocationSetId,
                         ),
                     shareLines: shareLines,
+                    onProjectLink: canLinkProject
+                        ? () => onProjectLink(movement)
+                        : null,
                     onClassify: canClassify ? () => onClassify(movement) : null,
                     onRevise: canRevise && allocation != null
                         ? () => onRevise(movement, allocation)
@@ -1049,6 +1158,7 @@ class _StatementRow extends StatelessWidget {
   /// Evidence only; "Alterar classificação" still appends a manual revision.
   final bool appliedByRule;
   final List<_ShareLine> shareLines;
+  final VoidCallback? onProjectLink;
   final VoidCallback? onClassify;
   final VoidCallback? onRevise;
   final String? transferId;
@@ -1146,6 +1256,15 @@ class _StatementRow extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
               ),
+              if (onProjectLink != null) ...[
+                const SizedBox(height: AppTokens.space8),
+                FilledButton.tonalIcon(
+                  key: Key('financial-movement-project-${movement.movementId}'),
+                  onPressed: onProjectLink,
+                  icon: const Icon(Icons.folder_open_outlined),
+                  label: const Text('Associar a projeto'),
+                ),
+              ],
               if (onClassify != null) ...[
                 const SizedBox(height: AppTokens.space8),
                 FilledButton.tonalIcon(
