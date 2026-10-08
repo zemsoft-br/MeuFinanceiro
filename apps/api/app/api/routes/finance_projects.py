@@ -137,6 +137,8 @@ class ProjectExpenseResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     movement_id: UUID = Field(serialization_alias="movementId")
+    description: str | None
+    effective_date: date = Field(serialization_alias="effectiveDate")
     original_amount: ProjectMoneyResponse = Field(
         serialization_alias="originalAmount"
     )
@@ -305,6 +307,8 @@ def _summary(view: ProjectSummaryView) -> ProjectSummaryResponse:
         expenses=tuple(
             ProjectExpenseResponse(
                 movement_id=f.original.id,
+                description=f.original.description,
+                effective_date=f.original.effective_date,
                 original_amount=_money(-f.original.amount),
                 realized=_money(f.realized),
                 reversed=f.reversal is not None,

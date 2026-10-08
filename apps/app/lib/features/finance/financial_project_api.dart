@@ -14,7 +14,8 @@ const _projectSummaryKeys = <String>{
   'progressStatus', 'expenseCount', 'expenses',
 };
 const _projectExpenseKeys = <String>{
-  'movementId', 'originalAmount', 'realized', 'reversed',
+  'movementId', 'description', 'effectiveDate',
+  'originalAmount', 'realized', 'reversed',
 };
 const _projectLinkKeys = <String>{
   'id', 'movementId', 'projectId', 'supersedesId', 'revision',
@@ -70,11 +71,15 @@ class FinancialProject {
 class FinancialProjectExpense {
   const FinancialProjectExpense({
     required this.movementId,
+    required this.description,
+    required this.effectiveDate,
     required this.originalAmount,
     required this.realized,
     required this.reversed,
   });
   final String movementId;
+  final String? description;
+  final String effectiveDate;
   final FinancialMoneyWire originalAmount;
   final FinancialMoneyWire realized;
   final bool reversed;
@@ -478,6 +483,10 @@ FinancialProjectSummary _parseProjectSummary(Object? raw) {
       }
       return FinancialProjectExpense(
         movementId: _financialResourceId(e['movementId'], 'movementId'),
+        description: _optionalBoundedText(
+          e['description'], 'description', maxLength: 256,
+        ),
+        effectiveDate: _date(e['effectiveDate'], 'effectiveDate'),
         originalAmount: _projectMoney(e['originalAmount'], project.currency),
         realized: _projectMoney(e['realized'], project.currency),
         reversed: e['reversed'] as bool,

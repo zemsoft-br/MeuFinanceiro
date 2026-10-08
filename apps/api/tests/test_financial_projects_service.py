@@ -214,6 +214,8 @@ def test_project_readonly_member_and_derived_summary() -> None:
     assert data["remaining"]["amount"] == "375"
     assert data["progressPercent"] == "25.00"
     assert data["expenses"][0]["movementId"] == str(store.expense.id)
+    assert data["expenses"][0]["description"] == "Material"
+    assert data["expenses"][0]["effectiveDate"] == "2026-10-08"
     assert data["expenses"][0]["originalAmount"]["amount"] == "125"
 
 

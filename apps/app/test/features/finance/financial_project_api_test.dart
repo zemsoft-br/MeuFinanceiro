@@ -53,6 +53,8 @@ Map<String, Object?> _summary() => {
   'expenses': [
     {
       'movementId': _movementId,
+      'description': 'Material de obra',
+      'effectiveDate': '2026-10-08',
       'originalAmount': {'amount': '125', 'currency': 'BRL'},
       'realized': {'amount': '125', 'currency': 'BRL'},
       'reversed': false,
@@ -129,6 +131,8 @@ void main() {
     expect(summary.remaining.amount, '375');
     expect(summary.progressPercent, '25.00');
     expect(summary.expenses.single.movementId, _movementId);
+    expect(summary.expenses.single.description, 'Material de obra');
+    expect(summary.expenses.single.effectiveDate, '2026-10-08');
     expect((await api.getProjectLink(_movementId))?.projectId, _projectId);
     expect((await api.getProjectLinkHistory(_movementId)).length, 1);
     expect(transport.calls.every((call) => call.method == AuthHttpMethod.get), isTrue);

@@ -300,9 +300,10 @@ class _SummaryDetails extends StatelessWidget {
         else
           for (final expense in summary.expenses)
             ListTile(
-              title: Text('Despesa ${expense.movementId}'),
+              title: Text(expense.description ?? 'Despesa sem descrição'),
               subtitle: Text(
-                expense.reversed ? 'Estornada integralmente' : 'Movimento original',
+                '${expense.effectiveDate} · '
+                '${expense.reversed ? 'Estornada integralmente' : 'Despesa original'}',
               ),
               trailing: Text(formatFinancialMoney(expense.realized)),
             ),
