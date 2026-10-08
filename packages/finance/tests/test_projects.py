@@ -63,9 +63,14 @@ def _account(project, *, scope=None, owner=None, status=FinancialAccountStatus.A
     )
 
 
-def _movement(account, *, effect=FinancialResultEffect.EXPENSE,
-              role=FinancialMovementRole.STANDARD, amount="-130",
-              original=None):
+def _movement(
+    account,
+    *,
+    effect=FinancialResultEffect.EXPENSE,
+    role=FinancialMovementRole.STANDARD,
+    amount="-130",
+    original=None,
+):
     return FinancialMovementRecord(
         id=uuid4(),
         account_id=account.id,
@@ -84,23 +89,29 @@ def _movement(account, *, effect=FinancialResultEffect.EXPENSE,
 
 def test_project_planning_is_strict_and_canonical() -> None:
     p = FinancialProjectDraft(
-        title="  Reforma  ", description=None,
+        title="  Reforma  ",
+        description=None,
         visibility_scope=FinancialVisibilityScope.HOUSEHOLD,
-        planned=Money(Decimal("400.000"), "BRL"), target_date=None,
+        planned=Money(Decimal("400.000"), "BRL"),
+        target_date=None,
     )
     assert p.title == "Reforma"
     assert p.canonical_material()[4] == "400"
     with pytest.raises(ValueError):
         FinancialProjectDraft(
-            title="Errado", description=None,
+            title="Errado",
+            description=None,
             visibility_scope=FinancialVisibilityScope.SHARED,
-            planned=Money(Decimal("1"), "BRL"), target_date=None,
+            planned=Money(Decimal("1"), "BRL"),
+            target_date=None,
         )
     with pytest.raises(ValueError):
         FinancialProjectDraft(
-            title="Errado", description=None,
+            title="Errado",
+            description=None,
             visibility_scope=FinancialVisibilityScope.PERSONAL,
-            planned=Money(Decimal("0"), "BRL"), target_date=None,
+            planned=Money(Decimal("0"), "BRL"),
+            target_date=None,
         )
 
 
@@ -124,7 +135,8 @@ def test_project_eligibility_limits_scope_owner_and_movement() -> None:
         for_new_link=True,
     )
     assert not is_project_expense_eligible(
-        project=project, account=account,
+        project=project,
+        account=account,
         movement=_movement(account, effect=FinancialResultEffect.INCOME, amount="130"),
         for_new_link=True,
     )
@@ -145,19 +157,33 @@ def test_unlink_requires_prior_link_and_revision_chain_is_validated() -> None:
     draft = FinancialProjectLinkRevisionDraft(mid, pid, None)
     assert draft.canonical_material() == (str(mid), str(pid), None)
     first = FinancialProjectLinkRevisionRecord(
-        id=rid, movement_id=mid, project_id=pid,
-        supersedes_id=None, revision=1, actor_operator_id=uuid4(), created_at=_NOW,
+        id=rid,
+        movement_id=mid,
+        project_id=pid,
+        supersedes_id=None,
+        revision=1,
+        actor_operator_id=uuid4(),
+        created_at=_NOW,
     )
     unlink = FinancialProjectLinkRevisionRecord(
-        id=uuid4(), movement_id=mid, project_id=None,
-        supersedes_id=first.id, revision=2,
-        actor_operator_id=uuid4(), created_at=_NOW,
+        id=uuid4(),
+        movement_id=mid,
+        project_id=None,
+        supersedes_id=first.id,
+        revision=2,
+        actor_operator_id=uuid4(),
+        created_at=_NOW,
     )
     assert unlink.project_id is None
     with pytest.raises(ValueError):
         FinancialProjectLinkRevisionRecord(
-            id=uuid4(), movement_id=mid, project_id=None,
-            supersedes_id=None, revision=1, actor_operator_id=uuid4(), created_at=_NOW,
+            id=uuid4(),
+            movement_id=mid,
+            project_id=None,
+            supersedes_id=None,
+            revision=1,
+            actor_operator_id=uuid4(),
+            created_at=_NOW,
         )
 
 
@@ -167,24 +193,30 @@ def test_reversal_cancels_original_exactly_once_without_other_ledger() -> None:
     first = _movement(account)
     second = _movement(account, amount="-270")
     reversed_by = _movement(
-        account, role=FinancialMovementRole.REVERSAL,
-        amount="130", original=first,
+        account,
+        role=FinancialMovementRole.REVERSAL,
+        amount="130",
+        original=first,
     )
     s = summarize_project(
-        project, [
+        project,
+        [
             FinancialProjectExpenseFact(project.id, first, reversed_by),
             FinancialProjectExpenseFact(project.id, second),
-        ]
+        ],
     )
     assert s.realized == Money(Decimal("270"), "BRL")
     assert s.remaining == Money(Decimal("130"), "BRL")
     assert s.progress_percent == Decimal("67.50")
     assert s.progress_status is FinancialProjectProgressStatus.UNDER
     with pytest.raises(ValueError):
-        summarize_project(project, [
-            FinancialProjectExpenseFact(project.id, first),
-            FinancialProjectExpenseFact(project.id, first),
-        ])
+        summarize_project(
+            project,
+            [
+                FinancialProjectExpenseFact(project.id, first),
+                FinancialProjectExpenseFact(project.id, first),
+            ],
+        )
 
 
 def test_project_summary_over_budget_and_bad_reversal_fail_closed() -> None:
@@ -199,7 +231,12 @@ def test_project_summary_over_budget_and_bad_reversal_fail_closed() -> None:
     assert result.excess.amount == 1
     with pytest.raises(ValueError):
         FinancialProjectExpenseFact(
-            project.id, expense,
-            _movement(account, role=FinancialMovementRole.REVERSAL,
-                      amount="1", original=expense),
+            project.id,
+            expense,
+            _movement(
+                account,
+                role=FinancialMovementRole.REVERSAL,
+                amount="1",
+                original=expense,
+            ),
         )

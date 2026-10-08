@@ -206,7 +206,8 @@ class FinancialProjectLinkRevisionDraft:
             str(self.movement_id),
             str(self.project_id) if self.project_id is not None else None,
             str(self.expected_predecessor_id)
-            if self.expected_predecessor_id is not None else None,
+            if self.expected_predecessor_id is not None
+            else None,
         )
 
 
@@ -350,8 +351,10 @@ def summarize_project(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
     status = (
-        FinancialProjectProgressStatus.UNDER if total < planned
-        else FinancialProjectProgressStatus.AT if total == planned
+        FinancialProjectProgressStatus.UNDER
+        if total < planned
+        else FinancialProjectProgressStatus.AT
+        if total == planned
         else FinancialProjectProgressStatus.OVER
     )
     return FinancialProjectSummary(
