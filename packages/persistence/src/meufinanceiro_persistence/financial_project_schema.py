@@ -75,9 +75,7 @@ financial_projects = Table(
         "request_digest ~ '^[0-9a-f]{64}$'",
         name="ck_finance_projects_request_digest",
     ),
-    CheckConstraint(
-        "updated_at >= created_at", name="ck_finance_projects_timestamps"
-    ),
+    CheckConstraint("updated_at >= created_at", name="ck_finance_projects_timestamps"),
     ForeignKeyConstraint(
         ["residence_id", "installation_id"],
         ["household.residences.id", "household.residences.installation_id"],
@@ -97,12 +95,17 @@ financial_projects = Table(
         name="fk_finance_projects_updater",
     ),
     UniqueConstraint(
-        "id", "installation_id", "residence_id", "currency",
-        "owner_operator_id", "visibility_scope",
+        "id",
+        "installation_id",
+        "residence_id",
+        "currency",
+        "owner_operator_id",
+        "visibility_scope",
         name="uq_finance_projects_full_scope",
     ),
     UniqueConstraint(
-        "installation_id", "idempotency_key",
+        "installation_id",
+        "idempotency_key",
         name="uq_finance_projects_idempotency",
     ),
     schema="finance",
@@ -128,9 +131,7 @@ financial_project_link_revisions = Table(
     Column("idempotency_key", UUID(as_uuid=True), nullable=False),
     Column("request_digest", String(64), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
-    CheckConstraint(
-        f"id::text ~ {_UUID4}", name="ck_finance_project_links_id_uuid4"
-    ),
+    CheckConstraint(f"id::text ~ {_UUID4}", name="ck_finance_project_links_id_uuid4"),
     CheckConstraint(
         f"idempotency_key::text ~ {_UUID4}",
         name="ck_finance_project_links_idempotency_uuid4",
@@ -154,46 +155,65 @@ financial_project_link_revisions = Table(
     ),
     ForeignKeyConstraint(
         [
-            "movement_id", "installation_id", "residence_id",
-            "account_id", "currency", "result_effect", "role",
+            "movement_id",
+            "installation_id",
+            "residence_id",
+            "account_id",
+            "currency",
+            "result_effect",
+            "role",
         ],
         [
-            "finance.movements.id", "finance.movements.installation_id",
-            "finance.movements.residence_id", "finance.movements.account_id",
-            "finance.movements.currency", "finance.movements.result_effect",
+            "finance.movements.id",
+            "finance.movements.installation_id",
+            "finance.movements.residence_id",
+            "finance.movements.account_id",
+            "finance.movements.currency",
+            "finance.movements.result_effect",
             "finance.movements.role",
         ],
-        ondelete="RESTRICT", name="fk_finance_project_links_expense",
+        ondelete="RESTRICT",
+        name="fk_finance_project_links_expense",
     ),
     ForeignKeyConstraint(
         [
-            "project_id", "installation_id", "residence_id", "currency",
-            "owner_operator_id", "visibility_scope",
+            "project_id",
+            "installation_id",
+            "residence_id",
+            "currency",
+            "owner_operator_id",
+            "visibility_scope",
         ],
         [
-            "finance.projects.id", "finance.projects.installation_id",
-            "finance.projects.residence_id", "finance.projects.currency",
-            "finance.projects.owner_operator_id", "finance.projects.visibility_scope",
+            "finance.projects.id",
+            "finance.projects.installation_id",
+            "finance.projects.residence_id",
+            "finance.projects.currency",
+            "finance.projects.owner_operator_id",
+            "finance.projects.visibility_scope",
         ],
-        ondelete="RESTRICT", name="fk_finance_project_links_project",
+        ondelete="RESTRICT",
+        name="fk_finance_project_links_project",
     ),
     ForeignKeyConstraint(
-        ["supersedes_id"], ["finance.project_movement_link_revisions.id"],
-        ondelete="RESTRICT", name="fk_finance_project_links_predecessor",
+        ["supersedes_id"],
+        ["finance.project_movement_link_revisions.id"],
+        ondelete="RESTRICT",
+        name="fk_finance_project_links_predecessor",
     ),
     ForeignKeyConstraint(
         ["residence_id", "actor_operator_id"],
         ["household.memberships.residence_id", "household.memberships.operator_id"],
-        ondelete="RESTRICT", name="fk_finance_project_links_actor",
+        ondelete="RESTRICT",
+        name="fk_finance_project_links_actor",
     ),
     UniqueConstraint(
         "movement_id", "revision", name="uq_finance_project_links_revision"
     ),
+    UniqueConstraint("supersedes_id", name="uq_finance_project_links_successor"),
     UniqueConstraint(
-        "supersedes_id", name="uq_finance_project_links_successor"
-    ),
-    UniqueConstraint(
-        "installation_id", "idempotency_key",
+        "installation_id",
+        "idempotency_key",
         name="uq_finance_project_links_idempotency",
     ),
     schema="finance",

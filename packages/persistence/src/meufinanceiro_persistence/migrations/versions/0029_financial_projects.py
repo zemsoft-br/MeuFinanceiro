@@ -19,10 +19,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 _ROLE_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,62}$")
-_UUID4 = (
-    "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-"
-    "[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
-)
+_UUID4 = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 
 
 def _quoted_role() -> str:

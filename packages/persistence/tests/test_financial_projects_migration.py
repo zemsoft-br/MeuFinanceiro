@@ -64,9 +64,10 @@ def _rls(engine: Engine, table: str) -> tuple[bool, bool]:
 
 def _privilege(engine: Engine, role: str, table: str, name: str) -> bool:
     with engine.begin() as connection:
-        return connection.scalar(
-            select(func.has_table_privilege(role, table, name))
-        ) is True
+        return (
+            connection.scalar(select(func.has_table_privilege(role, table, name)))
+            is True
+        )
 
 
 def test_project_revision_belongs_to_single_alembic_head() -> None:
@@ -83,9 +84,7 @@ def test_project_revision_belongs_to_single_alembic_head() -> None:
 def test_project_tables_grants_rls_and_symmetric_downgrade(
     database_url: str, app_database_user: str, engine: Engine
 ) -> None:
-    config = build_alembic_config(
-        database_url, app_database_user=app_database_user
-    )
+    config = build_alembic_config(database_url, app_database_user=app_database_user)
     before = {
         c["name"] for c in inspect(engine).get_columns("movements", schema="finance")
     }
@@ -96,15 +95,16 @@ def test_project_tables_grants_rls_and_symmetric_downgrade(
         assert _privilege(engine, app_database_user, table, "INSERT")
         assert not _privilege(engine, app_database_user, table, "DELETE")
         assert not _privilege(engine, app_database_user, table, "TRUNCATE")
-    assert not _privilege(
-        engine, app_database_user, _TABLES[1], "UPDATE"
-    )
-    assert not _privilege(
-        engine, app_database_user, _TABLES[0], "UPDATE"
-    )
+    assert not _privilege(engine, app_database_user, _TABLES[1], "UPDATE")
+    assert not _privilege(engine, app_database_user, _TABLES[0], "UPDATE")
     for name in (
-        "title", "description", "planned_amount", "target_date",
-        "version", "updated_at", "updated_by_operator_id",
+        "title",
+        "description",
+        "planned_amount",
+        "target_date",
+        "version",
+        "updated_at",
+        "updated_by_operator_id",
     ):
         with engine.begin() as connection:
             assert connection.scalar(
@@ -129,9 +129,9 @@ def test_project_tables_grants_rls_and_symmetric_downgrade(
             assert not inspect(engine).has_table(table, schema="finance")
         with engine.begin() as connection:
             for signature in _FUNCTIONS:
-                assert connection.scalar(
-                    select(func.to_regprocedure(signature))
-                ) is None
+                assert (
+                    connection.scalar(select(func.to_regprocedure(signature))) is None
+                )
         command.upgrade(config, _REVISION)
         assert current_revision(engine) == _REVISION
         assert {
@@ -143,7 +143,9 @@ def test_project_tables_grants_rls_and_symmetric_downgrade(
 
 
 def _project(
-    connection: object, world: BudgetWorld, *,
+    connection: object,
+    world: BudgetWorld,
+    *,
     scope: str = "HOUSEHOLD",
 ) -> UUID:
     project_id = uuid4()
@@ -171,9 +173,14 @@ def _project(
 
 
 def _revision(
-    connection: object, world: BudgetWorld,
-    movement_id: UUID, account_id: UUID, project_id: UUID | None,
-    *, predecessor: UUID | None = None, revision: int = 1,
+    connection: object,
+    world: BudgetWorld,
+    movement_id: UUID,
+    account_id: UUID,
+    project_id: UUID | None,
+    *,
+    predecessor: UUID | None = None,
+    revision: int = 1,
     scope: str = "HOUSEHOLD",
 ) -> UUID:
     event_id = uuid4()
@@ -222,42 +229,59 @@ def test_project_link_chain_is_append_only_and_never_forks(
         _set_context(connection, **world.scope())
         first_project = _project(connection, world)
         second_project = _project(connection, world)
-        first = _revision(
-            connection, world, movement.id, account_id, first_project
-        )
+        first = _revision(connection, world, movement.id, account_id, first_project)
     with world.runtime.begin() as connection:
         _set_context(connection, **world.scope())
         second = _revision(
-            connection, world, movement.id, account_id, second_project,
-            predecessor=first, revision=2,
+            connection,
+            world,
+            movement.id,
+            account_id,
+            second_project,
+            predecessor=first,
+            revision=2,
         )
     with world.runtime.begin() as connection:
         _set_context(connection, **world.scope())
         unlinked = _revision(
-            connection, world, movement.id, account_id, None,
-            predecessor=second, revision=3,
+            connection,
+            world,
+            movement.id,
+            account_id,
+            None,
+            predecessor=second,
+            revision=3,
         )
     assert unlinked != second
     with world.runtime.begin() as connection:
         _set_context(connection, **world.scope())
-        assert connection.scalar(
-            select(func.count()).select_from(financial_project_link_revisions)
-        ) == 3
-        assert connection.scalar(
-            select(financial_project_link_revisions.c.project_id).where(
-                financial_project_link_revisions.c.id == unlinked
+        assert (
+            connection.scalar(
+                select(func.count()).select_from(financial_project_link_revisions)
             )
-        ) is None
+            == 3
+        )
+        assert (
+            connection.scalar(
+                select(financial_project_link_revisions.c.project_id).where(
+                    financial_project_link_revisions.c.id == unlinked
+                )
+            )
+            is None
+        )
     with pytest.raises(DBAPIError):
         with world.runtime.begin() as connection:
             _set_context(connection, **world.scope())
             _revision(
-                connection, world, movement.id, account_id, first_project,
-                predecessor=first, revision=2,
+                connection,
+                world,
+                movement.id,
+                account_id,
+                first_project,
+                predecessor=first,
+                revision=2,
             )
     with pytest.raises(DBAPIError):
         with world.runtime.begin() as connection:
             _set_context(connection, **world.scope())
-            _revision(
-                connection, world, movement.id, account_id, first_project
-            )
+            _revision(connection, world, movement.id, account_id, first_project)
