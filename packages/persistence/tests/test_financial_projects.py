@@ -260,6 +260,83 @@ def test_returning_to_original_project_counts_only_the_current_link(
     ]
 
 
+def test_original_link_key_replays_after_unlink_and_account_archive(
+    budget_world: BudgetWorld,
+) -> None:
+    """Replay remains historical even after mutable eligibility changes."""
+    world = budget_world
+    account = world.account()
+    project_id = _new(world)
+    expense_id = _expense(world, account, "30")
+    original_key = new_financial_idempotency_key()
+    first = _link(world, expense_id, project_id, key=original_key)
+    _link(world, expense_id, None, prev=first.id)
+    world.archive_account(account)
+
+    replay = _link(world, expense_id, project_id, key=original_key)
+    assert replay.id == first.id
+    assert replay.revision == 1
+    current = FinancialProjectStore(world.runtime).get_link(
+        **world.scope(), movement_id=expense_id,
+    )
+    assert current is not None
+    assert current.revision == 2
+    assert current.project_id is None
+    assert _count(world, financial_project_link_revisions) == 2
+    assert _summary(world, project_id).realized.amount == 0
+
+    with pytest.raises(FinancialProjectConflictError):
+        _link(
+            world, expense_id, project_id,
+            key=original_key, prev=first.id,
+        )
+
+
+def test_reversal_before_project_link_has_zero_realized(
+    budget_world: BudgetWorld,
+) -> None:
+    """Canonical reversal before LINK still cancels exactly one expense."""
+    world = budget_world
+    account = world.account()
+    project_id = _new(world)
+    expense_id = _expense(world, account, "175")
+    original = FinancialMovementStore(world.runtime)
+    reverse = original.reverse_movement(
+        **world.scope(), idempotency_key=new_financial_idempotency_key(),
+        draft=FinancialMovementReversalDraft(
+            movement_id=expense_id,
+            effective_date=_DAY,
+            competence_date=_DAY,
+            reason="Estorno anterior ao projeto",
+        ),
+    )
+    assert reverse.reversal_of_id == expense_id
+    _link(world, expense_id, project_id)
+    summary = _summary(world, project_id)
+    assert summary.realized.amount == 0
+    assert summary.expense_count == 1
+    assert _count(world, financial_movements) == 2
+
+
+def test_outsider_cannot_read_project_link_or_its_history(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    account = world.account()
+    project_id = _new(world)
+    expense_id = _expense(world, account)
+    _link(world, expense_id, project_id)
+    store = FinancialProjectStore(world.runtime)
+    with pytest.raises(FinancialProjectAccessError):
+        store.get_link(
+            **world.scope(world.outsider_id), movement_id=expense_id,
+        )
+    with pytest.raises(FinancialProjectAccessError):
+        store.read_link_history(
+            **world.scope(world.outsider_id), movement_id=expense_id,
+        )
+
+
 def test_project_link_audience_and_archived_unlink(
     budget_world: BudgetWorld,
 ) -> None:
