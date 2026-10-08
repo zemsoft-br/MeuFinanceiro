@@ -1,0 +1,316 @@
+"""PostgreSQL v1 project store tests: serialized links and canonical ledger."""
+
+from __future__ import annotations
+
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date
+from decimal import Decimal
+from threading import Barrier
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
+
+import pytest
+from meufinanceiro_finance import (
+    FinancialMovementDraft,
+    FinancialMovementReversalDraft,
+    FinancialProjectDraft,
+    FinancialProjectLinkRevisionDraft,
+    FinancialProjectReplacement,
+    FinancialResultEffect,
+    FinancialVisibilityScope,
+    Money,
+    new_financial_idempotency_key,
+    summarize_project,
+)
+from sqlalchemy import func, select
+from sqlalchemy.exc import DBAPIError
+
+from meufinanceiro_persistence.financial_movement_schema import financial_movements
+from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
+from meufinanceiro_persistence.financial_project_schema import (
+    financial_project_link_revisions,
+    financial_projects,
+)
+from meufinanceiro_persistence.financial_project_store import (
+    FinancialProjectAccessError,
+    FinancialProjectConflictError,
+    FinancialProjectNotEditableError,
+    FinancialProjectNotFoundError,
+    FinancialProjectStore,
+)
+
+if TYPE_CHECKING:
+    from conftest import BudgetWorld
+
+HOUSEHOLD = FinancialVisibilityScope.HOUSEHOLD
+PERSONAL = FinancialVisibilityScope.PERSONAL
+_DAY = date(2026, 10, 8)
+
+
+def _draft(
+    scope: FinancialVisibilityScope = HOUSEHOLD,
+    title: str = "Reforma",
+    amount: str = "1000",
+) -> FinancialProjectDraft:
+    return FinancialProjectDraft(
+        title=title, description=None, visibility_scope=scope,
+        planned=Money(Decimal(amount), "BRL"), target_date=None,
+    )
+
+
+def _new(
+    world: BudgetWorld,
+    *,
+    scope: FinancialVisibilityScope = HOUSEHOLD,
+    title: str = "Reforma",
+    operator_id: UUID | None = None,
+    key: UUID | None = None,
+) -> UUID:
+    return FinancialProjectStore(world.runtime).create_project(
+        **world.scope(operator_id),
+        idempotency_key=key or new_financial_idempotency_key(),
+        draft=_draft(scope, title),
+    ).id
+
+
+def _expense(
+    world: BudgetWorld,
+    account_id: UUID,
+    amount: str = "90",
+) -> UUID:
+    return FinancialMovementStore(world.runtime).create_movement(
+        **world.scope(),
+        idempotency_key=new_financial_idempotency_key(),
+        draft=FinancialMovementDraft(
+            account_id=account_id,
+            amount=Money(Decimal("-" + amount), "BRL"),
+            result_effect=FinancialResultEffect.EXPENSE,
+            effective_date=_DAY, competence_date=_DAY,
+            description="Material de obra",
+        ),
+    ).id
+
+
+def _link(
+    world: BudgetWorld,
+    movement_id: UUID,
+    project_id: UUID | None,
+    *,
+    prev: UUID | None = None,
+    key: UUID | None = None,
+    operator_id: UUID | None = None,
+):
+    return FinancialProjectStore(world.runtime).revise_link(
+        **world.scope(operator_id),
+        idempotency_key=key or new_financial_idempotency_key(),
+        draft=FinancialProjectLinkRevisionDraft(
+            movement_id=movement_id, project_id=project_id,
+            expected_predecessor_id=prev,
+        ),
+    )
+
+
+def _summary(world: BudgetWorld, project_id: UUID, operator_id: UUID | None = None):
+    result = FinancialProjectStore(world.runtime).read_project_facts(
+        **world.scope(operator_id), project_id=project_id,
+    )
+    return summarize_project(*result)
+
+
+def _count(world: BudgetWorld, table):
+    with world.engine.begin() as conn:
+        return conn.scalar(select(func.count()).select_from(table))
+
+
+def test_project_create_replay_cas_scope_and_no_ledger_writes(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    store = FinancialProjectStore(world.runtime)
+    key = new_financial_idempotency_key()
+    original = store.create_project(
+        **world.scope(), idempotency_key=key, draft=_draft()
+    )
+    replay = store.create_project(
+        **world.scope(), idempotency_key=key, draft=_draft()
+    )
+    assert replay.id == original.id
+    assert _count(world, financial_projects) == 1
+    assert _count(world, financial_movements) == 0
+    with pytest.raises(FinancialProjectConflictError):
+        store.create_project(
+            **world.scope(), idempotency_key=key,
+            draft=_draft(title="Outro projeto"),
+        )
+    edited = store.replace_project(
+        **world.scope(), project_id=original.id,
+        replacement=FinancialProjectReplacement(
+            expected_version=1, title="Reforma nova", description=None,
+            planned=Money(Decimal("1200"), "BRL"), target_date=None,
+        ),
+    )
+    assert edited.version == 2
+    with pytest.raises(FinancialProjectConflictError):
+        store.replace_project(
+            **world.scope(), project_id=original.id,
+            replacement=FinancialProjectReplacement(
+                expected_version=1, title="Stale", description=None,
+                planned=Money(Decimal("1200"), "BRL"), target_date=None,
+            ),
+        )
+    assert store.get_project(
+        **world.scope(world.member_id), project_id=original.id
+    ).title == "Reforma nova"
+    with pytest.raises(FinancialProjectNotEditableError):
+        store.replace_project(
+            **world.scope(world.member_id), project_id=original.id,
+            replacement=FinancialProjectReplacement(
+                expected_version=2, title="Inválido", description=None,
+                planned=Money(Decimal("1200"), "BRL"), target_date=None,
+            ),
+        )
+    private_id = _new(world, scope=PERSONAL)
+    assert {p.id for p in store.list_projects(**world.scope(world.member_id))} == {
+        original.id
+    }
+    with pytest.raises(FinancialProjectNotFoundError):
+        store.get_project(
+            **world.scope(world.member_id), project_id=private_id
+        )
+    with pytest.raises(FinancialProjectAccessError):
+        store.list_projects(**world.scope(world.outsider_id))
+
+
+def test_link_replay_reassign_unlink_and_canonical_reversal(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    account = world.account()
+    first_project = _new(world, title="Primeiro")
+    second_project = _new(world, title="Segundo")
+    expense_id = _expense(world, account, "125")
+    assert _summary(world, first_project).realized.amount == 0
+
+    first_key = new_financial_idempotency_key()
+    first = _link(world, expense_id, first_project, key=first_key)
+    assert _link(world, expense_id, first_project, key=first_key).id == first.id
+    assert _summary(world, first_project).realized.amount == 125
+    with pytest.raises(FinancialProjectConflictError):
+        _link(world, expense_id, second_project, key=first_key)
+    with pytest.raises(FinancialProjectConflictError):
+        _link(world, expense_id, second_project)
+    moved = _link(world, expense_id, second_project, prev=first.id)
+    assert moved.revision == 2
+    assert _summary(world, first_project).realized.amount == 0
+    assert _summary(world, second_project).realized.amount == 125
+    assert _summary(world, second_project, world.member_id).realized.amount == 125
+
+    reversal = FinancialMovementStore(world.runtime).reverse_movement(
+        **world.scope(), idempotency_key=new_financial_idempotency_key(),
+        draft=FinancialMovementReversalDraft(
+            movement_id=expense_id,
+            effective_date=_DAY,
+            competence_date=_DAY,
+            reason="Reembolso integral",
+        ),
+    )
+    assert reversal.reversal_of_id == expense_id
+    assert _summary(world, second_project).realized.amount == 0
+    assert _count(world, financial_movements) == 2
+    unlinked = _link(world, expense_id, None, prev=moved.id)
+    assert unlinked.revision == 3
+    assert _summary(world, first_project).expense_count == 0
+    assert _summary(world, second_project).expense_count == 0
+    assert _count(world, financial_project_link_revisions) == 3
+    assert FinancialProjectStore(world.runtime).get_link(
+        **world.scope(), movement_id=expense_id,
+    ).project_id is None
+    assert _count(world, financial_movements) == 2
+
+
+def test_project_link_audience_and_archived_unlink(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    household_project = _new(world)
+    personal_project = _new(world, scope=PERSONAL)
+    household_account = world.account()
+    personal_account = world.account(household=False)
+    house_expense = _expense(world, household_account)
+    # Personal account is not eligible for a HOUSEHOLD project.
+    personal_expense = _expense(world, personal_account)
+    with pytest.raises(FinancialProjectConflictError):
+        _link(world, personal_expense, household_project)
+    with pytest.raises(FinancialProjectConflictError):
+        _link(world, house_expense, personal_project)
+    first = _link(world, house_expense, household_project)
+    with pytest.raises(FinancialProjectConflictError):
+        _link(
+            world, house_expense, household_project,
+            prev=first.id, operator_id=world.member_id,
+        )
+    world.archive_account(household_account)
+    with pytest.raises(FinancialProjectConflictError):
+        _link(world, house_expense, personal_project, prev=first.id)
+    _link(world, house_expense, None, prev=first.id)
+    assert _summary(world, household_project).expense_count == 0
+
+
+def test_same_movement_two_projects_concurrent_first_link_only_one_wins(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    account = world.account()
+    expense_id = _expense(world, account, "100")
+    projects = (_new(world, title="A"), _new(world, title="B"))
+    barrier = Barrier(2)
+    def attempt(project_id: UUID) -> str:
+        barrier.wait(timeout=15)
+        try:
+            _link(world, expense_id, project_id)
+        except FinancialProjectConflictError:
+            return "CONFLICT"
+        return "CREATED"
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        output = list(pool.map(attempt, projects))
+    assert sorted(output) == ["CONFLICT", "CREATED"]
+    assert _count(world, financial_project_link_revisions) == 1
+    assert sum(_summary(world, p).realized.amount for p in projects) == 100
+
+
+def test_same_key_concurrent_requests_return_the_same_link(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    account = world.account()
+    expense_id = _expense(world, account)
+    project_id = _new(world)
+    key = new_financial_idempotency_key()
+    barrier = Barrier(4)
+    def attempt(_: int) -> UUID:
+        barrier.wait(timeout=15)
+        return _link(world, expense_id, project_id, key=key).id
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        links = list(pool.map(attempt, range(4)))
+    assert len(set(links)) == 1
+    assert _count(world, financial_project_link_revisions) == 1
+
+
+def test_bad_link_insert_is_denied_even_when_client_bypasses_store(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    account = world.account()
+    expense_id = _expense(world, account)
+    project_id = _new(world)
+    first = _link(world, expense_id, project_id)
+    from meufinanceiro_persistence.financial_movement_store import _set_context
+    with pytest.raises(DBAPIError):
+        with world.runtime.begin() as conn:
+            _set_context(conn, **world.scope())
+            conn.execute(
+                financial_project_link_revisions.update().where(
+                    financial_project_link_revisions.c.id == first.id
+                ).values(project_id=uuid4())
+            )
