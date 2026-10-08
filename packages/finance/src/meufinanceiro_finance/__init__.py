@@ -96,6 +96,7 @@ from meufinanceiro_finance.categories import (
 )
 from meufinanceiro_finance.goals import (
     GOAL_ACCOUNTS_MAX,
+    GOAL_ALLOCATE_EVENTS_MAX,
     GOAL_DESCRIPTION_MAX_LENGTH,
     GOAL_EVENTS_MAX,
     GOAL_PERCENT_SCALE,
@@ -418,6 +419,7 @@ __all__ = [
     "validate_financial_resource_id",
     "validate_recurrence_period_start",
     "GOAL_ACCOUNTS_MAX",
+    "GOAL_ALLOCATE_EVENTS_MAX",
     "GOAL_DESCRIPTION_MAX_LENGTH",
     "GOAL_EVENTS_MAX",
     "GOAL_PERCENT_SCALE",

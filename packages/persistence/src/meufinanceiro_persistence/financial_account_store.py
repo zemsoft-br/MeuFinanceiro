@@ -197,16 +197,11 @@ class FinancialAccountStore:
                     residence_id=residence_id,
                     operator_id=operator_id,
                 )
-                row = (
-                    connection.execute(
-                        select(financial_accounts).where(
-                            financial_accounts.c.id == account_id,
-                            financial_accounts.c.installation_id == installation_id,
-                            financial_accounts.c.residence_id == residence_id,
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
+                record = get_account_in_transaction(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    account_id=account_id,
                 )
         except (FinancialAccountAccessError, FinancialAccountPersistenceError):
             raise
@@ -215,9 +210,35 @@ class FinancialAccountStore:
                 "financial account could not be read"
             ) from None
 
-        if row is None:
+        if record is None:
             raise FinancialAccountNotFoundError("financial account was not found")
-        return _record(row)
+        return record
+
+
+def get_account_in_transaction(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    account_id: UUID,
+) -> FinancialAccountRecord | None:
+    """The canonical account read inside the caller's transaction (RLS context set).
+
+    Returns ``None`` when the account is missing or outside the actor's audience.
+    ``get_account`` is this function in its own transaction: one implementation.
+    """
+    row = (
+        connection.execute(
+            select(financial_accounts).where(
+                financial_accounts.c.id == account_id,
+                financial_accounts.c.installation_id == installation_id,
+                financial_accounts.c.residence_id == residence_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    return None if row is None else _record(row)
 
 
 def _set_context(
@@ -299,4 +320,5 @@ __all__ = [
     "FinancialAccountNotFoundError",
     "FinancialAccountPersistenceError",
     "FinancialAccountStore",
+    "get_account_in_transaction",
 ]

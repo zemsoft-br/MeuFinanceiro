@@ -12,6 +12,10 @@ from meufinanceiro_persistence.financial_budget_schema import (
     financial_budget_lines,
     financial_budgets,
 )
+from meufinanceiro_persistence.financial_goal_schema import (
+    financial_goal_allocation_events,
+    financial_goals,
+)
 from meufinanceiro_persistence.financial_categorization_rule_schema import (
     financial_categorization_rules,
     financial_movement_allocation_rule_origins,
@@ -49,6 +53,8 @@ def reset_demo_financial_extensions(connection: Connection) -> bool:
         financial_recurrences,
         financial_budget_lines,
         financial_budgets,
+        financial_goal_allocation_events,
+        financial_goals,
     ):
         planning_result = connection.execute(
             delete(planning_table).where(

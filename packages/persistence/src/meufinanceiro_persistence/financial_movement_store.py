@@ -371,22 +371,11 @@ class FinancialMovementStore:
                     raise FinancialMovementAccountNotFoundError(
                         "financial account was not found"
                     )
-                rows = (
-                    connection.execute(
-                        select(financial_movements)
-                        .where(
-                            financial_movements.c.account_id == account_id,
-                            financial_movements.c.installation_id == installation_id,
-                            financial_movements.c.residence_id == residence_id,
-                        )
-                        .order_by(
-                            financial_movements.c.effective_date,
-                            financial_movements.c.created_at,
-                            financial_movements.c.id,
-                        )
-                    )
-                    .mappings()
-                    .all()
+                return list_account_movements_in_transaction(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    account_id=account_id,
                 )
         except (
             FinancialMovementAccessError,
@@ -399,7 +388,37 @@ class FinancialMovementStore:
                 "financial Movements could not be read"
             ) from None
 
-        return tuple(_record(row) for row in rows)
+
+def list_account_movements_in_transaction(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    account_id: UUID,
+) -> tuple[FinancialMovementRecord, ...]:
+    """Every Movement of one account, inside the caller's transaction (RLS set).
+
+    ``list_movements`` is this function in its own transaction: one implementation
+    of the ledger read behind the canonical balance.
+    """
+    rows = (
+        connection.execute(
+            select(financial_movements)
+            .where(
+                financial_movements.c.account_id == account_id,
+                financial_movements.c.installation_id == installation_id,
+                financial_movements.c.residence_id == residence_id,
+            )
+            .order_by(
+                financial_movements.c.effective_date,
+                financial_movements.c.created_at,
+                financial_movements.c.id,
+            )
+        )
+        .mappings()
+        .all()
+    )
+    return tuple(_record(row) for row in rows)
 
 
 def create_standard_movement_in_transaction(
@@ -742,4 +761,5 @@ __all__ = [
     "FinancialMovementPersistenceError",
     "FinancialMovementStore",
     "create_standard_movement_in_transaction",
+    "list_account_movements_in_transaction",
 ]

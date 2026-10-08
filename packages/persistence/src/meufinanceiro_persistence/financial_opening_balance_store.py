@@ -188,17 +188,11 @@ class FinancialOpeningBalanceStore:
                     residence_id=residence_id,
                     operator_id=operator_id,
                 )
-                row = (
-                    connection.execute(
-                        select(financial_opening_balances).where(
-                            financial_opening_balances.c.account_id == account_id,
-                            financial_opening_balances.c.installation_id
-                            == installation_id,
-                            financial_opening_balances.c.residence_id == residence_id,
-                        )
-                    )
-                    .mappings()
-                    .one_or_none()
+                return get_opening_balance_in_transaction(
+                    connection,
+                    installation_id=installation_id,
+                    residence_id=residence_id,
+                    account_id=account_id,
                 )
         except (
             FinancialOpeningBalanceAccessError,
@@ -210,7 +204,30 @@ class FinancialOpeningBalanceStore:
                 "opening balance could not be read"
             ) from None
 
-        return None if row is None else _record(row)
+
+def get_opening_balance_in_transaction(
+    connection: Connection,
+    *,
+    installation_id: UUID,
+    residence_id: UUID,
+    account_id: UUID,
+) -> FinancialOpeningBalanceRecord | None:
+    """The canonical opening-balance read inside the caller's transaction.
+
+    ``get_opening_balance`` is this function in its own transaction: one implementation.
+    """
+    row = (
+        connection.execute(
+            select(financial_opening_balances).where(
+                financial_opening_balances.c.account_id == account_id,
+                financial_opening_balances.c.installation_id == installation_id,
+                financial_opening_balances.c.residence_id == residence_id,
+            )
+        )
+        .mappings()
+        .one_or_none()
+    )
+    return None if row is None else _record(row)
 
 
 def _set_context(
@@ -295,4 +312,5 @@ __all__ = [
     "FinancialOpeningBalanceCurrencyMismatchError",
     "FinancialOpeningBalancePersistenceError",
     "FinancialOpeningBalanceStore",
+    "get_opening_balance_in_transaction",
 ]
