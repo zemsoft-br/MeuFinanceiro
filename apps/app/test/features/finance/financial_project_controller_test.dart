@@ -149,6 +149,70 @@ void main() {
   );
 
   test(
+    'PUT 200 superseded by another writer is UNKNOWN, not confirmed',
+    () async {
+      var updated = false;
+      final otherProject = {..._project(), 'version': 3, 'title': 'Outro autor'};
+      final ours = {..._project(), 'version': 2, 'title': 'Meu plano'};
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        if (uri.path.endsWith('/finance/projects/$_projectId') &&
+            method == AuthHttpMethod.put) {
+          updated = true;
+          return AuthHttpResponse(statusCode: 200, body: jsonEncode(ours));
+        }
+        if (uri.path.endsWith('/finance/projects') &&
+            method == AuthHttpMethod.get) {
+          return AuthHttpResponse(
+            statusCode: 200,
+            body: jsonEncode({
+              'items': [updated ? otherProject : _project()],
+            }),
+          );
+        }
+        if (uri.path.endsWith('/finance/projects/$_projectId/summary')) {
+          return AuthHttpResponse(
+            statusCode: 200,
+            body: jsonEncode({
+              ..._summary(),
+              'project': updated ? otherProject : _project(),
+            }),
+          );
+        }
+        throw StateError('unexpected route: $method ${uri.path}');
+      });
+      final container = ProviderContainer(
+        overrides: [
+          financialCoreApiProvider.overrideWithValue(_api(transport)),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(financialProjectsControllerProvider, (_, _) {});
+      final controller = container.read(financialProjectsControllerProvider.notifier);
+      expect(await controller.load(), isTrue);
+      final outcome = await controller.replace(
+        _projectId,
+        FinancialProjectReplaceInput(
+          expectedVersion: 1,
+          title: 'Meu plano',
+          currency: 'BRL',
+          plannedAmount: '500',
+        ),
+      );
+      expect(updated, isTrue);
+      expect(outcome, FinancialProjectWriteOutcome.unknown);
+      final state = container.read(financialProjectsControllerProvider);
+      expect(state.projects.single.version, 3);
+      expect(state.summary?.project.version, 3);
+    },
+  );
+
+  test(
     'POST 201 but canonical list omits created project cannot confirm',
     () async {
       var posted = false;

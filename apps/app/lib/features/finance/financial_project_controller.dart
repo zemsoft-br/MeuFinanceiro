@@ -167,8 +167,12 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     }
     state = state.copyWith(busy: true, conflict: false);
     FinancialProjectWriteOutcome outcome;
+    FinancialProject? applied;
     try {
-      await ref.read(financialCoreApiProvider).replaceProject(projectId, input);
+      applied = await ref.read(financialCoreApiProvider).replaceProject(
+        projectId,
+        input,
+      );
       outcome = FinancialProjectWriteOutcome.confirmed;
     } on AuthenticatedApiException catch (error) {
       outcome = _outcome(error);
@@ -177,7 +181,34 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     } catch (_) {
       outcome = FinancialProjectWriteOutcome.unknown;
     }
-    return _afterWrite(outcome);
+    final reconciled = await _afterWrite(outcome);
+    if (reconciled != FinancialProjectWriteOutcome.confirmed || applied == null) {
+      return reconciled;
+    }
+    // A second writer may have changed the project between PUT and the GET.
+    // Do not report our edit as current unless the canonical list AND
+    // summary agree on the exact returned revision and authored material.
+    final listed = state.projects.where((p) => p.id == projectId).firstOrNull;
+    final detail = state.summary?.project;
+    final currentMatches =
+        listed != null &&
+        detail != null &&
+        state.selectedId == projectId &&
+        listed.version == applied.version &&
+        detail.version == applied.version &&
+        listed.title == applied.title &&
+        detail.title == applied.title &&
+        listed.description == applied.description &&
+        detail.description == applied.description &&
+        listed.planned.amount == applied.planned.amount &&
+        detail.planned.amount == applied.planned.amount &&
+        listed.planned.currency == applied.planned.currency &&
+        detail.planned.currency == applied.planned.currency &&
+        listed.targetDate == applied.targetDate &&
+        detail.targetDate == applied.targetDate;
+    return currentMatches
+        ? FinancialProjectWriteOutcome.confirmed
+        : FinancialProjectWriteOutcome.unknown;
   }
 
   Future<FinancialProjectWriteOutcome> reviseLink(
