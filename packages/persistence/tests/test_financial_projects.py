@@ -447,7 +447,7 @@ def test_project_link_audience_and_archived_unlink(
     with pytest.raises(FinancialProjectConflictError):
         _link(world, house_expense, personal_project)
     first = _link(world, house_expense, household_project)
-    with pytest.raises(FinancialProjectConflictError):
+    with pytest.raises(FinancialProjectNotEditableError):
         _link(
             world,
             house_expense,

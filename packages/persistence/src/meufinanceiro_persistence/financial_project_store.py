@@ -335,9 +335,9 @@ class FinancialProjectStore:
                 )
                 if target is None:
                     raise FinancialProjectNotFoundError("expense was not found")
-                if target["owner_operator_id"] != operator_id or target[
-                    "visibility_scope"
-                ] not in ("PERSONAL", "HOUSEHOLD"):
+                if target["owner_operator_id"] != operator_id:
+                    raise FinancialProjectNotEditableError("expense is read-only")
+                if target["visibility_scope"] not in ("PERSONAL", "HOUSEHOLD"):
                     raise FinancialProjectConflictError("expense is not eligible")
                 if draft.project_id is not None:
                     project = _visible_project(
