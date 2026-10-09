@@ -231,6 +231,32 @@ def upgrade() -> None:
         "FOR EACH ROW EXECUTE FUNCTION finance.enforce_project_row()"
     )
 
+    # Even privileged maintenance or a future account archive API must share
+    # the same transition lock as project-link validation. Serializes ACTIVE
+    # eligibility checks against concurrent ARCHIVED transitions without
+    # granting UPDATE/row-lock privileges to the application runtime role.
+    op.execute(
+        """
+        CREATE FUNCTION finance.lock_project_account_transition()
+        RETURNS trigger LANGUAGE plpgsql
+        SET search_path = pg_catalog, pg_temp
+        AS $
+        BEGIN
+            PERFORM pg_advisory_xact_lock(hashtextextended(
+                'meufinanceiro:project-account:' || OLD.id::text, 0
+            ));
+            RETURN NEW;
+        END;
+        $
+        """
+    )
+    op.execute(
+        "CREATE TRIGGER trg_finance_project_account_transition "
+        "BEFORE UPDATE OF status ON finance.accounts "
+        "FOR EACH ROW WHEN (OLD.status IS DISTINCT FROM NEW.status) "
+        "EXECUTE FUNCTION finance.lock_project_account_transition()"
+    )
+
     op.execute(
         """
         CREATE FUNCTION finance.enforce_project_link_revision()
@@ -246,6 +272,12 @@ def upgrade() -> None:
             -- Per-Movement lock across all projects, not per project. Prevent forks.
             PERFORM pg_advisory_xact_lock(hashtextextended(
                 'meufinanceiro:project-movement:' || NEW.movement_id::text, 0
+            ));
+            -- Shared with the account status-transition trigger. The lock
+            -- must precede the canonical account ACTIVE check. Runtime holds
+            -- no UPDATE grant on finance.accounts.
+            PERFORM pg_advisory_xact_lock(hashtextextended(
+                'meufinanceiro:project-account:' || NEW.account_id::text, 0
             ));
             IF NEW.created_at IS DISTINCT FROM transaction_timestamp()
                 OR NEW.revision > 100 THEN
@@ -445,6 +477,10 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     role = _quoted_role()
+    op.execute(
+        "DROP TRIGGER trg_finance_project_account_transition ON finance.accounts"
+    )
+    op.execute("DROP FUNCTION finance.lock_project_account_transition()")
     op.execute(
         f"REVOKE SELECT, INSERT ON finance.project_movement_link_revisions FROM {role}"
     )

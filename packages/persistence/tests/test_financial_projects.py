@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import date
 from decimal import Decimal
 from threading import Barrier
@@ -22,9 +22,10 @@ from meufinanceiro_finance import (
     new_financial_idempotency_key,
     summarize_project,
 )
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import DBAPIError
 
+from meufinanceiro_persistence.financial_account_schema import financial_accounts
 from meufinanceiro_persistence.financial_movement_schema import financial_movements
 from meufinanceiro_persistence.financial_movement_store import FinancialMovementStore
 from meufinanceiro_persistence.financial_project_schema import (
@@ -382,6 +383,52 @@ def test_outsider_cannot_read_project_link_or_its_history(
             **world.scope(world.outsider_id),
             movement_id=expense_id,
         )
+
+
+def test_archiving_serializes_against_new_project_link(
+    budget_world: BudgetWorld,
+) -> None:
+    """An ARCHIVED transition wins only before the subsequent LINK validates.
+
+    Archive happens in a privileged transaction, as the product has no public
+    archive API. Its DB trigger holds the same advisory lock as the LINK insert
+    trigger; the loser must recheck ACTIVE rather than write from a stale read.
+    """
+    world = budget_world
+    account = world.account()
+    project_id = _new(world)
+    movement_id = _expense(world, account)
+    account_lock = "meufinanceiro:project-account:" + str(account)
+    with ThreadPoolExecutor(max_workers=1) as workers:
+        with world.engine.begin() as archiver:
+            archiver.execute(
+                update(financial_accounts)
+                .where(financial_accounts.c.id == account)
+                .values(
+                    status="ARCHIVED",
+                    archived_at=func.transaction_timestamp(),
+                    updated_at=func.transaction_timestamp(),
+                )
+            )
+            # Prove the archive writer actually holds the database guard.
+            with world.engine.connect() as probe:
+                free = probe.scalar(
+                    select(
+                        func.pg_try_advisory_xact_lock(
+                            func.hashtextextended(account_lock, 0)
+                        )
+                    )
+                )
+                assert free is False
+            future = workers.submit(_link, world, movement_id, project_id)
+            with pytest.raises(FutureTimeoutError):
+                future.result(timeout=0.15)
+        # The archive commit releases the lock. A newer LINK must now observe
+        # archived status and cannot create an historical first association.
+        with pytest.raises(FinancialProjectConflictError):
+            future.result(timeout=15)
+    assert _count(world, financial_project_link_revisions) == 0
+    assert _summary(world, project_id).realized.amount == 0
 
 
 def test_project_link_audience_and_archived_unlink(

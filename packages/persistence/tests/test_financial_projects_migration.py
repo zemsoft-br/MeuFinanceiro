@@ -45,6 +45,7 @@ _TABLES = ("finance.projects", "finance.project_movement_link_revisions")
 _FUNCTIONS = (
     "finance.enforce_project_row()",
     "finance.enforce_project_link_revision()",
+    "finance.lock_project_account_transition()",
     "finance.reject_project_link_history_mutation()",
 )
 
