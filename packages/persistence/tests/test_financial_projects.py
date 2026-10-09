@@ -22,7 +22,7 @@ from meufinanceiro_finance import (
     new_financial_idempotency_key,
     summarize_project,
 )
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import DBAPIError
 
 from meufinanceiro_persistence.financial_account_schema import financial_accounts
@@ -460,6 +460,65 @@ def test_project_link_audience_and_archived_unlink(
         _link(world, house_expense, personal_project, prev=first.id)
     _link(world, house_expense, None, prev=first.id)
     assert _summary(world, household_project).expense_count == 0
+
+
+def test_current_project_link_query_is_indexable_and_has_no_history_window(
+    budget_world: BudgetWorld,
+) -> None:
+    """EXPLAIN ANALYZE on PG18.4 + FORCE RLS: project-first candidate index.
+
+    This is a plan-shape proof, not a latency benchmark. seqscan is disabled
+    only to prove the intended index is usable on a deliberately tiny fixture;
+    no production planner settings are changed.
+    """
+    from meufinanceiro_persistence.financial_movement_store import _set_context
+
+    world = budget_world
+    account = world.account()
+    project_id = _new(world)
+    another = _new(world, title="Outro")
+    expense_id = _expense(world, account, "45")
+    first = _link(world, expense_id, another)
+    _link(world, expense_id, project_id, prev=first.id)
+
+    query = text(
+        "EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS) "
+        "SELECT h.movement_id "
+        "FROM finance.project_movement_link_revisions AS h "
+        "WHERE h.installation_id = :installation_id "
+        "AND h.residence_id = :residence_id "
+        "AND h.project_id = :project_id "
+        "AND NOT EXISTS ("
+        "SELECT 1 FROM finance.project_movement_link_revisions AS successor "
+        "WHERE successor.supersedes_id = h.id"
+        ") ORDER BY h.movement_id LIMIT 1001"
+    )
+    with world.runtime.connect() as conn:
+        with conn.begin():
+            _set_context(conn, **world.scope())
+            conn.execute(text("SET LOCAL enable_seqscan = off"))
+            explained = conn.execute(
+                query,
+                {**world.scope(), "project_id": project_id},
+            ).scalar_one()
+
+    assert isinstance(explained, list) and len(explained) == 1
+    root = explained[0]["Plan"]
+
+    def flatten(node: dict[str, object]) -> list[dict[str, object]]:
+        result = [node]
+        for child in node.get("Plans", []):
+            result.extend(flatten(child))
+        return result
+
+    nodes = flatten(root)
+    assert not any(node["Node Type"] == "WindowAgg" for node in nodes)
+    assert any(
+        node.get("Index Name") == "ix_finance_project_links_project"
+        for node in nodes
+    ), nodes
+    assert root["Actual Rows"] == 1
+    assert _summary(world, project_id).realized.amount == 45
 
 
 def test_same_movement_two_projects_concurrent_first_link_only_one_wins(
