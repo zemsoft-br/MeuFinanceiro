@@ -479,7 +479,13 @@ def test_current_project_link_query_is_indexable_and_has_no_history_window(
     another = _new(world, title="Outro")
     expense_id = _expense(world, account, "45")
     first = _link(world, expense_id, another)
-    _link(world, expense_id, project_id, prev=first.id)
+    current = _link(world, expense_id, project_id, prev=first.id)
+    # Exercise project-first candidates with dozens of historical entries:
+    # a previous project id alone is not evidence that a link remains current.
+    for _ in range(40):
+        moved = _link(world, expense_id, another, prev=current.id)
+        current = _link(world, expense_id, project_id, prev=moved.id)
+    assert current.revision == 82
 
     query = text(
         "EXPLAIN (FORMAT JSON, ANALYZE, BUFFERS) "
