@@ -1123,3 +1123,115 @@ def test_the_listing_is_bounded_per_owner(api: Api) -> None:
     )
     assert len(api.get("owner", "/goals").json()["items"]) == 200
     assert (api.get("owner", "/goals").elapsed < timedelta(seconds=2)) is True
+
+
+# --- project v1: authenticated HTTP -> service -> forced RLS -> ledger ----------
+
+
+def test_project_vertical_http_store_ledger_and_household_permissions(
+    api: Api, pg_env: PgEnv, household: Household
+) -> None:
+    """No mocks of finance endpoints or project store; real runtime PostgreSQL."""
+    from app.services.financial_projects import FinancialProjectService
+    from meufinanceiro_persistence.financial_project_store import (
+        FinancialProjectStore,
+    )
+
+    api.client.app.state.financial_projects = FinancialProjectService(
+        FinancialProjectStore(pg_env.runtime_engine)
+    )
+    account_id = api.account("owner", scope="HOUSEHOLD", opening="1000")
+    expense_id = api.expense("owner", account_id, "125")
+    ledger_before = _ledger_rows(pg_env, household.residence_id)
+
+    def create(title: str) -> dict[str, Any]:
+        response = api.post(
+            "owner",
+            "/projects",
+            {
+                "idempotencyKey": str(uuid4()),
+                "title": title,
+                "description": None,
+                "visibilityScope": "HOUSEHOLD",
+                "currency": "BRL",
+                "plannedAmount": "500",
+                "targetDate": None,
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    original = create("Reforma")
+    second = create("Viagem")
+    first_project, second_project = original["id"], second["id"]
+    assert api.get("member", f"/projects/{first_project}").json()["canEdit"] is False
+    assert api.get("member", f"/projects/{first_project}/summary").status_code == 200
+
+    path = f"/movements/{expense_id}/project-link"
+    initial = {
+        "idempotencyKey": str(uuid4()),
+        "projectId": first_project,
+        "expectedPredecessorId": None,
+    }
+    forbidden = api.post("member", path, initial)
+    assert forbidden.status_code == 403, forbidden.text
+    first = api.post("owner", path, initial)
+    assert first.status_code == 201, first.text
+    assert api.post("owner", path, initial).json() == first.json()
+    assert api.get("owner", path).json()["link"]["id"] == first.json()["id"]
+    summary = api.get("member", f"/projects/{first_project}/summary")
+    assert summary.status_code == 200, summary.text
+    assert summary.json()["realized"] == {"amount": "125", "currency": "BRL"}
+    assert summary.json()["expenses"][0]["movementId"] == str(expense_id)
+
+    stale = api.post(
+        "owner",
+        path,
+        {
+            "idempotencyKey": str(uuid4()),
+            "projectId": second_project,
+            "expectedPredecessorId": None,
+        },
+    )
+    assert stale.status_code == 409, stale.text
+    replaced = api.post(
+        "owner",
+        path,
+        {
+            "idempotencyKey": str(uuid4()),
+            "projectId": second_project,
+            "expectedPredecessorId": first.json()["id"],
+        },
+    )
+    assert replaced.status_code == 201, replaced.text
+    assert (
+        api.get("owner", f"/projects/{first_project}/summary").json()["realized"][
+            "amount"
+        ]
+        == "0"
+    )
+    assert (
+        api.get("owner", f"/projects/{second_project}/summary").json()["realized"][
+            "amount"
+        ]
+        == "125"
+    )
+    assert len(api.get("owner", path + "/revisions").json()["items"]) == 2
+    assert _ledger_rows(pg_env, household.residence_id) == ledger_before
+
+    reversal = api.post(
+        "owner",
+        f"/movements/{expense_id}/reversal",
+        {
+            "idempotencyKey": str(uuid4()),
+            "effectiveDate": "2026-10-20",
+            "competenceDate": "2026-10-20",
+            "reason": "Reembolso integral",
+        },
+    )
+    assert reversal.status_code == 201, reversal.text
+    after = api.get("owner", f"/projects/{second_project}/summary")
+    assert after.status_code == 200, after.text
+    assert after.json()["realized"] == {"amount": "0", "currency": "BRL"}
+    assert after.json()["expenses"][0]["reversed"] is True
+    assert len(_ledger_rows(pg_env, household.residence_id)) == len(ledger_before) + 1
