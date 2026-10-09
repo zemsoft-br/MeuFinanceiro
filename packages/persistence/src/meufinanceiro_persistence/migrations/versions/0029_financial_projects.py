@@ -240,14 +240,14 @@ def upgrade() -> None:
         CREATE FUNCTION finance.lock_project_account_transition()
         RETURNS trigger LANGUAGE plpgsql
         SET search_path = pg_catalog, pg_temp
-        AS $
+        AS $$
         BEGIN
             PERFORM pg_advisory_xact_lock(hashtextextended(
                 'meufinanceiro:project-account:' || OLD.id::text, 0
             ));
             RETURN NEW;
         END;
-        $
+        $$
         """
     )
     op.execute(

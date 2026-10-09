@@ -520,8 +520,7 @@ def test_current_project_link_query_is_indexable_and_has_no_history_window(
     nodes = flatten(root)
     assert not any(node["Node Type"] == "WindowAgg" for node in nodes)
     assert any(
-        node.get("Index Name") == "ix_finance_project_links_project"
-        for node in nodes
+        node.get("Index Name") == "ix_finance_project_links_project" for node in nodes
     ), nodes
     assert root["Actual Rows"] == 1
     assert _summary(world, project_id).realized.amount == 45

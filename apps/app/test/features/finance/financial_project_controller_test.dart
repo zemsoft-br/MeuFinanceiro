@@ -152,7 +152,11 @@ void main() {
     'PUT 200 superseded by another writer is UNKNOWN, not confirmed',
     () async {
       var updated = false;
-      final otherProject = {..._project(), 'version': 3, 'title': 'Outro autor'};
+      final otherProject = {
+        ..._project(),
+        'version': 3,
+        'title': 'Outro autor',
+      };
       final ours = {..._project(), 'version': 2, 'title': 'Meu plano'};
       final transport = FakeAuthTransport((
         uri,
@@ -193,7 +197,9 @@ void main() {
       );
       addTearDown(container.dispose);
       container.listen(financialProjectsControllerProvider, (_, _) {});
-      final controller = container.read(financialProjectsControllerProvider.notifier);
+      final controller = container.read(
+        financialProjectsControllerProvider.notifier,
+      );
       expect(await controller.load(), isTrue);
       final outcome = await controller.replace(
         _projectId,

@@ -169,10 +169,9 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     FinancialProjectWriteOutcome outcome;
     FinancialProject? applied;
     try {
-      applied = await ref.read(financialCoreApiProvider).replaceProject(
-        projectId,
-        input,
-      );
+      applied = await ref
+          .read(financialCoreApiProvider)
+          .replaceProject(projectId, input);
       outcome = FinancialProjectWriteOutcome.confirmed;
     } on AuthenticatedApiException catch (error) {
       outcome = _outcome(error);
@@ -182,7 +181,8 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
       outcome = FinancialProjectWriteOutcome.unknown;
     }
     final reconciled = await _afterWrite(outcome);
-    if (reconciled != FinancialProjectWriteOutcome.confirmed || applied == null) {
+    if (reconciled != FinancialProjectWriteOutcome.confirmed ||
+        applied == null) {
       return reconciled;
     }
     // A second writer may have changed the project between PUT and the GET.
