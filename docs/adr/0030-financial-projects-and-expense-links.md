@@ -55,7 +55,11 @@ só conta HOUSEHOLD do mesmo owner; SHARED fora. Owner da conta e do projeto
 deve coincidir. Membros da residência leem projetos HOUSEHOLD mas somente
 o owner altera. Novo LINK exige conta ACTIVE, remoção de vínculo histórico
 pode operar com conta ARCHIVED. Runtime non-superuser, FORCE RLS, grants
-mínimos e verificação SQL dos invariantes. Não há segunda regra monetária
+mínimos e verificação SQL dos invariantes. Uma transição no status de
+`finance.accounts` e a validação de INSERT de vínculo adquirem o mesmo
+advisory lock transacional por `account_id`; assim o check de conta ACTIVE
+não compete silenciosamente com um arquivamento por writer privilegiado.
+A decisão não concede UPDATE em contas ao runtime. Não há segunda regra monetária
 no Flutter.
 
 ### Estado de implementação

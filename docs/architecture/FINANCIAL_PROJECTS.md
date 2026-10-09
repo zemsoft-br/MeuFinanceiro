@@ -34,13 +34,21 @@ O valor realizado não é persistido.
   saída a 1000 despesas por projeto e 100 revisões por Movement,
   falhando sem truncar se ultrapassar o limite.
 
-## Concorrrência e replay
+## Concorrência e replay
 
 - A migration `0029_financial_projects` cria as tabelas, chaves
   estrangeiras compostas por âmbito, restrições, triggers e policies.
 - `pg_advisory_xact_lock(hashtextextended('meufinanceiro:project-movement:' ||
   movement_id, 0))` serializa as mudanças de uma despesa. Tanto o
   store quanto o trigger usam a mesma chave.
+- A transition de status em `finance.accounts` também usa lock
+  transacional por conta (`meufinanceiro:project-account:{account_id}`),
+  compartilhado com a validação de INSERT de vínculo no PostgreSQL.
+  Isso ordena arquivamento privilegiado e nova associação, mesmo sem
+  endpoint público de arquivamento; runtime mantém apenas SELECT/INSERT
+  em contas. O trigger revalida `ACTIVE` depois do lock.
+- Membro HOUSEHOLD com direito de leitura, mas não de escrita, recebe
+  HTTP 403. Incompatibilidade de vínculo/CAS continua HTTP 409.
 - O predecessor `supersedes_id` é CAS; `UNIQUE(supersedes_id)`
   impede forks, `UNIQUE(movement_id, revision)` impede números
   concorrentes duplicados.
@@ -125,6 +133,21 @@ format/analyze/test/build e testes adversariais de integração.
 - Exceção histórica conhecida: #240, quando **única falha comprovada**,
   resulta em `PASS_WITH_PROVEN_BASELINE_EXCEPTION`. Não ignorar outras
   falhas nem executar GitHub Actions como gate.
+
+## Revalidação local em 2026-10-08
+
+- Em `095245569c3e646266389725c1566fc6936aecf3`: 2.521 testes Python
+  PASS e apenas a falha preexistente #240; 846 testes Flutter PASS;
+  Ruff, mypy strict, RLS PostgreSQL 18.4, PWA, Web build, DCO, licenças e
+  auditoria de dependências PASS. Exceção #240 verificada contra `develop`.
+- Os commits **posteriores** de revisão adversarial introduzem correção da
+  reconciliação do PUT Flutter, lock de transição de conta, HTTP 403 para
+  escritor não proprietário, teste vertical HTTP→PostgreSQL e plano SQL
+  `EXPLAIN ANALYZE` com 82 revisões. Essas alterações **ainda exigem gate
+  local**; as evidências anteriores não as validam automaticamente.
+- O plano SQL novo comprova indexabilidade e ausência de `WindowAgg`
+  sobre histórico da residência. Não é benchmark de latência em produção:
+  `enable_seqscan=off` é utilizado somente dentro da transação do teste.
 
 ## Fora do escopo
 
