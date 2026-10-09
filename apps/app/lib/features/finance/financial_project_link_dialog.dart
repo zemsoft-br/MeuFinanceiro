@@ -57,17 +57,21 @@ class _FinancialProjectLinkDialogState
       final projects = await api.listProjects();
       final link = await api.getProjectLink(widget.movement.movementId);
       if (!mounted) return;
-      final candidates = projects.where((project) =>
-        project.canEdit &&
-        project.ownerOperatorId == widget.account.ownerOperatorId &&
-        project.visibilityScope == widget.account.visibilityScope &&
-        project.currency == widget.account.currency
-      ).toList(growable: false);
+      final candidates = projects
+          .where(
+            (project) =>
+                project.canEdit &&
+                project.ownerOperatorId == widget.account.ownerOperatorId &&
+                project.visibilityScope == widget.account.visibilityScope &&
+                project.currency == widget.account.currency,
+          )
+          .toList(growable: false);
       if (link?.projectId != null &&
           !candidates.any((p) => p.id == link!.projectId)) {
         setState(() {
           _loading = false;
-          _loadError = 'A associação atual não está disponível. Atualize a conta.';
+          _loadError =
+              'A associação atual não está disponível. Atualize a conta.';
         });
         return;
       }
@@ -81,14 +85,14 @@ class _FinancialProjectLinkDialogState
       if (mounted) {
         setState(() {
           _loading = false;
-          _loadError = 'Não foi possível consultar projetos e associação atual.';
+          _loadError =
+              'Não foi possível consultar projetos e associação atual.';
         });
       }
     }
   }
 
-  bool get _isActive =>
-      widget.account.status == FinancialAccountStatus.active;
+  bool get _isActive => widget.account.status == FinancialAccountStatus.active;
 
   bool get _canSave {
     if (_loading || _loadError != null) return false;
@@ -132,7 +136,7 @@ class _FinancialProjectLinkDialogState
                       revision.projectId == null
                           ? 'Revisão ${revision.revision} — desvinculado'
                           : 'Revisão ${revision.revision} — '
-                              '${_projectTitle(revision.projectId!)}',
+                                '${_projectTitle(revision.projectId!)}',
                     ),
                     subtitle: Text(
                       'Registrado em: ${revision.createdAt.toLocal()}',
@@ -196,17 +200,12 @@ class _FinancialProjectLinkDialogState
                 key: FinancialProjectLinkDialog.loadingKey,
               )
             else if (_loadError != null)
-              Text(
-                _loadError!,
-                key: FinancialProjectLinkDialog.errorKey,
-              )
+              Text(_loadError!, key: FinancialProjectLinkDialog.errorKey)
             else ...[
               Text(
                 _current?.projectId == null
                     ? 'Sem projeto associado.'
-                    : 'Associação atual: ${_eligible.where(
-                        (p) => p.id == _current!.projectId,
-                      ).first.title}',
+                    : 'Associação atual: ${_eligible.where((p) => p.id == _current!.projectId).first.title}',
                 key: FinancialProjectLinkDialog.currentKey,
               ),
               const SizedBox(height: AppTokens.space8),

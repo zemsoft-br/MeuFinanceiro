@@ -5,21 +5,45 @@ part of 'financial_core_api.dart';
 // The backend decides realized amounts, CAS, scope and edit permissions.
 
 const _projectKeys = <String>{
-  'id', 'ownerOperatorId', 'visibilityScope', 'title', 'description',
-  'currency', 'planned', 'targetDate', 'version', 'createdAt',
-  'updatedAt', 'canEdit',
+  'id',
+  'ownerOperatorId',
+  'visibilityScope',
+  'title',
+  'description',
+  'currency',
+  'planned',
+  'targetDate',
+  'version',
+  'createdAt',
+  'updatedAt',
+  'canEdit',
 };
 const _projectSummaryKeys = <String>{
-  'project', 'realized', 'remaining', 'excess', 'progressPercent',
-  'progressStatus', 'expenseCount', 'expenses',
+  'project',
+  'realized',
+  'remaining',
+  'excess',
+  'progressPercent',
+  'progressStatus',
+  'expenseCount',
+  'expenses',
 };
 const _projectExpenseKeys = <String>{
-  'movementId', 'description', 'effectiveDate',
-  'originalAmount', 'realized', 'reversed',
+  'movementId',
+  'description',
+  'effectiveDate',
+  'originalAmount',
+  'realized',
+  'reversed',
 };
 const _projectLinkKeys = <String>{
-  'id', 'movementId', 'projectId', 'supersedesId', 'revision',
-  'actorOperatorId', 'createdAt',
+  'id',
+  'movementId',
+  'projectId',
+  'supersedesId',
+  'revision',
+  'actorOperatorId',
+  'createdAt',
 };
 const financialProjectsMax = 1000;
 const financialProjectExpensesMax = 1000;
@@ -175,8 +199,12 @@ class FinancialProjectCreateInput {
       );
 
   String get attemptKey => [
-    title, description ?? '', visibilityScope.wireValue,
-    currency, _canonicalDecimal(plannedAmount), targetDate ?? '',
+    title,
+    description ?? '',
+    visibilityScope.wireValue,
+    currency,
+    _canonicalDecimal(plannedAmount),
+    targetDate ?? '',
   ].join('\u001f');
 
   Map<String, Object?> toJson() => {
@@ -235,7 +263,10 @@ class FinancialProjectLinkInput {
            : _financialResourceId(projectId, 'projectId'),
        expectedPredecessorId = expectedPredecessorId == null
            ? null
-           : _financialResourceId(expectedPredecessorId, 'expectedPredecessorId'),
+           : _financialResourceId(
+               expectedPredecessorId,
+               'expectedPredecessorId',
+             ),
        idempotencyKey = _idempotencyKey(idempotencyKey ?? _newUuidV4()) {
     if (projectId == null && expectedPredecessorId == null) {
       throw const FormatException('nothing to unlink.');
@@ -253,9 +284,8 @@ class FinancialProjectLinkInput {
         idempotencyKey: key,
       );
 
-  String get attemptKey => [
-    projectId ?? '', expectedPredecessorId ?? '',
-  ].join('\u001f');
+  String get attemptKey =>
+      [projectId ?? '', expectedPredecessorId ?? ''].join('\u001f');
 
   Map<String, Object?> toJson() => {
     'idempotencyKey': idempotencyKey,
@@ -293,9 +323,12 @@ extension FinancialProjectApiCalls on FinancialCoreApi {
     return result;
   }
 
-  Future<FinancialProject> createProject(FinancialProjectCreateInput input) async {
+  Future<FinancialProject> createProject(
+    FinancialProjectCreateInput input,
+  ) async {
     final response = await client.post(
-      'finance/projects', jsonBody: input.toJson(),
+      'finance/projects',
+      jsonBody: input.toJson(),
     );
     final project = _parseProject(
       _decodeJsonObject(response.body, 'project response'),
@@ -314,11 +347,13 @@ extension FinancialProjectApiCalls on FinancialCoreApi {
   }
 
   Future<FinancialProject> replaceProject(
-    String projectId, FinancialProjectReplaceInput input,
+    String projectId,
+    FinancialProjectReplaceInput input,
   ) async {
     final id = _financialResourceId(projectId, 'projectId');
     final response = await client.put(
-      'finance/projects/$id', jsonBody: input.toJson(),
+      'finance/projects/$id',
+      jsonBody: input.toJson(),
     );
     final project = _parseProject(
       _decodeJsonObject(response.body, 'project response'),
@@ -352,7 +387,9 @@ extension FinancialProjectApiCalls on FinancialCoreApi {
     final id = _financialResourceId(movementId, 'movementId');
     final response = await client.get('finance/movements/$id/project-link');
     final data = _strictJsonObject(
-      response.body, allowedKeys: const {'link'}, label: 'project link envelope',
+      response.body,
+      allowedKeys: const {'link'},
+      label: 'project link envelope',
     );
     final raw = data['link'];
     if (raw == null) return null;
@@ -396,11 +433,13 @@ extension FinancialProjectApiCalls on FinancialCoreApi {
   /// One write. The controller must canonical-refetch after every outcome,
   /// including transport ambiguity and invalid 2xx. Never retry automatically.
   Future<FinancialProjectLink> reviseProjectLink(
-    String movementId, FinancialProjectLinkInput input,
+    String movementId,
+    FinancialProjectLinkInput input,
   ) async {
     final id = _financialResourceId(movementId, 'movementId');
     final response = await client.post(
-      'finance/movements/$id/project-link', jsonBody: input.toJson(),
+      'finance/movements/$id/project-link',
+      jsonBody: input.toJson(),
     );
     final link = _parseProjectLink(
       _decodeJsonObject(response.body, 'project link response'),
@@ -436,7 +475,9 @@ FinancialProject _parseProject(Object? raw) {
     visibilityScope: scope,
     title: _boundedText(v['title'], 'title', maxLength: 96),
     description: _optionalBoundedText(
-      v['description'], 'description', maxLength: 280,
+      v['description'],
+      'description',
+      maxLength: 280,
     ),
     currency: currency,
     planned: planned,
@@ -460,22 +501,28 @@ FinancialMoneyWire _projectMoney(Object? raw, String currency) {
 
 FinancialProjectSummary _parseProjectSummary(Object? raw) {
   final v = _strictMap(
-    raw, allowedKeys: _projectSummaryKeys, label: 'project summary',
+    raw,
+    allowedKeys: _projectSummaryKeys,
+    label: 'project summary',
   );
   final project = _parseProject(v['project']);
   final count = v['expenseCount'];
   final rawExpenses = v['expenses'];
   final progress = v['progressPercent'];
-  if (count is! int || count < 0 ||
-      rawExpenses is! List || rawExpenses.length > financialProjectExpensesMax ||
+  if (count is! int ||
+      count < 0 ||
+      rawExpenses is! List ||
+      rawExpenses.length > financialProjectExpensesMax ||
       count != rawExpenses.length ||
-      progress is! String || !_projectProgressPattern.hasMatch(progress)) {
+      progress is! String ||
+      !_projectProgressPattern.hasMatch(progress)) {
     throw const FormatException('project summary is invalid.');
   }
   final expenses = List<FinancialProjectExpense>.unmodifiable(
     rawExpenses.map((rawExpense) {
       final e = _strictMap(
-        rawExpense, allowedKeys: _projectExpenseKeys,
+        rawExpense,
+        allowedKeys: _projectExpenseKeys,
         label: 'project expense',
       );
       if (e['reversed'] is! bool) {
@@ -484,7 +531,9 @@ FinancialProjectSummary _parseProjectSummary(Object? raw) {
       return FinancialProjectExpense(
         movementId: _financialResourceId(e['movementId'], 'movementId'),
         description: _optionalBoundedText(
-          e['description'], 'description', maxLength: 256,
+          e['description'],
+          'description',
+          maxLength: 256,
         ),
         effectiveDate: _date(e['effectiveDate'], 'effectiveDate'),
         originalAmount: _projectMoney(e['originalAmount'], project.currency),
@@ -509,16 +558,23 @@ FinancialProjectSummary _parseProjectSummary(Object? raw) {
 }
 
 FinancialProjectLink _parseProjectLink(Object? raw) {
-  final v = _strictMap(raw, allowedKeys: _projectLinkKeys, label: 'project link');
+  final v = _strictMap(
+    raw,
+    allowedKeys: _projectLinkKeys,
+    label: 'project link',
+  );
   final revision = v['revision'];
-  if (revision is! int || revision < 1 ||
+  if (revision is! int ||
+      revision < 1 ||
       revision > financialProjectRevisionsMax) {
     throw const FormatException('project link revision is invalid.');
   }
   final predecessor = v['supersedesId'] == null
-      ? null : _financialResourceId(v['supersedesId'], 'supersedesId');
+      ? null
+      : _financialResourceId(v['supersedesId'], 'supersedesId');
   final project = v['projectId'] == null
-      ? null : _financialResourceId(v['projectId'], 'projectId');
+      ? null
+      : _financialResourceId(v['projectId'], 'projectId');
   if ((revision == 1 && (predecessor != null || project == null)) ||
       (revision > 1 && predecessor == null)) {
     throw const FormatException('project link chain is invalid.');

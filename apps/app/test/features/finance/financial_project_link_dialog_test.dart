@@ -26,7 +26,9 @@ FinancialAccount _account({bool archived = false}) => FinancialAccount(
   customTypeName: null,
   name: 'Conta casa',
   currency: 'BRL',
-  status: archived ? FinancialAccountStatus.archived : FinancialAccountStatus.active,
+  status: archived
+      ? FinancialAccountStatus.archived
+      : FinancialAccountStatus.active,
   createdAt: DateTime.parse(_stamp),
   updatedAt: DateTime.parse(_stamp),
   archivedAt: archived ? DateTime.parse(_stamp) : null,
@@ -116,18 +118,29 @@ Future<void> _open(
 }
 
 void main() {
-  testWidgets('opening a statement editor makes two reads, never N+1', (tester) async {
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
+  testWidgets('opening a statement editor makes two reads, never N+1', (
+    tester,
+  ) async {
+    final transport = FakeAuthTransport((
+      uri,
+      method,
+      timeout,
+      headers,
+      body,
+    ) async {
       final response = uri.path.endsWith('/projects')
-          ? {'items': [_project()]}
+          ? {
+              'items': [_project()],
+            }
           : {'link': null};
       return AuthHttpResponse(statusCode: 200, body: jsonEncode(response));
     });
     FinancialProjectLinkInput? result;
     await _open(tester, transport, onResult: (value) => result = value);
     expect(transport.calls.length, 2);
-    expect(transport.calls.map((call) => call.method).toSet(),
-        {AuthHttpMethod.get});
+    expect(transport.calls.map((call) => call.method).toSet(), {
+      AuthHttpMethod.get,
+    });
     expect(find.byKey(FinancialProjectLinkDialog.dialogKey), findsOneWidget);
     await tester.tap(find.byKey(FinancialProjectLinkDialog.projectKey));
     await tester.pumpAndSettle();
@@ -143,15 +156,24 @@ void main() {
   testWidgets('an archived account may only unlink its historical expense', (
     tester,
   ) async {
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
+    final transport = FakeAuthTransport((
+      uri,
+      method,
+      timeout,
+      headers,
+      body,
+    ) async {
       final response = uri.path.endsWith('/projects')
-          ? {'items': [_project()]}
+          ? {
+              'items': [_project()],
+            }
           : {'link': _link()};
       return AuthHttpResponse(statusCode: 200, body: jsonEncode(response));
     });
     FinancialProjectLinkInput? result;
     await _open(
-      tester, transport,
+      tester,
+      transport,
       archived: true,
       onResult: (value) => result = value,
     );

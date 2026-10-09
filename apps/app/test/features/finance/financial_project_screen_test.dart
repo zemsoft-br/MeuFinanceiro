@@ -14,11 +14,15 @@ import '../../support/fake_auth_transport.dart';
 import '../../support/fake_finance_backend.dart';
 
 FinancialCoreApi _api(Map<String, Object?> response) {
-  final transport = FakeAuthTransport(
-    (uri, method, timeout, headers, body) async {
-      return AuthHttpResponse(statusCode: 200, body: jsonEncode(response));
-    },
-  );
+  final transport = FakeAuthTransport((
+    uri,
+    method,
+    timeout,
+    headers,
+    body,
+  ) async {
+    return AuthHttpResponse(statusCode: 200, body: jsonEncode(response));
+  });
   return FinancialCoreApi(
     AuthenticatedApiClient(
       transport: transport,

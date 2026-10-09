@@ -35,13 +35,16 @@ class FinancialProjectScreen extends ConsumerStatefulWidget {
       _FinancialProjectScreenState();
 }
 
-class _FinancialProjectScreenState extends ConsumerState<FinancialProjectScreen> {
+class _FinancialProjectScreenState
+    extends ConsumerState<FinancialProjectScreen> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(ref.read(financialProjectsControllerProvider.notifier).load());
+        unawaited(
+          ref.read(financialProjectsControllerProvider.notifier).load(),
+        );
       }
     });
   }
@@ -78,9 +81,9 @@ class _FinancialProjectScreenState extends ConsumerState<FinancialProjectScreen>
       FinancialProjectWriteOutcome.unknown =>
         'Resultado incerto. Não repita a operação sem conferir os dados.',
     };
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -122,9 +125,7 @@ class _FinancialProjectScreenState extends ConsumerState<FinancialProjectScreen>
                 ),
                 OutlinedButton.icon(
                   key: FinancialProjectScreen.refreshKey,
-                  onPressed: state.busy
-                      ? null
-                      : () => unawaited(ctl.refresh()),
+                  onPressed: state.busy ? null : () => unawaited(ctl.refresh()),
                   icon: const Icon(Icons.refresh),
                   label: const Text('Atualizar'),
                 ),
@@ -235,7 +236,9 @@ class _FinancialProjectScreenState extends ConsumerState<FinancialProjectScreen>
                         if (project.canEdit)
                           TextButton.icon(
                             key: FinancialProjectScreen.editKey,
-                            onPressed: isReady ? () => _openEditor(project) : null,
+                            onPressed: isReady
+                                ? () => _openEditor(project)
+                                : null,
                             icon: const Icon(Icons.edit),
                             label: const Text('Editar plano'),
                           )
@@ -247,7 +250,8 @@ class _FinancialProjectScreenState extends ConsumerState<FinancialProjectScreen>
                       ],
                     ),
                     Text(
-                      project.visibilityScope == FinancialVisibilityScope.household
+                      project.visibilityScope ==
+                              FinancialVisibilityScope.household
                           ? 'Projeto da residência'
                           : 'Projeto pessoal',
                     ),
@@ -444,16 +448,16 @@ class _ProjectEditorDialogState extends State<_ProjectEditorDialog> {
                 controller: _currency,
                 readOnly: editing,
                 maxLength: 3,
-                decoration: const InputDecoration(labelText: 'Moeda (ex.: BRL)'),
+                decoration: const InputDecoration(
+                  labelText: 'Moeda (ex.: BRL)',
+                ),
               ),
               TextField(
                 controller: _planned,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
-                decoration: const InputDecoration(
-                  labelText: 'Orçamento total',
-                ),
+                decoration: const InputDecoration(labelText: 'Orçamento total'),
               ),
               TextField(
                 controller: _date,
@@ -471,10 +475,7 @@ class _ProjectEditorDialogState extends State<_ProjectEditorDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancelar'),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('Salvar'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('Salvar')),
       ],
     );
   }

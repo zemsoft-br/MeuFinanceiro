@@ -44,18 +44,24 @@ _ACCOUNT = uuid4()
 
 def _record() -> FinancialProjectRecord:
     return FinancialProjectRecord(
-        id=uuid4(), residence_id=_RESIDENCE,
+        id=uuid4(),
+        residence_id=_RESIDENCE,
         owner_operator_id=_OWNER,
         visibility_scope=FinancialVisibilityScope.HOUSEHOLD,
-        title="Reforma", description=None,
+        title="Reforma",
+        description=None,
         planned=Money(Decimal("500"), "BRL"),
-        target_date=None, version=1, created_at=_NOW, updated_at=_NOW,
+        target_date=None,
+        version=1,
+        created_at=_NOW,
+        updated_at=_NOW,
     )
 
 
 def _expense() -> FinancialMovementRecord:
     return FinancialMovementRecord(
-        id=uuid4(), account_id=_ACCOUNT,
+        id=uuid4(),
+        account_id=_ACCOUNT,
         amount=Money(Decimal("-125"), "BRL"),
         result_effect=FinancialResultEffect.EXPENSE,
         role=FinancialMovementRole.STANDARD,
@@ -188,15 +194,24 @@ def test_project_create_is_strict_replay_safe_and_monetary_strings() -> None:
     assert client.post("/api/v1/finance/projects", json=payload).json() == first.json()
     changed = {**payload, "title": "Mudou"}
     assert client.post("/api/v1/finance/projects", json=changed).status_code == 409
-    assert client.post(
-        "/api/v1/finance/projects", json={**payload, "plannedAmount": 500.0}
-    ).status_code == 422
-    assert client.post(
-        "/api/v1/finance/projects", json={**payload, "unexpected": True}
-    ).status_code == 422
-    assert client.post(
-        "/api/v1/finance/projects", json={**payload, "plannedAmount": "-10"}
-    ).status_code == 422
+    assert (
+        client.post(
+            "/api/v1/finance/projects", json={**payload, "plannedAmount": 500.0}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/finance/projects", json={**payload, "unexpected": True}
+        ).status_code
+        == 422
+    )
+    assert (
+        client.post(
+            "/api/v1/finance/projects", json={**payload, "plannedAmount": "-10"}
+        ).status_code
+        == 422
+    )
     assert client.get("/api/v1/finance/projects?bad=1").status_code == 422
 
 
@@ -233,14 +248,20 @@ def test_project_link_revision_and_history_wire_contract() -> None:
     assert created.status_code == 201
     assert created.json()["revision"] == 1
     first = created.json()["id"]
-    assert client.post(
-        target, json={**initial, "idempotencyKey": str(uuid4())}
-    ).status_code == 409
-    removed = client.post(target, json={
-        "idempotencyKey": str(uuid4()),
-        "projectId": None,
-        "expectedPredecessorId": first,
-    })
+    assert (
+        client.post(
+            target, json={**initial, "idempotencyKey": str(uuid4())}
+        ).status_code
+        == 409
+    )
+    removed = client.post(
+        target,
+        json={
+            "idempotencyKey": str(uuid4()),
+            "projectId": None,
+            "expectedPredecessorId": first,
+        },
+    )
     assert removed.status_code == 201
     assert removed.json()["projectId"] is None
     assert removed.json()["supersedesId"] == first

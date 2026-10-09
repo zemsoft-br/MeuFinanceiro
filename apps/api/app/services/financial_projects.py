@@ -99,7 +99,6 @@ class ProjectStoreBoundary(Protocol):
     ]: ...
 
 
-
 @dataclass(frozen=True, slots=True, repr=False)
 class ProjectView:
     project: FinancialProjectRecord

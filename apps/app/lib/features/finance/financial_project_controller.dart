@@ -125,7 +125,9 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     FinancialProjectWriteOutcome outcome;
     String? createdId;
     try {
-      final project = await ref.read(financialCoreApiProvider).createProject(sent);
+      final project = await ref
+          .read(financialCoreApiProvider)
+          .createProject(sent);
       if (_disposed) return FinancialProjectWriteOutcome.unknown;
       createdId = project.id;
       // Selection is tentative until list AND summary are read canonically.
@@ -187,9 +189,9 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     FinancialProjectWriteOutcome outcome;
     String? writtenId;
     try {
-      final revision = await ref.read(financialCoreApiProvider).reviseProjectLink(
-        movementId, input,
-      );
+      final revision = await ref
+          .read(financialCoreApiProvider)
+          .reviseProjectLink(movementId, input);
       writtenId = revision.id;
       outcome = FinancialProjectWriteOutcome.confirmed;
     } on AuthenticatedApiException catch (error) {
@@ -243,10 +245,11 @@ class FinancialProjectsController extends Notifier<FinancialProjectsState> {
     if (_disposed) return FinancialProjectWriteOutcome.unknown;
     final readSucceeded = await _refresh(true, afterWrite: true);
     if (_disposed) return FinancialProjectWriteOutcome.unknown;
-    final createdVisible = createdId == null ||
+    final createdVisible =
+        createdId == null ||
         (state.selectedId == createdId &&
-         state.summary?.project.id == createdId &&
-         state.projects.any((project) => project.id == createdId));
+            state.summary?.project.id == createdId &&
+            state.projects.any((project) => project.id == createdId));
     final trusted = readSucceeded && state.trusted && createdVisible;
     state = state.copyWith(
       busy: false,

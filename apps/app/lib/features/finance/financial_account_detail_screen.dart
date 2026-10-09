@@ -289,10 +289,8 @@ class _FinancialAccountDetailScreenState
     if (_projectLinkMutationInFlight) return;
     final input = await showDialog<FinancialProjectLinkInput>(
       context: context,
-      builder: (_) => FinancialProjectLinkDialog(
-        account: account,
-        movement: movement,
-      ),
+      builder: (_) =>
+          FinancialProjectLinkDialog(account: account, movement: movement),
     );
     if (!mounted || input == null || _projectLinkMutationInFlight) return;
     final attempt = '${movement.movementId}\u001e${input.attemptKey}';
@@ -305,10 +303,9 @@ class _FinancialAccountDetailScreenState
     bool writeConfirmed = false;
     String message;
     try {
-      persisted = await ref.read(financialCoreApiProvider).reviseProjectLink(
-        movement.movementId,
-        send,
-      );
+      persisted = await ref
+          .read(financialCoreApiProvider)
+          .reviseProjectLink(movement.movementId, send);
       writeConfirmed = true;
       message = 'Associação enviada. Conferindo o estado persistido.';
     } on AuthenticatedApiException catch (error) {
@@ -318,15 +315,17 @@ class _FinancialAccountDetailScreenState
         _projectLinkRetryKeys.remove(attempt);
       }
       message = switch (error.statusCode) {
-        409 => 'A associação mudou antes de salvar. '
-            'Abra o editor e escolha novamente.',
+        409 =>
+          'A associação mudou antes de salvar. '
+              'Abra o editor e escolha novamente.',
         403 => 'Você não tem permissão para alterar esta associação.',
         404 => 'A despesa ou o projeto não está mais disponível.',
         422 => 'A associação não foi aceita.',
         _ => 'Resultado incerto. Não envie novamente sem conferir.',
       };
     } on FormatException {
-      message = 'Resposta inválida; resultado incerto. Confira antes de repetir.';
+      message =
+          'Resposta inválida; resultado incerto. Confira antes de repetir.';
     } catch (_) {
       message = 'Resultado incerto. Confira a associação persistida.';
     }
@@ -343,22 +342,24 @@ class _FinancialAccountDetailScreenState
             ? 'Despesa desvinculada; associação confirmada no servidor.'
             : 'Despesa vinculada; associação confirmada no servidor.';
       } else if (writeConfirmed) {
-        message = 'A associação foi alterada novamente. '
+        message =
+            'A associação foi alterada novamente. '
             'O estado persistido foi consultado; revise antes de editar.';
       } else {
         message = '$message Estado atual consultado no servidor.';
       }
     } catch (_) {
       // Even a successful POST must not claim a reconciled state here.
-      message = 'Não foi possível reconciliar a associação. '
+      message =
+          'Não foi possível reconciliar a associação. '
           'Resultado da operação incerto; atualize antes de editar novamente.';
     } finally {
       if (mounted) setState(() => _projectLinkMutationInFlight = false);
     }
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _reverseMovement(
@@ -627,8 +628,10 @@ class _FinancialAccountDetailScreenState
                     !_projectLinkMutationInFlight &&
                     operatorId != null &&
                     account.ownerOperatorId == operatorId &&
-                    (account.visibilityScope == FinancialVisibilityScope.personal ||
-                        account.visibilityScope == FinancialVisibilityScope.household),
+                    (account.visibilityScope ==
+                            FinancialVisibilityScope.personal ||
+                        account.visibilityScope ==
+                            FinancialVisibilityScope.household),
                 onProjectLink: (movement) =>
                     unawaited(_editProjectLink(account, movement)),
                 onClassify: (movement) =>

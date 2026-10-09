@@ -76,8 +76,10 @@ void main() {
   group('project inputs', () {
     test('amount stays decimal text and scope remains explicit', () {
       final input = FinancialProjectCreateInput(
-        title: ' Reforma ', visibilityScope: FinancialVisibilityScope.household,
-        currency: 'BRL', plannedAmount: '500.00',
+        title: ' Reforma ',
+        visibilityScope: FinancialVisibilityScope.household,
+        currency: 'BRL',
+        plannedAmount: '500.00',
       );
       expect(input.title, 'Reforma');
       expect(input.toJson()['plannedAmount'], '500.00');
@@ -88,8 +90,10 @@ void main() {
       );
       expect(
         () => FinancialProjectCreateInput(
-          title: 'Reforma', visibilityScope: FinancialVisibilityScope.shared,
-          currency: 'BRL', plannedAmount: '500',
+          title: 'Reforma',
+          visibilityScope: FinancialVisibilityScope.shared,
+          currency: 'BRL',
+          plannedAmount: '500',
         ),
         throwsFormatException,
       );
@@ -97,7 +101,8 @@ void main() {
         () => FinancialProjectCreateInput(
           title: 'Reforma',
           visibilityScope: FinancialVisibilityScope.personal,
-          currency: 'BRL', plannedAmount: '-1',
+          currency: 'BRL',
+          plannedAmount: '-1',
         ),
         throwsFormatException,
       );
@@ -111,52 +116,80 @@ void main() {
     });
   });
 
-  test('server summary and link are strict and never recomputed on client', () async {
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
-      final result = switch (uri.path) {
-        '/api/v1/finance/projects' => {'items': [_project()]},
-        '/api/v1/finance/projects/$_projectId/summary' => _summary(),
-        '/api/v1/finance/movements/$_movementId/project-link' =>
-          {'link': _link()},
-        '/api/v1/finance/movements/$_movementId/project-link/revisions' =>
-          {'items': [_link()]},
-        _ => _project(),
-      };
-      return AuthHttpResponse(statusCode: 200, body: jsonEncode(result));
-    });
-    final api = _api(transport);
-    expect((await api.listProjects()).single.title, 'Reforma');
-    final summary = await api.getProjectSummary(_projectId);
-    expect(summary.realized.amount, '125');
-    expect(summary.remaining.amount, '375');
-    expect(summary.progressPercent, '25.00');
-    expect(summary.expenses.single.movementId, _movementId);
-    expect(summary.expenses.single.description, 'Material de obra');
-    expect(summary.expenses.single.effectiveDate, '2026-10-08');
-    expect((await api.getProjectLink(_movementId))?.projectId, _projectId);
-    expect((await api.getProjectLinkHistory(_movementId)).length, 1);
-    expect(transport.calls.every((call) => call.method == AuthHttpMethod.get), isTrue);
-  });
+  test(
+    'server summary and link are strict and never recomputed on client',
+    () async {
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        final result = switch (uri.path) {
+          '/api/v1/finance/projects' => {
+            'items': [_project()],
+          },
+          '/api/v1/finance/projects/$_projectId/summary' => _summary(),
+          '/api/v1/finance/movements/$_movementId/project-link' => {
+            'link': _link(),
+          },
+          '/api/v1/finance/movements/$_movementId/project-link/revisions' => {
+            'items': [_link()],
+          },
+          _ => _project(),
+        };
+        return AuthHttpResponse(statusCode: 200, body: jsonEncode(result));
+      });
+      final api = _api(transport);
+      expect((await api.listProjects()).single.title, 'Reforma');
+      final summary = await api.getProjectSummary(_projectId);
+      expect(summary.realized.amount, '125');
+      expect(summary.remaining.amount, '375');
+      expect(summary.progressPercent, '25.00');
+      expect(summary.expenses.single.movementId, _movementId);
+      expect(summary.expenses.single.description, 'Material de obra');
+      expect(summary.expenses.single.effectiveDate, '2026-10-08');
+      expect((await api.getProjectLink(_movementId))?.projectId, _projectId);
+      expect((await api.getProjectLinkHistory(_movementId)).length, 1);
+      expect(
+        transport.calls.every((call) => call.method == AuthHttpMethod.get),
+        isTrue,
+      );
+    },
+  );
 
   test('an invalid server money shape fails closed', () async {
     final transport = FakeAuthTransport.response(
       statusCode: 200,
-      body: jsonEncode({'items': [_project(amount: '-500')]}),
+      body: jsonEncode({
+        'items': [_project(amount: '-500')],
+      }),
     );
     await expectLater(_api(transport).listProjects(), throwsFormatException);
   });
 
-  test('link write preserves explicit idempotency and predecessor material', () async {
-    final transport = FakeAuthTransport((uri, method, timeout, headers, body) async {
-      return AuthHttpResponse(statusCode: 201, body: jsonEncode(_link()));
-    });
-    final input = FinancialProjectLinkInput(projectId: _projectId);
-    final link = await _api(transport).reviseProjectLink(_movementId, input);
-    expect(link.revision, 1);
-    final sent = jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
-    expect(sent['idempotencyKey'], input.idempotencyKey);
-    expect(sent['projectId'], _projectId);
-    expect(sent['expectedPredecessorId'], isNull);
-    expect(transport.calls.single.method, AuthHttpMethod.post);
-  });
+  test(
+    'link write preserves explicit idempotency and predecessor material',
+    () async {
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
+        return AuthHttpResponse(statusCode: 201, body: jsonEncode(_link()));
+      });
+      final input = FinancialProjectLinkInput(projectId: _projectId);
+      final link = await _api(transport).reviseProjectLink(_movementId, input);
+      expect(link.revision, 1);
+      final sent =
+          jsonDecode(transport.calls.single.body!) as Map<String, dynamic>;
+      expect(sent['idempotencyKey'], input.idempotencyKey);
+      expect(sent['projectId'], _projectId);
+      expect(sent['expectedPredecessorId'], isNull);
+      expect(transport.calls.single.method, AuthHttpMethod.post);
+    },
+  );
 }

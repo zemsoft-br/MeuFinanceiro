@@ -138,9 +138,7 @@ class ProjectExpenseResponse(BaseModel):
     movement_id: UUID = Field(serialization_alias="movementId")
     description: str | None
     effective_date: date = Field(serialization_alias="effectiveDate")
-    original_amount: ProjectMoneyResponse = Field(
-        serialization_alias="originalAmount"
-    )
+    original_amount: ProjectMoneyResponse = Field(serialization_alias="originalAmount")
     realized: ProjectMoneyResponse
     reversed: bool
 
@@ -258,9 +256,7 @@ def _replacement(payload: ProjectReplaceRequest) -> FinancialProjectReplacement:
 
 
 def _money(value: Money) -> ProjectMoneyResponse:
-    return ProjectMoneyResponse(
-        amount=value.canonical_amount, currency=value.currency
-    )
+    return ProjectMoneyResponse(amount=value.canonical_amount, currency=value.currency)
 
 
 def _project(view: ProjectView) -> ProjectResponse:
@@ -362,7 +358,8 @@ def list_projects(
 
 
 @router.post(
-    "/projects", response_model=ProjectResponse,
+    "/projects",
+    response_model=ProjectResponse,
     status_code=status.HTTP_201_CREATED,
 )
 def create_project(
@@ -380,13 +377,15 @@ def create_project(
         raise _invalid_request() from None
     draft = _draft(payload)
     try:
-        return _project(_service(request).create_project(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=operator_id,
-            idempotency_key=key,
-            draft=draft,
-        ))
+        return _project(
+            _service(request).create_project(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                idempotency_key=key,
+                draft=draft,
+            )
+        )
     except FinancialProjectPersistenceError as error:
         _raise_error(error)
 
@@ -402,12 +401,14 @@ def get_project(
     _reject_query(request)
     installation_id, residence_id, operator_id = _context(authenticated)
     try:
-        return _project(_service(request).get_project(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=operator_id,
-            project_id=_id(project_id),
-        ))
+        return _project(
+            _service(request).get_project(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                project_id=_id(project_id),
+            )
+        )
     except FinancialProjectPersistenceError as error:
         _raise_error(error)
 
@@ -425,13 +426,15 @@ def replace_project(
     installation_id, residence_id, operator_id = _context(authenticated)
     replacement = _replacement(payload)
     try:
-        return _project(_service(request).replace_project(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=operator_id,
-            project_id=_id(project_id),
-            replacement=replacement,
-        ))
+        return _project(
+            _service(request).replace_project(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                project_id=_id(project_id),
+                replacement=replacement,
+            )
+        )
     except FinancialProjectPersistenceError as error:
         _raise_error(error)
 
@@ -447,12 +450,14 @@ def project_summary(
     _reject_query(request)
     installation_id, residence_id, operator_id = _context(authenticated)
     try:
-        return _summary(_service(request).summary(
-            installation_id=installation_id,
-            residence_id=residence_id,
-            operator_id=operator_id,
-            project_id=_id(project_id),
-        ))
+        return _summary(
+            _service(request).summary(
+                installation_id=installation_id,
+                residence_id=residence_id,
+                operator_id=operator_id,
+                project_id=_id(project_id),
+            )
+        )
     except FinancialProjectPersistenceError as error:
         _raise_error(error)
     except (ValueError, TypeError, ArithmeticError):
@@ -532,7 +537,8 @@ def revise_movement_project_link(
         project_id = _id(payload.project_id) if payload.project_id is not None else None
         predecessor_id = (
             _id(payload.expected_predecessor_id)
-            if payload.expected_predecessor_id is not None else None
+            if payload.expected_predecessor_id is not None
+            else None
         )
         draft = FinancialProjectLinkRevisionDraft(
             movement_id=_id(movement_id),

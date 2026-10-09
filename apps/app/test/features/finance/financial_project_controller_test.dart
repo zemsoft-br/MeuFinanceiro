@@ -59,18 +59,28 @@ FinancialProjectCreateInput _input() => FinancialProjectCreateInput(
 );
 
 void main() {
-  test('POST 201 without canonical read is UNKNOWN; explicit retry reuses key', () async {
-    var created = false;
-    var failCanonicalRead = true;
-    final sentKeys = <String>[];
-    final transport = FakeAuthTransport(
-      (uri, method, timeout, headers, body) async {
+  test(
+    'POST 201 without canonical read is UNKNOWN; explicit retry reuses key',
+    () async {
+      var created = false;
+      var failCanonicalRead = true;
+      final sentKeys = <String>[];
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
         if (uri.path.endsWith('/finance/projects') &&
             method == AuthHttpMethod.post) {
           final payload = jsonDecode(body!) as Map<String, dynamic>;
           sentKeys.add(payload['idempotencyKey'] as String);
           created = true;
-          return AuthHttpResponse(statusCode: 201, body: jsonEncode(_project()));
+          return AuthHttpResponse(
+            statusCode: 201,
+            body: jsonEncode(_project()),
+          );
         }
         if (uri.path.endsWith('/finance/projects') &&
             method == AuthHttpMethod.get) {
@@ -79,79 +89,121 @@ void main() {
           }
           return AuthHttpResponse(
             statusCode: 200,
-            body: jsonEncode({'items': created ? [_project()] : []}),
+            body: jsonEncode({
+              'items': created ? [_project()] : [],
+            }),
           );
         }
         if (uri.path.endsWith('/finance/projects/$_projectId/summary')) {
-          return AuthHttpResponse(statusCode: 200, body: jsonEncode(_summary()));
+          return AuthHttpResponse(
+            statusCode: 200,
+            body: jsonEncode(_summary()),
+          );
         }
         throw StateError('unexpected project route: $method ${uri.path}');
-      },
-    );
-    final container = ProviderContainer(
-      overrides: [financialCoreApiProvider.overrideWithValue(_api(transport))],
-    );
-    addTearDown(container.dispose);
-    container.listen(financialProjectsControllerProvider, (_, _) {});
-    final controller = container.read(financialProjectsControllerProvider.notifier);
+      });
+      final container = ProviderContainer(
+        overrides: [
+          financialCoreApiProvider.overrideWithValue(_api(transport)),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(financialProjectsControllerProvider, (_, _) {});
+      final controller = container.read(
+        financialProjectsControllerProvider.notifier,
+      );
 
-    expect(await controller.load(), isTrue);
-    expect(container.read(financialProjectsControllerProvider).phase,
-        FinancialLoadPhase.empty);
-    final first = await controller.create(_input());
-    expect(first, FinancialProjectWriteOutcome.unknown);
-    expect(sentKeys, hasLength(1));
-    expect(container.read(financialProjectsControllerProvider).trusted, isFalse);
-    expect(container.read(financialProjectsControllerProvider).busy, isFalse);
-    // No automatic second POST; the operator first restores canonical reads.
-    failCanonicalRead = false;
-    expect(await controller.refresh(), isTrue);
-    expect(container.read(financialProjectsControllerProvider).trusted, isTrue);
-    final retry = await controller.create(_input());
-    expect(retry, FinancialProjectWriteOutcome.confirmed);
-    expect(sentKeys, hasLength(2));
-    expect(sentKeys[0], sentKeys[1]);
-    expect(container.read(financialProjectsControllerProvider).selectedId,
-        _projectId);
-    expect(transport.calls.where(
-      (call) => call.method == AuthHttpMethod.post,
-    ), hasLength(2));
-  });
+      expect(await controller.load(), isTrue);
+      expect(
+        container.read(financialProjectsControllerProvider).phase,
+        FinancialLoadPhase.empty,
+      );
+      final first = await controller.create(_input());
+      expect(first, FinancialProjectWriteOutcome.unknown);
+      expect(sentKeys, hasLength(1));
+      expect(
+        container.read(financialProjectsControllerProvider).trusted,
+        isFalse,
+      );
+      expect(container.read(financialProjectsControllerProvider).busy, isFalse);
+      // No automatic second POST; the operator first restores canonical reads.
+      failCanonicalRead = false;
+      expect(await controller.refresh(), isTrue);
+      expect(
+        container.read(financialProjectsControllerProvider).trusted,
+        isTrue,
+      );
+      final retry = await controller.create(_input());
+      expect(retry, FinancialProjectWriteOutcome.confirmed);
+      expect(sentKeys, hasLength(2));
+      expect(sentKeys[0], sentKeys[1]);
+      expect(
+        container.read(financialProjectsControllerProvider).selectedId,
+        _projectId,
+      );
+      expect(
+        transport.calls.where((call) => call.method == AuthHttpMethod.post),
+        hasLength(2),
+      );
+    },
+  );
 
-  test('POST 201 but canonical list omits created project cannot confirm', () async {
-    var posted = false;
-    final transport = FakeAuthTransport(
-      (uri, method, timeout, headers, body) async {
+  test(
+    'POST 201 but canonical list omits created project cannot confirm',
+    () async {
+      var posted = false;
+      final transport = FakeAuthTransport((
+        uri,
+        method,
+        timeout,
+        headers,
+        body,
+      ) async {
         if (uri.path.endsWith('/finance/projects') &&
             method == AuthHttpMethod.post) {
           posted = true;
-          return AuthHttpResponse(statusCode: 201, body: jsonEncode(_project()));
+          return AuthHttpResponse(
+            statusCode: 201,
+            body: jsonEncode(_project()),
+          );
         }
         if (uri.path.endsWith('/finance/projects')) {
           return AuthHttpResponse(
-            statusCode: 200, body: jsonEncode({'items': <Object?>[]}),
+            statusCode: 200,
+            body: jsonEncode({'items': <Object?>[]}),
           );
         }
         throw StateError('unexpected route: ${uri.path}');
-      },
-    );
-    final container = ProviderContainer(
-      overrides: [financialCoreApiProvider.overrideWithValue(_api(transport))],
-    );
-    addTearDown(container.dispose);
-    container.listen(financialProjectsControllerProvider, (_, _) {});
-    final controller = container.read(financialProjectsControllerProvider.notifier);
+      });
+      final container = ProviderContainer(
+        overrides: [
+          financialCoreApiProvider.overrideWithValue(_api(transport)),
+        ],
+      );
+      addTearDown(container.dispose);
+      container.listen(financialProjectsControllerProvider, (_, _) {});
+      final controller = container.read(
+        financialProjectsControllerProvider.notifier,
+      );
 
-    expect(await controller.load(), isTrue);
-    expect(await controller.create(_input()), FinancialProjectWriteOutcome.unknown);
-    expect(posted, isTrue);
-    expect(container.read(financialProjectsControllerProvider).trusted, isFalse);
-    expect(
-      await controller.create(_input()),
-      FinancialProjectWriteOutcome.notAllowed,
-    );
-    expect(transport.calls.where(
-      (call) => call.method == AuthHttpMethod.post,
-    ), hasLength(1));
-  });
+      expect(await controller.load(), isTrue);
+      expect(
+        await controller.create(_input()),
+        FinancialProjectWriteOutcome.unknown,
+      );
+      expect(posted, isTrue);
+      expect(
+        container.read(financialProjectsControllerProvider).trusted,
+        isFalse,
+      );
+      expect(
+        await controller.create(_input()),
+        FinancialProjectWriteOutcome.notAllowed,
+      );
+      expect(
+        transport.calls.where((call) => call.method == AuthHttpMethod.post),
+        hasLength(1),
+      );
+    },
+  );
 }
