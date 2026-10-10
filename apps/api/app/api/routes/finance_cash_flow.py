@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime
+from datetime import date as _Date
 from typing import Annotated, NoReturn, cast
 from uuid import UUID
 
@@ -149,7 +150,7 @@ class CashFlowDayResponse(BaseModel):
 class CashFlowEventResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    date: date
+    date: _Date
     kind: str
     account_id: UUID = Field(serialization_alias="accountId")
     amount: CashFlowMoneyResponse
@@ -162,8 +163,8 @@ class CashFlowEventResponse(BaseModel):
     occurrence_id: UUID | None = Field(serialization_alias="occurrenceId")
     recurrence_id: UUID | None = Field(serialization_alias="recurrenceId")
     rule_version: int | None = Field(serialization_alias="ruleVersion")
-    period_start: date | None = Field(serialization_alias="periodStart")
-    scheduled_date: date | None = Field(serialization_alias="scheduledDate")
+    period_start: _Date | None = Field(serialization_alias="periodStart")
+    scheduled_date: _Date | None = Field(serialization_alias="scheduledDate")
     overdue: bool
     expected_amount: CashFlowMoneyResponse | None = Field(
         serialization_alias="expectedAmount"
