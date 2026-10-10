@@ -42,13 +42,28 @@ Exigir que o usuário gere cada mês antes de ver o caixa omitiria compromissos 
 
 Data de referência = data do servidor (relógio injetado; `date.today` na composição, como nas recorrências), devolvida na resposta. Janela inclusiva de até 92 dias, `from <= referência`; padrão 30 dias a partir da referência; janela totalmente passada é histórica (`NOT_APPLICABLE`). Até 50 contas e 2000 eventos por leitura: excedeu, a leitura **falha** com erro explícito, nunca trunca.
 
+A janela também pode ser **relativa**: `days` (1–92), exclusivo com `through`, conta o comprimento a partir de `from` ou, sem `from`, da data de referência do servidor. Assim o cliente escolhe "próximos N dias" sem conhecer nem inventar a data do servidor — inclusive quando a primeira leitura foi recusada (`422`) e ainda não há `referenceDate` no cliente. Janelas de calendário (mês atual, personalizado) continuam exigindo a data devolvida por uma leitura bem-sucedida.
+
 ### Moedas, contas e audiência
 
 Cada moeda é um grupo independente; nada é somado entre moedas e não há câmbio. Contas padrão: `ACTIVE` visíveis; contas explícitas precisam ser visíveis (qualquer status), senão `404` indistinguível. A residência e o operador vêm da sessão; membership ativa é exigida; a RLS forçada das contas, Movements, regras e ocorrências decide a audiência antes de qualquer agregação.
 
 ### Estados incompletos
 
-`projectionStatus` = `COMPLETE` | `INCOMPLETE` | `NOT_APPLICABLE`, com `issues` (`code`, `severity`, contagem, contas): `OPENING_BALANCE_MISSING` e `RULE_ACCOUNT_INACTIVE` tornam a projeção `INCOMPLETE`; `OPENING_BALANCE_AFTER_WINDOW_START`, `OVERDUE_OCCURRENCES`, `UNGENERATED_PAST_OCCURRENCES`, `PAUSED_RULES` e `HISTORICAL_WINDOW` são `ATTENTION`. Saldo sem opening balance é calculado a partir de zero e dito explicitamente.
+`projectionStatus` = `COMPLETE` | `INCOMPLETE` | `NOT_APPLICABLE`, com `issues` (`code`, `severity`, contagem, contas): `OPENING_BALANCE_MISSING`, `OPENING_BALANCE_AFTER_WINDOW_START` e `RULE_ACCOUNT_INACTIVE` tornam a projeção `INCOMPLETE`; `OVERDUE_OCCURRENCES`, `UNGENERATED_PAST_OCCURRENCES`, `PAUSED_RULES` e `HISTORICAL_WINDOW` são `ATTENTION`. Saldo sem opening balance é calculado a partir de zero e dito explicitamente.
+
+### Âncora e risco: prospectivo × histórico
+
+O opening balance ancora o saldo **a partir da sua data efetiva** (ADR-0018). Cada dia da série traz `anchored`: verdadeiro só quando **todas** as contas do grupo têm opening balance efetivo até aquele dia. Antes da âncora (ou sem opening balance) os números da série continuam visíveis, mas são estimativas — o valor de abertura aplicado antes da data ou um saldo que parte de zero — e **nunca** entram na avaliação de risco; por isso `OPENING_BALANCE_AFTER_WINDOW_START` é `INCOMPLETE`. Nenhum Movement sintético é criado e nenhum writer muda.
+
+O risco é dividido em dois fatos distintos, no consolidado e por conta:
+
+- `risk` (prospectivo): somente os dias **ancorados** a partir da data de referência. Um déficit que já aconteceu e foi recuperado não é anunciado como risco futuro.
+- `historicalRisk`: somente os dias **ancorados** anteriores à referência — déficit realizado, apresentado como fato, nunca como previsão.
+
+Cada risco traz `evaluatedDays` (dias ancorados avaliados) e é `null` quando não há dia avaliável daquele lado — `null` significa **não avaliável**, nunca "sem risco". Por conta, a âncora é o próprio opening balance da conta.
+
+Contrato do cliente: o parser estrito do Flutter valida `projected` contra a data de referência, `anchored` contra as datas de abertura das contas e cada risco contra os dias que ele afirma avaliar (contagem, datas dentro do conjunto avaliado e, no consolidado, primeiro dia negativo e número de dias negativos conferidos com as flags diárias). Uma resposta que apresente déficit passado como risco futuro ou use dia pré-âncora como evidência é rejeitada como inválida.
 
 ### Consistência interna
 
@@ -61,12 +76,16 @@ O domínio verifica que `saldo inicial + realizados até a referência == saldo 
 - **Persistir saldo projetado/snapshot diário**: rejeitada (segunda contabilidade, invalidação complexa).
 - **Somar moedas com câmbio**: fora do escopo; exige contrato de FX rastreável.
 - **Paginação por cursor dos eventos**: o saldo corrido depende de todos os eventos anteriores; preferimos janela curta e recusa explícita acima do teto.
+- **Risco único sobre toda a janela**: rejeitado na revisão R2 — numa janela que cruza a referência transformava déficit passado em "risco a partir de" uma data passada.
+- **Recalcular a série pré-âncora a partir de zero / Movement sintético de abertura**: rejeitado — criaria um saldo diferente do canônico ou uma escrita; a marcação `anchored` + `INCOMPLETE` mantém o ledger como única autoridade.
+- **Presets relativos calculados no cliente a partir de `referenceDate`**: rejeitado — sem uma leitura bem-sucedida não há data, e inventar uma (relógio local) poderia divergir do servidor.
 
 ## Consequências positivas
 
 - Nenhuma escrita, migration ou autoridade nova; o ledger continua único.
 - Cada evento é explicável (origem, conta, regra/ocorrência/Movement, versão, data original).
-- Déficit futuro e primeira data negativa identificáveis por conta e no consolidado.
+- Déficit futuro e primeira data negativa identificáveis por conta e no consolidado, separados do déficit já ocorrido.
+- Nenhum trecho sem âncora é tratado como confiável; "não avaliável" é explícito no contrato.
 
 ## Consequências negativas e riscos
 
@@ -74,6 +93,7 @@ O domínio verifica que `saldo inicial + realizados até a referência == saldo 
 - Data de referência do servidor, sem fuso por residência.
 - Janela máxima de 92 dias e teto de eventos podem exigir filtrar contas em residências grandes.
 - Cartões, parcelas e empréstimos ainda não aparecem (declarado na resposta e na tela).
+- Contrato da resposta mudou na R2 (`risk` anulável, `historicalRisk`, `evaluatedDays`, `anchored`): cliente e servidor são publicados juntos no mesmo artefato; um cliente estrito anterior rejeitaria a resposta nova como inválida (falha fechada, sem dado errado).
 
 ## Validação
 

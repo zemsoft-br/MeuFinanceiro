@@ -44,6 +44,7 @@ Sem a previsão virtual, um caixa de 90 dias ficaria vazio até o usuário gerar
 
 - Data de referência: data do servidor (`date.today` na composição; relógio injetado). Devolvida em `referenceDate`. Fuso por residência ainda não é modelado.
 - Janela inclusiva `[from, through]`, no máximo **92 dias**, `from <= referência`. Padrão: 30 dias a partir da referência. Janela totalmente passada é **histórica** (`NOT_APPLICABLE`, só realizado).
+- Janela **relativa**: `days` (1–92), exclusivo com `through`, conta a partir de `from` ou da referência do servidor. Os presets "Próximos 7/30/60/90 dias" usam `days` (30 = padrão, sem parâmetro) e funcionam mesmo antes de qualquer leitura bem-sucedida; "Mês atual" e "Personalizado" exigem a `referenceDate` de uma leitura bem-sucedida.
 - Até **50 contas** e **2000 eventos** por leitura. Excedeu: `422 financial cash flow window has too many events` — nunca truncado.
 - Calendário canônico das recorrências: dia 31 cai no último dia do mês; 29/02 em ano bissexto.
 
@@ -61,11 +62,20 @@ Contas padrão: `ACTIVE` visíveis. `accountId` explícito precisa ser visível 
 |---|---|---|---|
 | `OPENING_BALANCE_MISSING` | INCOMPLETE | contas | saldos partem de zero; risco não avaliável |
 | `RULE_ACCOUNT_INACTIVE` | INCOMPLETE | regras | regra ativa de conta arquivada não projetada |
-| `OPENING_BALANCE_AFTER_WINDOW_START` | ATTENTION | contas | saldo inicial dentro da janela |
+| `OPENING_BALANCE_AFTER_WINDOW_START` | INCOMPLETE | contas | saldo inicial dentro da janela: dias anteriores sem âncora, fora do risco |
 | `OVERDUE_OCCURRENCES` | ATTENTION | ocorrências | previstas vencidas incluídas na referência |
 | `UNGENERATED_PAST_OCCURRENCES` | ATTENTION | meses | vencimentos passados sem ocorrência, não projetados |
 | `PAUSED_RULES` | ATTENTION | regras | regras pausadas não projetam meses novos |
 | `HISTORICAL_WINDOW` | ATTENTION | 1 | janela só no passado |
+
+Numa janela histórica o status é `NOT_APPLICABLE` mesmo com issue `INCOMPLETE` (não há projeção); o cliente mostra as issues e a âncora de cada dia.
+
+## Âncora e risco (revisão R2)
+
+- `days[].anchored`: `true` quando **todas** as contas do grupo têm opening balance com data efetiva até aquele dia (ADR-0018). Antes disso o valor de abertura é aplicado antecipadamente (ou, sem opening balance, o saldo parte de zero): os números aparecem como **estimativa** e nunca entram no risco.
+- `risk` (prospectivo): dias ancorados `>=` referência. `historicalRisk`: dias ancorados `<` referência. Ambos existem no grupo e em cada conta (por conta, a âncora é o opening balance da própria conta).
+- Cada risco tem `evaluatedDays`; `null` = **não avaliável** (nenhum dia ancorado daquele lado ou nenhum dia daquele lado), nunca "sem déficit".
+- Exemplos: janela de outubro com déficit só em 02–03/10 e saldo positivo a partir de 04/10 (referência 10/10) → `historicalRisk.firstNegativeDate = 02/10`, `risk.firstNegativeDate = null`. Opening balance em 05/10 numa janela desde 01/10 → 01–04/10 `anchored = false`, `historicalRisk.evaluatedDays = 5`, status `INCOMPLETE`.
 
 ## Persistência e consistência
 
@@ -73,9 +83,9 @@ Contas padrão: `ACTIVE` visíveis. `accountId` explícito precisa ser visível 
 
 ## API
 
-`GET /api/v1/finance/cash-flow?from=YYYY-MM-DD&through=YYYY-MM-DD[&accountId=…][&currency=XXX]`
+`GET /api/v1/finance/cash-flow?[from=YYYY-MM-DD][&through=YYYY-MM-DD | &days=N][&accountId=…][&currency=XXX]`
 
-- Parâmetros desconhecidos ou repetidos, datas/moeda malformadas e janela fora do contrato: `422 invalid financial cash flow request`.
+- Parâmetros desconhecidos ou repetidos, datas/moeda malformadas, `days` fora de 1–92 (ou com zero à esquerda, decimal), `days` junto com `through` e janela fora do contrato: `422 invalid financial cash flow request`.
 - Sem sessão `401`; sem membership `403`; sem residência primária `409`; conta não visível `404`; limite `422`; falha de banco `503`. Mensagens sanitizadas.
 - Não existe `POST`, `PUT`, `PATCH` nem `DELETE` (`405`).
 
@@ -87,12 +97,14 @@ Contas padrão: `ACTIVE` visíveis. `accountId` explícito precisa ser visível 
                       expectedIncome, expectedExpense, expectedNet, overdueCount, overdueNet,
                       recurrenceRealizedCount, recurrenceRealizedExpected, recurrenceRealizedActual,
                       realizedCount, expectedCount },
-             risk { minimumBalance, minimumBalanceDate, firstNegativeDate, negativeDays },
+             risk | null, historicalRisk | null
+                  // cada um: { minimumBalance, minimumBalanceDate, firstNegativeDate,
+                  //            negativeDays, evaluatedDays }
              accounts[] { accountId, name, accountType, visibilityScope, status, hasOpeningBalance,
                           openingBalanceDate, startingBalance, balanceAtReference, realizedNet,
-                          expectedNet, closingBalance, risk },
+                          expectedNet, closingBalance, risk | null, historicalRisk | null },
              days[] { date, opening, realizedIncome, realizedExpense, expectedIncome, expectedExpense,
-                      neutralNet, closing, projected, negative },
+                      neutralNet, closing, projected, anchored, negative },
              events[] { date, kind, accountId, amount, resultEffect, description, movementId,
                         movementRole, reversalOfId, transferId, occurrenceId, recurrenceId,
                         ruleVersion, periodStart, scheduledDate, overdue, expectedAmount,
@@ -106,24 +118,26 @@ Dinheiro sempre `{amount: "decimal", currency}`. Despesa e receita são magnitud
 Tela **Fluxo de caixa** (`/app/financas/fluxo-de-caixa`, atalho em Finanças; a IA canônica prevê `/app/planejamento/fluxo-caixa`, mas as telas de planejamento já entregues vivem sob `/app/financas`):
 
 - aviso fixo: somente leitura, previsto não altera saldo nem extrato, fontes excluídas listadas;
-- período (30/60/90 dias, mês atual, personalizado até 92 dias), filtro de contas (inclusive arquivadas, explicitamente) e moeda;
-- saldo real × projetado, realizado × previsto, risco de saldo negativo em texto (consolidado e por conta), **"risco não avaliável" quando falta saldo inicial**;
+- período (7/30/60/90 dias via `days`, mês atual, personalizado até 92 dias), filtro de contas (inclusive arquivadas, explicitamente) e moeda;
+- saldo real × projetado, realizado × previsto;
+- **dois cartões de risco**: *Risco de saldo negativo* (prospectivo, a partir da referência) e *Saldo negativo já ocorrido (histórico)* — "fato realizado, não previsão" —, cada um com o consolidado e as contas; avaliação parcial dita ("Avaliados N de M dias"); `null` vira **"não avaliável"**, nunca "sem déficit";
+- dias e saldos sem âncora rotulados como **estimativa** (série diária, resumo, contas e detalhe do evento) e nunca destacados como negativos;
 - status e issues em texto; evolução diária (dias com movimento ou todos); eventos por dia com origem (*Realizado*, *Previsto · ocorrência gerada*, *Previsto pela regra · não gerado*, *Prevista vencida*) e diálogo de detalhe;
 - listas longas exibidas em páginas de 100 com "Exibindo N de M" (nunca cortadas em silêncio);
-- estados: carregando, vazio, erro, indisponível, sessão, acesso, residência, conta indisponível, resposta inválida, recusa do servidor (422, filtros continuam utilizáveis) e "dados possivelmente desatualizados" após falha de atualização.
+- estados: carregando, vazio, erro, indisponível, sessão, acesso, residência, conta indisponível, resposta inválida, recusa do servidor (422 — inclusive na **primeira** leitura: contas e presets relativos continuam utilizáveis para reduzir a seleção e recuperar) e "dados possivelmente desatualizados" após falha de atualização.
 
-Contratos do cliente: só `GET`; nenhum `double`; nenhuma soma de dinheiro; validação estrita do formato (chaves fechadas, moeda do grupo, dias contíguos, eventos ordenados e coerentes com a origem); presets derivam a janela da `referenceDate` do servidor; respostas obsoletas descartadas; sem retry automático.
+Contratos do cliente: só `GET`; nenhum `double`; nenhuma soma de dinheiro; validação estrita do formato (chaves fechadas iguais aos DTOs Python — conferidas por teste de contrato —, moeda do grupo, dias contíguos, `projected` coerente com a referência, `anchored` coerente com as datas de abertura, riscos coerentes com os dias avaliados, eventos ordenados e coerentes com a origem); presets relativos enviam `days` e nunca uma data do cliente; janela padrão conferida (`from == referenceDate`, comprimento pedido); respostas obsoletas descartadas; sem retry automático.
 
 ## Evidências (validação local; sem GitHub Actions)
 
 | Escopo | Testes |
 |---|---|
-| domínio puro (`packages/finance/tests/test_cash_flow.py`) | 50 |
+| domínio puro (`packages/finance/tests/test_cash_flow.py`) | 59 |
 | store PostgreSQL 18.4, role `NOBYPASSRLS`, RLS forçada (`packages/persistence/tests/test_financial_cash_flow.py`) | 18 |
 | serviço (`apps/api/tests/test_financial_cash_flow_service.py`) | 8 |
-| HTTP real + PostgreSQL (`apps/api/tests/test_financial_cash_flow_postgres.py`) | 22 |
-| contratos de qualidade (backend e Flutter) | 14 |
-| Flutter (API, controller, tela) | 56 |
+| HTTP real + PostgreSQL (`apps/api/tests/test_financial_cash_flow_postgres.py`) | 32 |
+| contratos de qualidade (backend, Flutter e paridade DTO Python × parser Dart) | 18 |
+| Flutter (API 51, controller 17, tela 16) | 84 |
 
 Provas relevantes: paridade do saldo real com `derive_financial_account_balance_and_statement`; leitura não escreve (contagem de todas as tabelas `finance`); snapshot sob escrita concorrente entre statements; transação `read only` + `repeatable read`; número de statements idêntico para 1 ou dezenas de contas/regras/Movements; 5 contas × 2 anos de histórico diário + 90 regras em ~segundos sob RLS com o índice `ix_finance_movements_account_effective` no plano; transferência para conta invisível sem vazamento; membership revogada falha fechado.
 
@@ -149,3 +163,11 @@ Provas relevantes: paridade do saldo real com `derive_financial_account_balance_
 | 3 | `GET /finance/cash-flow`, HTTP real, contrato de qualidade | concluído |
 | 4 | tela Flutter, controller, cliente estrito | concluído |
 | 5 | hardening, smoke vertical, smoke na pilha real, documentação | concluído |
+| R2 | revisão da PR #266: primeira leitura 422 recuperável (`days`), risco prospectivo × histórico, âncora do opening balance (`anchored`, `INCOMPLETE`) | concluído |
+
+### Revisão R2 (PR #266)
+
+- **P2-1 — primeira leitura 422**: os filtros dependiam de uma `referenceDate` que só existe após leitura bem-sucedida. Agora contas e presets relativos (`days`, incluindo *Próximos 7 dias*) ficam habilitados após qualquer recusa; mês atual/personalizado esperam a data do servidor, com aviso. Nenhuma data é inventada no cliente.
+- **P2-2 — déficit histórico como risco futuro**: o risco passou a ser dividido em `risk` (dias `>=` referência) e `historicalRisk` (dias `<` referência), no grupo e por conta; a tela mostra dois cartões distintos.
+- **P2-3 — saldo de abertura posterior ao início**: dias antes da âncora têm `anchored = false`, ficam fora de todo risco, aparecem como estimativa e `OPENING_BALANCE_AFTER_WINDOW_START` passou a `INCOMPLETE`.
+- Achado na R2: `_enumByWire` limitava enums a 32 caracteres e `OPENING_BALANCE_AFTER_WINDOW_START` tem 34 — qualquer resposta com esse aviso seria rejeitada como inválida. Limite elevado a 64 e coberto por teste de contrato.

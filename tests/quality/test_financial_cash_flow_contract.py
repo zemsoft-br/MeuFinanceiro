@@ -113,5 +113,19 @@ def test_adr_records_the_projection_decision() -> None:
         "nenhuma migration",
         "92 dias",
         "2000 eventos",
+        "`historicalRisk`",
+        "`anchored`",
+        "`evaluatedDays`",
+        "`days` (1–92)",
     ):
         assert required in ADR, required
+
+
+def test_risk_only_evaluates_anchored_days_on_each_side_of_the_reference() -> None:
+    code = _code(DOMAIN)
+    assert "d.anchored and d.projected" in code
+    assert "d.anchored and not d.projected" in code
+    assert (
+        "FinancialCashFlowIssueCode.OPENING_BALANCE_AFTER_WINDOW_START: (\n"
+        "        FinancialCashFlowIssueSeverity.INCOMPLETE"
+    ) in code
