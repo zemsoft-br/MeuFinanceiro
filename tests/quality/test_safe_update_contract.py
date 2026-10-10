@@ -19,6 +19,31 @@ def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def markdown_section(content: str, heading: str) -> str:
+    lines = content.splitlines()
+    marker = f"## {heading}"
+    assert lines.count(marker) == 1, marker
+    start = lines.index(marker) + 1
+    end = next(
+        (index for index in range(start, len(lines)) if lines[index].startswith("## ")),
+        len(lines),
+    )
+    return "\n".join(lines[start:end])
+
+
+def workflow_trigger_names(content: str) -> list[str]:
+    lines = content.splitlines()
+    assert lines.count("on:") == 1
+    start = lines.index("on:") + 1
+    triggers: list[str] = []
+    for line in lines[start:]:
+        if line and not line.startswith(" "):
+            break
+        if line.startswith("  ") and not line.startswith("   ") and line.strip():
+            triggers.append(line.strip().removesuffix(":"))
+    return triggers
+
+
 def test_update_operators_exist_and_require_sensitive_acknowledgement() -> None:
     assert UPDATE_SH.is_file()
     assert UPDATE_PS1.is_file()
@@ -112,9 +137,40 @@ def test_update_contract_is_linked_and_ignored() -> None:
     assert ".updates/" in read(GITIGNORE)
     assert "SAFE_UPDATE_AND_ROLLBACK.md" in read(README)
     assert "SAFE_UPDATE_AND_ROLLBACK.md" in read(INSTALLATION)
-    assert "update-foundation.sh" in read(SAFE_UPDATE_QUALITY)
-    assert "update-foundation.ps1" in read(SAFE_UPDATE_QUALITY)
+    assert "bash infra/scripts/update-foundation.sh" in read(SAFE_UPDATE_QUALITY)
     assert RUNBOOK.is_file()
+
+
+def test_runbook_documents_each_operator_in_its_own_section() -> None:
+    runbook = read(RUNBOOK)
+    unix = markdown_section(runbook, "Linux, macOS ou WSL 2")
+    windows = markdown_section(runbook, "Windows PowerShell")
+
+    assert "bash infra/scripts/update-foundation.sh" in unix
+    assert "--acknowledge-sensitive" in unix
+    assert "update-foundation.ps1" not in unix
+    assert "& .\\infra\\scripts\\update-foundation.ps1" in windows
+    assert "-AcknowledgeSensitive" in windows
+    assert "update-foundation.sh" not in windows
+
+
+def test_safe_update_quality_is_manual_only_on_unix_runner() -> None:
+    workflow = read(SAFE_UPDATE_QUALITY)
+    runners = [
+        line.split(":", 1)[1].strip()
+        for line in workflow.splitlines()
+        if line.strip().startswith("runs-on:")
+    ]
+    shells = [
+        line.split(":", 1)[1].strip()
+        for line in workflow.splitlines()
+        if line.strip().startswith("shell:")
+    ]
+
+    assert workflow_trigger_names(workflow) == ["workflow_dispatch"]
+    assert runners == ["ubuntu-latest"]
+    assert shells
+    assert set(shells) == {"bash"}
 
 
 def test_temporary_finalization_artifacts_are_absent() -> None:
