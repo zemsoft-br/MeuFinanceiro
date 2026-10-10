@@ -175,8 +175,8 @@ Após o livro estável:
 4. recorrências (#254, fechada): implementadas em API e Flutter e integradas ao `develop` (PR #255); regra mensal manual como modelo, ocorrência persistida como instância e Movement como único fato realizado, criado só por Registrar explícito e atômico; detalhes em `FINANCIAL_RECURRENCES.md` e ADR-0027;
 5. assinaturas assistidas (#256): implementadas em API e Flutter e integradas ao `develop` (PR #257); sugestões derivadas e determinísticas que, só com confirmação, criam uma recorrência da #254; detalhes em `FINANCIAL_RECURRENCE_SUGGESTIONS.md` e ADR-0028;
 6. metas (#260): destinação virtual de saldo existente, integrada ao `develop` pela PR #261 e issue fechada; detalhes em `FINANCIAL_GOALS.md` e ADR-0029;
-7. projetos (#262): em implementação na branch `feat/financial-projects-262`, domínio/migration/store/API e cliente Dart candidatos, com PostgreSQL/HTTP/Flutter ainda sem gates finais; detalhes em `FINANCIAL_PROJECTS.md` e ADR-0030 (Proposed);
-8. fluxo de caixa;
+7. projetos (#262, fechada): integrados ao `develop` pela PR #263; orçamento total planejado e associações append-only de despesas originais, realizado derivado com estornos; detalhes em `FINANCIAL_PROJECTS.md` e ADR-0030;
+8. fluxo de caixa (#265): implementado em API e Flutter na branch `feat/financial-cash-flow-265` (PR em rascunho); projeção somente leitura do saldo real e dos compromissos conhecidos (ocorrências `PENDING` persistidas e previsão virtual das regras ativas), por conta e moeda, sem persistir projeção nem gerar ocorrências; detalhes em `FINANCIAL_CASH_FLOW.md` e ADR-0031 (Proposed);
 9. cenários.
 
 ## 6. Fase 3 — Importações

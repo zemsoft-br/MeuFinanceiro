@@ -196,6 +196,8 @@ Regras:
 - transferência interna não altera saldo consolidado projetado;
 - compra e pagamento de fatura têm efeitos distintos em consumo e caixa.
 
+A primeira projeção (fluxo de caixa v1, somente leitura, sem persistência nem geração de ocorrências) está em `FINANCIAL_CASH_FLOW.md` e ADR-0031.
+
 ## 13. Importações e conciliação
 
 ### 13.1 Estados

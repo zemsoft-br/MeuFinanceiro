@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:meufinanceiro_app/core/auth/authenticated_api_client.dart';
 
 part 'financial_budget_api.dart';
+part 'financial_cash_flow_api.dart';
 part 'financial_categorization_rules_api.dart';
 part 'financial_goal_api.dart';
 part 'financial_project_api.dart';
@@ -1476,7 +1477,9 @@ T _enumByWire<T>(
   String fieldName,
   String Function(T item) wire,
 ) {
-  final normalized = _boundedText(raw, fieldName, maxLength: 32);
+  // Bounded, but above the longest wire value of every enum here (for example
+  // OPENING_BALANCE_AFTER_WINDOW_START has 34 characters).
+  final normalized = _boundedText(raw, fieldName, maxLength: 64);
   for (final item in values) {
     if (wire(item) == normalized) return item;
   }
