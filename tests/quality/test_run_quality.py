@@ -585,6 +585,302 @@ def test_recreate_only_replaces_quality_venv_and_spares_other_basetemps(
     assert (other_run / "artifact.txt").read_text(encoding="utf-8") == "other run"
 
 
+# --- read-only Git objects inside basetemp (Issue 240) -----------------------
+
+FILE_ATTRIBUTE_READONLY = 0x1
+windows_only = pytest.mark.skipif(
+    os.name != "nt", reason="read-only attribute blocks deletion only on Windows"
+)
+
+
+def has_readonly_attribute(path: Path) -> bool:
+    attributes: int = getattr(os.lstat(path), "st_file_attributes", 0)
+    return bool(attributes & FILE_ATTRIBUTE_READONLY)
+
+
+def write_git_object(repository: Path) -> Path:
+    """Let Git itself store a loose object, exactly as the DCO checker tests do."""
+    subprocess.run(
+        ["git", "init", "--quiet", str(repository)], check=True, capture_output=True
+    )
+    source = repository / "payload.txt"
+    source.write_text("synthetic payload\n", encoding="utf-8")
+    digest = subprocess.run(
+        ["git", "-C", str(repository), "hash-object", "-w", "payload.txt"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    git_object = repository / ".git" / "objects" / digest[:2] / digest[2:]
+    assert git_object.is_file()
+    return git_object
+
+
+def make_readonly_file(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("protected", encoding="utf-8")
+    os.chmod(path, stat.S_IREAD)
+    return path
+
+
+def clear_readonly(path: Path) -> None:
+    os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
+
+
+@windows_only
+def test_cleanup_removes_readonly_git_objects_on_windows(tmp_path: Path) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    git_object = write_git_object(basetemp / "dco")
+    assert has_readonly_attribute(git_object)
+
+    module.remove_pytest_basetemp(basetemp, root)
+
+    assert not basetemp.exists()
+    assert root.is_dir()
+
+
+@windows_only
+def test_cleanup_clears_readonly_directories_on_windows(tmp_path: Path) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    locked_dir = basetemp / "locked"
+    make_readonly_file(locked_dir / "inner.txt")
+    os.chmod(locked_dir, stat.S_IREAD)
+
+    module.remove_pytest_basetemp(basetemp, root)
+
+    assert not basetemp.exists()
+
+
+def test_cleanup_of_regular_files_never_changes_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    (basetemp / "nested").mkdir()
+    (basetemp / "nested" / "regular.txt").write_text("plain", encoding="utf-8")
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("chmod must not run for writable entries")
+
+    monkeypatch.setattr(os, "chmod", forbidden)
+
+    module.remove_pytest_basetemp(basetemp, root)
+
+    assert not basetemp.exists()
+
+
+def test_permission_error_without_readonly_attribute_stays_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    held = basetemp / "held-open.txt"
+    held.write_text("handle held by another process", encoding="utf-8")
+    chmods: list[object] = []
+
+    def locked(path: object, *_args: object, **_kwargs: object) -> None:
+        raise PermissionError(13, "The process cannot access the file", str(path))
+
+    monkeypatch.setattr(os, "unlink", locked)
+    monkeypatch.setattr(os, "remove", locked)
+    monkeypatch.setattr(os, "chmod", lambda *a, **_k: chmods.append(a))
+
+    with pytest.raises(module.BasetempCleanupError, match="No other path"):
+        module.remove_pytest_basetemp(basetemp, root)
+
+    assert chmods == []
+    assert held.read_text(encoding="utf-8") == "handle held by another process"
+
+
+def test_readonly_handler_reraises_everything_it_does_not_own(
+    tmp_path: Path,
+) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    inside = make_readonly_file(basetemp / "inside.txt")
+    writable = basetemp / "writable.txt"
+    writable.write_text("w", encoding="utf-8")
+    outside = make_readonly_file(tmp_path / "outside.txt")
+    sibling = make_readonly_file(root / f"pytest-{HEX_B}" / "evidence.txt")
+    handler = module.readonly_retry_handler(basetemp)
+    denied = PermissionError(5, "Access is denied")
+
+    cases: list[tuple[object, Path, BaseException]] = [
+        (os.unlink, inside, OSError(5, "I/O error")),
+        (os.unlink, inside, FileNotFoundError(2, "missing")),
+        (os.scandir, inside, denied),
+        (os.lstat, inside, denied),
+        (os.unlink, writable, denied),
+        (os.unlink, outside, denied),
+        (os.unlink, sibling, denied),
+        (os.rmdir, basetemp, denied),
+        (os.rmdir, root, denied),
+        (os.unlink, basetemp / ".." / f"pytest-{HEX_B}" / "evidence.txt", denied),
+        (os.unlink, basetemp / "missing.txt", denied),
+    ]
+    try:
+        for function, path, error in cases:
+            with pytest.raises(type(error)) as raised:
+                handler(function, str(path), error)
+            assert raised.value is error, (function, path)
+        for survivor in (inside, writable, outside, sibling):
+            assert survivor.exists()
+        if os.name == "nt":
+            for still_readonly in (inside, outside, sibling):
+                assert has_readonly_attribute(still_readonly)
+    finally:
+        for path in (inside, outside, sibling):
+            clear_readonly(path)
+
+
+@windows_only
+def test_readonly_handler_never_touches_links_inside_basetemp(
+    tmp_path: Path,
+) -> None:
+    module = load_module()
+    victim = tmp_path / "victim"
+    precious = make_readonly_file(victim / "precious.txt")
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    escape = basetemp / "escape"
+    make_link(escape, victim)
+    handler = module.readonly_retry_handler(basetemp)
+    denied = PermissionError(5, "Access is denied")
+    try:
+        with pytest.raises(PermissionError) as raised:
+            handler(os.unlink, str(escape), denied)
+        assert raised.value is denied
+        assert escape.exists()
+
+        module.remove_pytest_basetemp(basetemp, root)
+
+        assert not basetemp.exists()
+        assert precious.read_text(encoding="utf-8") == "protected"
+        assert has_readonly_attribute(precious)
+    finally:
+        if escape.exists():
+            remove_link(escape)
+        clear_readonly(precious)
+
+
+@windows_only
+def test_readonly_junction_inside_basetemp_fails_closed(tmp_path: Path) -> None:
+    module = load_module()
+    victim = tmp_path / "victim"
+    precious = make_readonly_file(victim / "precious.txt")
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    escape = basetemp / "escape"
+    make_link(escape, victim)
+    os.chmod(escape, stat.S_IREAD, follow_symlinks=False)
+    assert has_readonly_attribute(escape)
+    assert not has_readonly_attribute(victim)
+    try:
+        with pytest.raises(module.BasetempCleanupError, match="No other path"):
+            module.remove_pytest_basetemp(basetemp, root)
+
+        assert basetemp.is_dir()
+        assert has_readonly_attribute(escape)
+        assert not has_readonly_attribute(victim)
+        assert precious.read_text(encoding="utf-8") == "protected"
+        assert has_readonly_attribute(precious)
+    finally:
+        os.chmod(escape, stat.S_IREAD | stat.S_IWRITE, follow_symlinks=False)
+        remove_link(escape)
+        clear_readonly(precious)
+
+
+def test_failed_retry_after_clearing_readonly_stays_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    basetemp = module.create_pytest_basetemp(root, token_factory=lambda: HEX_A)
+    target = make_readonly_file(basetemp / "stubborn.txt")
+    handler = module.readonly_retry_handler(basetemp)
+    retries: list[str] = []
+
+    def still_denied(path: str) -> None:
+        retries.append(path)
+        raise PermissionError(5, "Access is denied", path)
+
+    monkeypatch.setattr(
+        module,
+        "is_link_or_reparse_point",
+        lambda _p, **_k: False,
+    )
+    monkeypatch.setattr(
+        module.os,
+        "lstat",
+        lambda _p: types.SimpleNamespace(
+            st_mode=stat.S_IFREG | stat.S_IREAD,
+            st_file_attributes=FILE_ATTRIBUTE_READONLY,
+        ),
+    )
+    monkeypatch.setattr(module.os, "chmod", lambda *_a, **_k: None)
+    monkeypatch.setattr(module.os, "unlink", still_denied)
+    try:
+        with pytest.raises(PermissionError, match="Access is denied"):
+            handler(module.os.unlink, str(target), PermissionError(5, "first"))
+    finally:
+        monkeypatch.undo()
+        clear_readonly(target)
+
+    assert retries == [str(target)]
+
+
+@windows_only
+def test_failing_pytest_preserves_readonly_evidence(tmp_path: Path) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    created: list[Path] = []
+
+    def failing(command: list[str], **_kwargs: object) -> None:
+        created.append(write_git_object(basetemp_of(command) / "dco"))
+        raise subprocess.CalledProcessError(1, "pytest")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        module.run_pytest_with_isolated_basetemp(
+            Path("python"), test_env={"K": "V"}, tmp_root=root, runner=failing
+        )
+
+    (git_object,) = created
+    assert git_object.is_file()
+    assert has_readonly_attribute(git_object)
+
+
+@windows_only
+def test_success_with_readonly_objects_removes_only_its_own_basetemp(
+    tmp_path: Path,
+) -> None:
+    module = load_module()
+    root = tmp_path / ".quality-tmp"
+    older = module.create_pytest_basetemp(root, token_factory=lambda: HEX_B)
+    older_object = write_git_object(older / "old")
+    seen: list[Path] = []
+
+    def passing(command: list[str], **_kwargs: object) -> None:
+        basetemp = basetemp_of(command)
+        seen.append(basetemp)
+        write_git_object(basetemp / "dco")
+
+    module.run_pytest_with_isolated_basetemp(
+        Path("python"), test_env={"K": "V"}, tmp_root=root, runner=passing
+    )
+
+    (basetemp,) = seen
+    assert not basetemp.exists()
+    assert older_object.is_file()
+    assert has_readonly_attribute(older_object)
+
+
 @pytest.mark.parametrize("platform", ["nt", "posix"])
 def test_basetemp_command_is_platform_safe(platform: str, tmp_path: Path) -> None:
     module = load_module()

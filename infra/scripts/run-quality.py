@@ -20,6 +20,7 @@ VENV_DIR = ROOT / ".quality-venv"
 QUALITY_TMP_ROOT = ROOT / ".quality-tmp"
 BASETEMP_NAME_PATTERN = re.compile(r"pytest-[0-9a-f]{32}")
 BASETEMP_CREATE_ATTEMPTS = 8
+FILE_ATTRIBUTE_READONLY = 0x1
 FILE_ATTRIBUTE_REPARSE_POINT = 0x400
 SUPPORTED_PYTHON_MIN = (3, 13)
 SUPPORTED_PYTHON_MAX = (3, 14)
@@ -160,6 +161,41 @@ def create_pytest_basetemp(
     raise BasetempError(f"could not reserve a unique basetemp under {root}")
 
 
+def readonly_retry_handler(
+    basetemp: Path,
+) -> Callable[[Callable[..., object], str, BaseException], None]:
+    """Build an rmtree onexc that only undoes the Windows read-only attribute.
+
+    Git stores loose objects read-only, which makes unlink/rmdir fail on Windows.
+    The handler clears that attribute on one regular entry strictly inside
+    basetemp and repeats the failed call once; anything else is re-raised.
+    """
+
+    def handler(function: Callable[..., object], path: str, exc: BaseException) -> None:
+        if not isinstance(exc, PermissionError):
+            raise exc
+        if function not in (os.unlink, os.remove, os.rmdir):
+            raise exc
+        target = Path(path)
+        if ".." in target.parts or basetemp not in target.parents:
+            raise exc
+        try:
+            info = os.lstat(target)
+        except OSError:
+            raise exc from None
+        attributes: int = getattr(info, "st_file_attributes", 0)
+        if is_link_or_reparse_point(target, lstat=lambda _path: info):
+            raise exc
+        if not attributes & FILE_ATTRIBUTE_READONLY:
+            raise exc
+        os.chmod(
+            target, stat.S_IMODE(info.st_mode) | stat.S_IWRITE, follow_symlinks=False
+        )
+        function(path)
+
+    return handler
+
+
 def remove_pytest_basetemp(basetemp: Path, root: Path = QUALITY_TMP_ROOT) -> None:
     """Remove exactly one basetemp; never glob, never fall back to another path."""
     _require_exact_child(basetemp, root)
@@ -177,7 +213,7 @@ def remove_pytest_basetemp(basetemp: Path, root: Path = QUALITY_TMP_ROOT) -> Non
         raise UnsafeBasetempError(f"basetemp is not a directory: {basetemp}")
 
     try:
-        shutil.rmtree(basetemp)
+        shutil.rmtree(basetemp, onexc=readonly_retry_handler(basetemp))
     except OSError as exc:
         raise BasetempCleanupError(
             f"pytest passed but its basetemp could not be removed: {basetemp} ({exc}). "
