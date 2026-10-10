@@ -31,6 +31,7 @@ from meufinanceiro_persistence.financial_budget_realization_store import (
     FinancialBudgetRealizationStore,
 )
 from meufinanceiro_persistence.financial_budget_store import FinancialBudgetStore
+from meufinanceiro_persistence.financial_cash_flow_store import FinancialCashFlowStore
 from meufinanceiro_persistence.financial_goal_store import FinancialGoalStore
 from meufinanceiro_persistence.financial_project_store import FinancialProjectStore
 from meufinanceiro_persistence.financial_recurrence_store import (
@@ -72,6 +73,7 @@ from app.api.routes.finance_categorization import (
     router as finance_categorization_router,
 )
 from app.api.routes.finance_budgets import router as finance_budgets_router
+from app.api.routes.finance_cash_flow import router as finance_cash_flow_router
 from app.api.routes.finance_goals import router as finance_goals_router
 from app.api.routes.finance_projects import router as finance_projects_router
 from app.api.routes.finance_recurrence_suggestions import (
@@ -86,6 +88,7 @@ from app.services.banking_admin import BankingAdministrationService
 from app.services.banking_connections import BankingConnectionsService
 from app.services.financial_categorization import FinancialCategorizationService
 from app.services.financial_budgets import FinancialBudgetService
+from app.services.financial_cash_flow import FinancialCashFlowService
 from app.services.financial_goals import FinancialGoalService
 from app.services.financial_projects import FinancialProjectService
 from app.services.financial_recurrence_suggestions import (
@@ -138,6 +141,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         financial_goal_store = FinancialGoalStore(database.engine)
         financial_project_store = FinancialProjectStore(database.engine)
         financial_recurrence_store = FinancialRecurrenceStore(database.engine)
+        financial_cash_flow_store = FinancialCashFlowStore(database.engine)
         financial_recurrence_suggestion_store = FinancialRecurrenceSuggestionStore(
             database.engine
         )
@@ -219,6 +223,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             financial_recurrence_store,
             clock=date.today,
         )
+        app.state.financial_cash_flow = FinancialCashFlowService(
+            financial_cash_flow_store,
+            clock=date.today,
+        )
         app.state.financial_recurrence_suggestions = (
             FinancialRecurrenceSuggestionService(
                 financial_recurrence_suggestion_store,
@@ -283,6 +291,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(finance_projects_router, prefix="/api/v1")
     application.include_router(finance_recurrences_router, prefix="/api/v1")
     application.include_router(finance_recurrence_suggestions_router, prefix="/api/v1")
+    application.include_router(finance_cash_flow_router, prefix="/api/v1")
     application.include_router(health_router, prefix="/api/v1")
     application.include_router(demo_router, prefix="/api/v1")
     return application
