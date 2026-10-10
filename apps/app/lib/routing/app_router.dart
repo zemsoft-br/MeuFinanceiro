@@ -14,6 +14,7 @@ import 'package:meufinanceiro_app/features/finance/financial_categorization_rule
 import 'package:meufinanceiro_app/features/finance/financial_account_detail_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_accounts_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_budget_screen.dart';
+import 'package:meufinanceiro_app/features/finance/financial_cash_flow_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_goal_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_project_screen.dart';
 import 'package:meufinanceiro_app/features/finance/financial_pending_screen.dart';
@@ -115,6 +116,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             name: AppRoutes.financeProjects,
             pageBuilder: (context, state) {
               return const NoTransitionPage(child: FinancialProjectScreen());
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.financeCashFlowPath,
+            name: AppRoutes.financeCashFlow,
+            pageBuilder: (context, state) {
+              return const NoTransitionPage(child: FinancialCashFlowScreen());
             },
           ),
           GoRoute(

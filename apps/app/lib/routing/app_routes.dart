@@ -41,6 +41,8 @@ abstract final class AppRoutes {
   static const financeGoalsPath = '/app/financas/metas';
   static const financeProjects = 'finance-projects';
   static const financeProjectsPath = '/app/financas/projetos';
+  static const financeCashFlow = 'finance-cash-flow';
+  static const financeCashFlowPath = '/app/financas/fluxo-de-caixa';
   static const financeRecurrences = 'finance-recurrences';
   static const financeRecurrencesPath = '/app/financas/recorrencias';
   static const financePending = 'finance-pending';

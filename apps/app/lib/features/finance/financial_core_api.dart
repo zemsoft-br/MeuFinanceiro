@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:meufinanceiro_app/core/auth/authenticated_api_client.dart';
 
 part 'financial_budget_api.dart';
+part 'financial_cash_flow_api.dart';
 part 'financial_categorization_rules_api.dart';
 part 'financial_goal_api.dart';
 part 'financial_project_api.dart';
