@@ -73,13 +73,17 @@ class FinancialCashFlowService:
         through_date: date | None,
         account_ids: tuple[UUID, ...] | None,
         currency: str | None,
+        days: int | None = None,
     ) -> FinancialCashFlowProjection:
         today = self._clock()
         if isinstance(today, datetime) or not isinstance(today, date):
             raise TypeError("clock must return a date")
         try:
             window = cash_flow_window(
-                from_date=from_date, through_date=through_date, reference_date=today
+                from_date=from_date,
+                through_date=through_date,
+                reference_date=today,
+                days=days,
             )
         except FinancialCashFlowWindowError:
             raise CashFlowRequestError("invalid cash flow window") from None

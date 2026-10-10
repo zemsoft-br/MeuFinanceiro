@@ -296,6 +296,12 @@ def test_source_matches_the_canonical_balance_and_projects_the_rule(
     assert group.totals.realized_expense == _brl("1800")
     assert group.closing_balance == _brl("4260")
     assert group.projection_status is FinancialCashFlowProjectionStatus.COMPLETE
+    # The window crosses the reference date: history and projection are split.
+    assert group.historical_risk is not None
+    assert group.historical_risk.evaluated_days == 9
+    assert group.risk is not None
+    assert group.risk.evaluated_days == 52
+    assert all(day.anchored for day in group.days)
 
 
 def test_realization_and_reversal_never_duplicate_the_occurrence(

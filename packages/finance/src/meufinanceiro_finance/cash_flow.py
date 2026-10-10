@@ -107,8 +107,9 @@ _ISSUE_SEVERITY: dict[FinancialCashFlowIssueCode, FinancialCashFlowIssueSeverity
     FinancialCashFlowIssueCode.OPENING_BALANCE_MISSING: (
         FinancialCashFlowIssueSeverity.INCOMPLETE
     ),
+    # Days before the anchor have no trustworthy balance: not a complete history.
     FinancialCashFlowIssueCode.OPENING_BALANCE_AFTER_WINDOW_START: (
-        FinancialCashFlowIssueSeverity.ATTENTION
+        FinancialCashFlowIssueSeverity.INCOMPLETE
     ),
     FinancialCashFlowIssueCode.RULE_ACCOUNT_INACTIVE: (
         FinancialCashFlowIssueSeverity.INCOMPLETE
@@ -181,14 +182,32 @@ def cash_flow_window(
     from_date: date | None,
     through_date: date | None,
     reference_date: date,
+    days: int | None = None,
 ) -> FinancialCashFlowWindow:
-    """Apply the v1 defaults (from today, 30 days) and validate the window."""
+    """Apply the v1 defaults (from today, 30 days) and validate the window.
+
+    ``days`` is an alternative to ``through_date``: the window length counted
+    from ``from_date`` (or the reference date). It lets a client choose a
+    relative window without knowing the server reference date in advance.
+    """
     _require_plain_date(reference_date, "reference_date")
     start = reference_date if from_date is None else from_date
     _require_plain_date(start, "from_date")
+    if days is not None:
+        if through_date is not None:
+            raise FinancialCashFlowWindowError("use through or days, not both")
+        if (
+            isinstance(days, bool)
+            or not isinstance(days, int)
+            or not 1 <= days <= CASH_FLOW_WINDOW_MAX_DAYS
+        ):
+            raise FinancialCashFlowWindowError(
+                f"days must be between 1 and {CASH_FLOW_WINDOW_MAX_DAYS}"
+            )
+    length = CASH_FLOW_DEFAULT_WINDOW_DAYS if days is None else days
     if through_date is None:
         try:
-            end = start + timedelta(days=CASH_FLOW_DEFAULT_WINDOW_DAYS - 1)
+            end = start + timedelta(days=length - 1)
         except OverflowError:
             raise FinancialCashFlowWindowError("window is out of range") from None
     else:
@@ -340,6 +359,12 @@ class FinancialCashFlowDay:
     an expense lowers the day's expense); ``neutral_net`` is the signed effect of
     NEUTRAL Movements. ``projected`` days are on or after the reference date of a
     non-historical window, where expectations apply.
+
+    ``anchored`` days have a monetary anchor for every account of the group: an
+    opening balance effective on or before that day. The opening balance anchors
+    the balance from its effective date on (ADR-0018). Before it the opening
+    amount is applied ahead of time, and an account without one starts from
+    zero: those figures are estimates, never used to assess risk.
     """
 
     date: date
@@ -351,6 +376,7 @@ class FinancialCashFlowDay:
     neutral_net: Money
     closing: Money
     projected: bool
+    anchored: bool
 
     @property
     def negative(self) -> bool:
@@ -362,12 +388,19 @@ class FinancialCashFlowDay:
 
 @dataclass(frozen=True, slots=True, repr=False)
 class FinancialCashFlowRisk:
-    """Lowest closing balance of the window and the first day below zero."""
+    """Lowest closing balance and first day below zero over the evaluated days.
+
+    Only anchored days are evaluated. A prospective risk covers the projected
+    days (from the reference date on); a historical risk covers the realized
+    days before it. A deficit that already happened is a historical fact and is
+    never reported as a future risk.
+    """
 
     minimum_balance: Money
     minimum_balance_date: date
     first_negative_date: date | None
     negative_days: int
+    evaluated_days: int
 
     def __repr__(self) -> str:
         return f"FinancialCashFlowRisk(negative_days={self.negative_days})"
@@ -410,7 +443,9 @@ class FinancialCashFlowAccountSummary:
     realized_net: Money
     expected_net: Money
     closing_balance: Money
-    risk: FinancialCashFlowRisk
+    # ``None`` when no day of that part of the window is anchored (or exists).
+    risk: FinancialCashFlowRisk | None
+    historical_risk: FinancialCashFlowRisk | None
 
     @property
     def has_opening_balance(self) -> bool:
@@ -445,7 +480,8 @@ class FinancialCashFlowGroup:
     balance_at_reference: Money
     closing_balance: Money
     totals: FinancialCashFlowTotals
-    risk: FinancialCashFlowRisk
+    risk: FinancialCashFlowRisk | None
+    historical_risk: FinancialCashFlowRisk | None
     days: tuple[FinancialCashFlowDay, ...]
     events: tuple[FinancialCashFlowEvent, ...]
     projection_status: FinancialCashFlowProjectionStatus
@@ -871,7 +907,8 @@ def _group(
             if starting[account_id] + realized_until != at_reference[account_id]:
                 raise FinancialLedgerStateError("cash flow aggregates are inconsistent")
 
-    days = _days(window, by_day, group_starting, zero)
+    anchors = [_anchor(entry) for entry in entries]
+    days = _days(window, by_day, group_starting, zero, anchors)
     account_summaries = tuple(
         _account_summary(entry, window, events, starting, at_reference, zero)
         for entry in entries
@@ -900,7 +937,10 @@ def _group(
         balance_at_reference=_sum(at_reference.values(), zero),
         closing_balance=group_running,
         totals=_totals(events, zero),
-        risk=_risk([(day.date, day.closing) for day in days]),
+        risk=_risk([(d.date, d.closing) for d in days if d.anchored and d.projected]),
+        historical_risk=_risk(
+            [(d.date, d.closing) for d in days if d.anchored and not d.projected]
+        ),
         days=days,
         events=tuple(events),
         projection_status=status,
@@ -913,6 +953,7 @@ def _days(
     by_day: dict[date, list[FinancialCashFlowEvent]],
     opening: Money,
     zero: Money,
+    anchors: list[date | None],
 ) -> tuple[FinancialCashFlowDay, ...]:
     days: list[FinancialCashFlowDay] = []
     current = window.from_date
@@ -930,8 +971,9 @@ def _days(
                 expected_expense=totals.expected_expense,
                 neutral_net=totals.neutral_in - totals.neutral_out,
                 closing=closing,
-                projected=(
-                    not window.is_historical and current >= window.reference_date
+                projected=_projected(window, current),
+                anchored=all(
+                    anchor is not None and anchor <= current for anchor in anchors
                 ),
             )
         )
@@ -954,12 +996,16 @@ def _account_summary(
     closing_by_day: dict[date, Money] = {}
     for event in own:
         closing_by_day[event.date] = event.account_balance_after
-    series: list[tuple[date, Money]] = []
+    anchor = _anchor(entry)
+    projected: list[tuple[date, Money]] = []
+    historical: list[tuple[date, Money]] = []
     balance = starting[account_id]
     current = window.from_date
     for _ in range(window.days):
         balance = closing_by_day.get(current, balance)
-        series.append((current, balance))
+        if anchor is not None and anchor <= current:
+            target = projected if _projected(window, current) else historical
+            target.append((current, balance))
         current = current + timedelta(days=1)
     return FinancialCashFlowAccountSummary(
         account=entry.account,
@@ -969,7 +1015,8 @@ def _account_summary(
         realized_net=totals.realized_net,
         expected_net=totals.expected_net,
         closing_balance=balance,
-        risk=_risk(series),
+        risk=_risk(projected),
+        historical_risk=_risk(historical),
     )
 
 
@@ -1024,7 +1071,20 @@ def _totals(
     )
 
 
-def _risk(series: list[tuple[date, Money]]) -> FinancialCashFlowRisk:
+def _projected(window: FinancialCashFlowWindow, day: date) -> bool:
+    return not window.is_historical and day >= window.reference_date
+
+
+def _anchor(entry: FinancialCashFlowAccountInput) -> date | None:
+    """First day the account balance is anchored (its opening balance date)."""
+    if entry.opening_balance is None:
+        return None
+    return entry.opening_balance.effective_date
+
+
+def _risk(series: list[tuple[date, Money]]) -> FinancialCashFlowRisk | None:
+    if not series:
+        return None
     minimum_date, minimum = series[0]
     first_negative: date | None = None
     negative_days = 0
@@ -1040,6 +1100,7 @@ def _risk(series: list[tuple[date, Money]]) -> FinancialCashFlowRisk:
         minimum_balance_date=minimum_date,
         first_negative_date=first_negative,
         negative_days=negative_days,
+        evaluated_days=len(series),
     )
 
 

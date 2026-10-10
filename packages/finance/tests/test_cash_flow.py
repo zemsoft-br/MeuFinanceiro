@@ -828,7 +828,9 @@ def test_opening_inside_the_window_is_flagged() -> None:
     assert [i.code for i in group.issues] == [
         FinancialCashFlowIssueCode.OPENING_BALANCE_AFTER_WINDOW_START
     ]
-    assert group.projection_status is FinancialCashFlowProjectionStatus.COMPLETE
+    # Review R2 (P2-3): days before the anchor are not a trustworthy history.
+    assert group.projection_status is FinancialCashFlowProjectionStatus.INCOMPLETE
+    assert group.issues[0].severity is FinancialCashFlowIssueSeverity.INCOMPLETE
 
 
 def test_historical_window_shows_only_realized_events() -> None:
@@ -997,3 +999,186 @@ def test_reprs_redact_money_and_identity() -> None:
         assert "Segredo" not in text
         assert "secreta" not in text
         assert str(CHECKING) not in text
+
+
+# --- review R2: historical vs prospective risk, opening anchor -------------------
+
+
+def _mixed_window() -> FinancialCashFlowWindow:
+    return _window(date(2026, 10, 1), date(2026, 10, 31))
+
+
+def test_r2_past_only_deficit_is_not_announced_as_future_risk() -> None:
+    dip = _movement("-1500", EXPENSE, date(2026, 10, 3))
+    back = _movement("2000", INCOME, date(2026, 10, 6))
+    source = _source(
+        _entry(_account(), before="0", through_reference="500"),
+        movements=(dip, back),
+    )
+
+    group = _project(source, _mixed_window()).groups[0]
+
+    assert group.risk is not None
+    assert group.risk.first_negative_date is None
+    assert group.historical_risk is not None
+    assert group.historical_risk.first_negative_date == date(2026, 10, 3)
+    assert group.historical_risk.negative_days == 3
+    account = group.accounts[0]
+    assert account.risk is not None and account.risk.first_negative_date is None
+    assert account.historical_risk is not None
+    assert account.historical_risk.first_negative_date == date(2026, 10, 3)
+
+
+def test_r2_days_before_the_opening_anchor_are_not_trusted() -> None:
+    source = _source(_entry(_account(), opening="1000", opening_on=date(2026, 10, 5)))
+
+    group = _project(source, _mixed_window()).groups[0]
+
+    assert group.projection_status is FinancialCashFlowProjectionStatus.INCOMPLETE
+    issue = group.issues[0]
+    assert issue.code is FinancialCashFlowIssueCode.OPENING_BALANCE_AFTER_WINDOW_START
+    assert issue.severity is FinancialCashFlowIssueSeverity.INCOMPLETE
+    assert [day.anchored for day in group.days[:5]] == [False] * 4 + [True]
+
+
+def test_r2_future_only_deficit_is_a_prospective_risk() -> None:
+    rent = _rule(day=20, expected="1500")
+    source = _source(
+        _entry(_account(), before="0", through_reference="0"), rules=(rent,)
+    )
+
+    group = _project(source, _mixed_window()).groups[0]
+
+    assert group.risk is not None
+    assert group.risk.first_negative_date == date(2026, 10, 20)
+    assert group.risk.negative_days == 12
+    assert group.risk.evaluated_days == 22  # Oct 10 .. Oct 31
+    assert group.historical_risk is not None
+    assert group.historical_risk.first_negative_date is None
+    assert group.historical_risk.evaluated_days == 9  # Oct 1 .. Oct 9
+
+
+def test_r2_past_and_future_deficits_are_reported_separately() -> None:
+    dip = _movement("-1500", EXPENSE, date(2026, 10, 2))
+    back = _movement("1500", INCOME, date(2026, 10, 4))
+    rent = _rule(day=25, expected="1200")
+    source = _source(
+        _entry(_account(), before="0", through_reference="0"),
+        movements=(dip, back),
+        rules=(rent,),
+    )
+
+    group = _project(source, _mixed_window()).groups[0]
+
+    assert group.historical_risk is not None
+    assert group.historical_risk.first_negative_date == date(2026, 10, 2)
+    assert group.historical_risk.minimum_balance == _money("-500")
+    assert group.risk is not None
+    assert group.risk.first_negative_date == date(2026, 10, 25)
+    assert group.risk.minimum_balance == _money("-200")
+
+
+def test_r2_account_level_risks_are_split_independently_of_the_group() -> None:
+    dip = _movement("-300", EXPENSE, date(2026, 10, 2), account_id=SAVINGS)
+    back = _movement("300", INCOME, date(2026, 10, 3), account_id=SAVINGS)
+    source = _source(
+        _entry(_account()),
+        _entry(
+            _account(SAVINGS, name="Poupança"),
+            opening="100",
+            before="0",
+            through_reference="0",
+        ),
+        movements=(dip, back),
+    )
+
+    group = _project(source, _mixed_window()).groups[0]
+
+    assert group.historical_risk is not None
+    assert group.historical_risk.first_negative_date is None  # 1100 - 300 > 0
+    savings = next(a for a in group.accounts if a.account.id == SAVINGS)
+    assert savings.historical_risk is not None
+    assert savings.historical_risk.first_negative_date == date(2026, 10, 2)
+    assert savings.risk is not None
+    assert savings.risk.first_negative_date is None
+
+
+def test_r2_missing_opening_balance_means_no_risk_is_evaluated() -> None:
+    rent = _rule(day=20, expected="1500")
+    source = _source(
+        _entry(_account(), opening=None),
+        _entry(_account(SAVINGS, name="Poupança"), opening="5000"),
+        rules=(rent,),
+    )
+
+    group = _project(source).groups[0]
+
+    assert group.risk is None
+    assert group.historical_risk is None  # the window starts on the reference
+    assert not any(day.anchored for day in group.days)
+    checking = next(a for a in group.accounts if a.account.id == CHECKING)
+    assert checking.risk is None
+    savings = next(a for a in group.accounts if a.account.id == SAVINGS)
+    assert savings.risk is not None
+    assert savings.risk.evaluated_days == 30
+
+
+def test_r2_pre_anchor_days_are_excluded_from_every_risk() -> None:
+    # The opening (1000) anchors on Oct 5; before it the series would show the
+    # same 1000, which is not a fact and must never be called "no deficit".
+    source = _source(_entry(_account(), opening="1000", opening_on=date(2026, 10, 5)))
+
+    group = _project(source, _mixed_window()).groups[0]
+
+    assert group.historical_risk is not None
+    assert group.historical_risk.evaluated_days == 5  # Oct 5 .. Oct 9
+    assert group.historical_risk.minimum_balance_date == date(2026, 10, 5)
+    assert group.accounts[0].historical_risk is not None
+    assert group.accounts[0].historical_risk.evaluated_days == 5
+
+
+def test_r2_historical_window_before_the_anchor_has_no_risk() -> None:
+    source = _source(
+        _entry(
+            _account(),
+            opening="1000",
+            opening_on=date(2026, 9, 20),
+            before="0",
+            through_reference="0",
+        )
+    )
+
+    group = _project(source, _window(date(2026, 9, 1), date(2026, 9, 15))).groups[0]
+
+    assert group.projection_status is FinancialCashFlowProjectionStatus.NOT_APPLICABLE
+    assert group.risk is None
+    assert group.historical_risk is None
+    assert [i.code for i in group.issues] == [
+        FinancialCashFlowIssueCode.OPENING_BALANCE_AFTER_WINDOW_START,
+        FinancialCashFlowIssueCode.HISTORICAL_WINDOW,
+    ]
+
+
+def test_r2_window_accepts_a_relative_length() -> None:
+    window = cash_flow_window(
+        from_date=None, through_date=None, reference_date=TODAY, days=7
+    )
+    assert (window.from_date, window.through_date) == (TODAY, date(2026, 10, 16))
+    assert (
+        cash_flow_window(
+            from_date=None, through_date=None, reference_date=TODAY, days=92
+        ).days
+        == 92
+    )
+    for bad in (0, 93, -1, True):
+        with pytest.raises(FinancialCashFlowWindowError):
+            cash_flow_window(
+                from_date=None, through_date=None, reference_date=TODAY, days=bad
+            )
+    with pytest.raises(FinancialCashFlowWindowError):
+        cash_flow_window(
+            from_date=None,
+            through_date=date(2026, 10, 20),
+            reference_date=TODAY,
+            days=5,
+        )

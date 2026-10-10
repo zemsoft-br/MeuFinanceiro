@@ -557,6 +557,12 @@ def test_member_sees_only_its_audience_and_errors_are_indistinguishable(
         "?currency=BRLX",
         "?accountId=not-a-uuid",
         "?accountId=00000000-0000-4000-8000-00000000000g",
+        "?days=0",
+        "?days=93",
+        "?days=07",
+        "?days=1.5",
+        "?days=10&days=11",
+        "?through=2026-10-20&days=5",
     ],
 )
 def test_invalid_requests_are_422_and_sanitized(api: Api, query: str) -> None:
@@ -659,3 +665,55 @@ def test_database_failure_is_a_sanitized_503(
     assert response.status_code == 503
     assert response.json() == {"detail": "financial service is unavailable"}
     _assert_sanitized(response)
+
+
+def test_r2_relative_days_window_needs_no_client_reference_date(api: Api) -> None:
+    api.account("owner")
+    body = api.ok("owner", "?days=7")
+    assert (body["from"], body["through"], body["days"]) == (
+        "2026-10-10",
+        "2026-10-16",
+        7,
+    )
+    group = body["groups"][0]
+    assert group["risk"]["evaluatedDays"] == 7
+    assert group["historicalRisk"] is None
+    assert all(day["anchored"] for day in group["days"])
+
+
+def test_r2_risk_is_split_between_history_and_projection(api: Api) -> None:
+    account = api.account("owner", opening="100.00")
+    api.entry("owner", "expense", account, "300.00", "2026-10-02")
+    api.entry("owner", "income", account, "300.00", "2026-10-04")
+
+    group = api.ok("owner", "?from=2026-10-01&through=2026-10-31")["groups"][0]
+
+    assert group["historicalRisk"]["firstNegativeDate"] == "2026-10-02"
+    assert group["historicalRisk"]["negativeDays"] == 2
+    # The deficit was recovered before the reference date: no future risk.
+    assert group["risk"]["firstNegativeDate"] is None
+    assert group["risk"]["negativeDays"] == 0
+    (account_body,) = group["accounts"]
+    assert account_body["historicalRisk"]["firstNegativeDate"] == "2026-10-02"
+    assert account_body["risk"]["firstNegativeDate"] is None
+
+
+def test_r2_days_before_the_opening_anchor_are_incomplete(api: Api) -> None:
+    api.account("owner")  # opening effective 2026-09-01
+    group = api.ok("owner", "?from=2026-08-25&through=2026-09-30")["groups"][0]
+    assert group["projectionStatus"] == "NOT_APPLICABLE"
+    issue = group["issues"][0]
+    assert issue["code"] == "OPENING_BALANCE_AFTER_WINDOW_START"
+    assert issue["severity"] == "INCOMPLETE"
+    anchored = [day["anchored"] for day in group["days"]]
+    assert anchored[:7] == [False] * 7 and all(anchored[7:])
+    assert group["historicalRisk"]["evaluatedDays"] == 30
+    assert group["risk"] is None
+
+
+def test_r2_missing_opening_balance_has_no_evaluated_risk(api: Api) -> None:
+    api.account("owner", opening=None)
+    group = api.ok("owner")["groups"][0]
+    assert group["risk"] is None
+    assert group["accounts"][0]["risk"] is None
+    assert not any(day["anchored"] for day in group["days"])

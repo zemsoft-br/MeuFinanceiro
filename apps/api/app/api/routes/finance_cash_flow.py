@@ -49,7 +49,8 @@ _CURRENCY_PATTERN = re.compile(r"^[A-Z]{3}$")
 _UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
 )
-_SINGLE_PARAMETERS = frozenset(("from", "through", "currency"))
+_DAYS_PATTERN = re.compile(r"^[1-9][0-9]{0,2}$")
+_SINGLE_PARAMETERS = frozenset(("from", "through", "days", "currency"))
 _PARAMETERS = _SINGLE_PARAMETERS | {"accountId"}
 
 
@@ -65,6 +66,7 @@ class CashFlowRiskResponse(BaseModel):
     minimum_balance_date: date = Field(serialization_alias="minimumBalanceDate")
     first_negative_date: date | None = Field(serialization_alias="firstNegativeDate")
     negative_days: int = Field(serialization_alias="negativeDays")
+    evaluated_days: int = Field(serialization_alias="evaluatedDays")
 
 
 class CashFlowIssueResponse(BaseModel):
@@ -125,7 +127,10 @@ class CashFlowAccountResponse(BaseModel):
     realized_net: CashFlowMoneyResponse = Field(serialization_alias="realizedNet")
     expected_net: CashFlowMoneyResponse = Field(serialization_alias="expectedNet")
     closing_balance: CashFlowMoneyResponse = Field(serialization_alias="closingBalance")
-    risk: CashFlowRiskResponse
+    risk: CashFlowRiskResponse | None
+    historical_risk: CashFlowRiskResponse | None = Field(
+        serialization_alias="historicalRisk"
+    )
 
 
 class CashFlowDayResponse(BaseModel):
@@ -144,6 +149,7 @@ class CashFlowDayResponse(BaseModel):
     neutral_net: CashFlowMoneyResponse = Field(serialization_alias="neutralNet")
     closing: CashFlowMoneyResponse
     projected: bool
+    anchored: bool
     negative: bool
 
 
@@ -189,7 +195,10 @@ class CashFlowGroupResponse(BaseModel):
     )
     closing_balance: CashFlowMoneyResponse = Field(serialization_alias="closingBalance")
     totals: CashFlowTotalsResponse
-    risk: CashFlowRiskResponse
+    risk: CashFlowRiskResponse | None
+    historical_risk: CashFlowRiskResponse | None = Field(
+        serialization_alias="historicalRisk"
+    )
     accounts: tuple[CashFlowAccountResponse, ...]
     days: tuple[CashFlowDayResponse, ...]
     events: tuple[CashFlowEventResponse, ...]
@@ -247,7 +256,7 @@ def _not_found() -> HTTPException:
 
 def _parameters(
     request: Request,
-) -> tuple[date | None, date | None, tuple[UUID, ...] | None, str | None]:
+) -> tuple[date | None, date | None, int | None, tuple[UUID, ...] | None, str | None]:
     """Strict query: known names only, singletons once, explicit formats."""
     items = request.query_params.multi_items()
     names = [name for name, _ in items]
@@ -277,9 +286,13 @@ def _parameters(
     currency = values.get("currency")
     if currency is not None and not _CURRENCY_PATTERN.fullmatch(currency):
         raise _invalid_request()
+    raw_days = values.get("days")
+    if raw_days is not None and not _DAYS_PATTERN.fullmatch(raw_days):
+        raise _invalid_request()
     return (
         _date(values.get("from")),
         _date(values.get("through")),
+        None if raw_days is None else int(raw_days),
         account_ids,
         currency,
     )
@@ -304,12 +317,15 @@ def _optional_money(value: Money | None) -> CashFlowMoneyResponse | None:
     return None if value is None else _money(value)
 
 
-def _risk(risk: FinancialCashFlowRisk) -> CashFlowRiskResponse:
+def _risk(risk: FinancialCashFlowRisk | None) -> CashFlowRiskResponse | None:
+    if risk is None:
+        return None
     return CashFlowRiskResponse(
         minimum_balance=_money(risk.minimum_balance),
         minimum_balance_date=risk.minimum_balance_date,
         first_negative_date=risk.first_negative_date,
         negative_days=risk.negative_days,
+        evaluated_days=risk.evaluated_days,
     )
 
 
@@ -359,6 +375,7 @@ def _account(summary: FinancialCashFlowAccountSummary) -> CashFlowAccountRespons
         expected_net=_money(summary.expected_net),
         closing_balance=_money(summary.closing_balance),
         risk=_risk(summary.risk),
+        historical_risk=_risk(summary.historical_risk),
     )
 
 
@@ -373,6 +390,7 @@ def _day(day: FinancialCashFlowDay) -> CashFlowDayResponse:
         neutral_net=_money(day.neutral_net),
         closing=_money(day.closing),
         projected=day.projected,
+        anchored=day.anchored,
         negative=day.negative,
     )
 
@@ -413,6 +431,7 @@ def _group(group: FinancialCashFlowGroup) -> CashFlowGroupResponse:
         closing_balance=_money(group.closing_balance),
         totals=_totals(group.totals),
         risk=_risk(group.risk),
+        historical_risk=_risk(group.historical_risk),
         accounts=tuple(_account(summary) for summary in group.accounts),
         days=tuple(_day(day) for day in group.days),
         events=tuple(_event(event) for event in group.events),
@@ -459,7 +478,7 @@ def read_cash_flow(
         AuthenticatedOperatorRequest, Depends(require_primary_residence)
     ],
 ) -> CashFlowResponse:
-    from_date, through_date, account_ids, currency = _parameters(request)
+    from_date, through_date, days, account_ids, currency = _parameters(request)
     installation_id, residence_id, operator_id = _context(authenticated)
     try:
         projection = _service(request).read_cash_flow(
@@ -470,6 +489,7 @@ def read_cash_flow(
             through_date=through_date,
             account_ids=account_ids,
             currency=currency,
+            days=days,
         )
     except CashFlowRequestError:
         raise _invalid_request() from None
