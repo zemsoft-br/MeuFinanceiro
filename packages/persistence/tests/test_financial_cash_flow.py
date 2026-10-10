@@ -27,6 +27,7 @@ from meufinanceiro_finance import (
     FinancialRecurrenceDraft,
     FinancialRecurrenceRealizationDraft,
     FinancialRecurrenceRecord,
+    FinancialRecurrenceReplacement,
     FinancialRecurrenceWindow,
     FinancialResultEffect,
     FinancialTransferDraft,
@@ -355,6 +356,38 @@ def test_skip_pause_and_supersede_follow_the_recurrence_contract(
     # November is still expected; December is not projected and is reported.
     assert [e.date for e in group.events] == [date(2026, 11, 20)]
     assert [i.code for i in group.issues] == [FinancialCashFlowIssueCode.PAUSED_RULES]
+
+
+def test_superseded_month_is_projected_from_the_current_rule(
+    budget_world: BudgetWorld,
+) -> None:
+    world = budget_world
+    account = world.account()
+    _opening(world, account, "1000")
+    store = FinancialRecurrenceStore(world.runtime)
+    rule = _rule(world, account, day=20, expected="80")
+    _generate(world, rule, date(2026, 11, 1), date(2026, 11, 1))
+    outcome = store.replace_recurrence(
+        **world.scope(),
+        recurrence_id=rule.id,
+        replacement=FinancialRecurrenceReplacement(
+            expected_version=1,
+            description="Internet",
+            expected_amount=Decimal("95"),
+            day_of_month=20,
+            end_date=None,
+        ),
+        today=_TODAY,
+    )
+    assert outcome.superseded_count == 1
+
+    group = _project(world, _window(_TODAY, date(2026, 11, 30))).groups[0]
+    (event,) = [e for e in group.events if e.date == date(2026, 11, 20)]
+    # The SUPERSEDED snapshot (80) is history; the current rule (95, v2) decides.
+    assert event.kind is FinancialCashFlowEventKind.EXPECTED_RULE
+    assert event.amount == _brl("-95")
+    assert event.rule_version == 2
+    assert event.occurrence_id is None
 
 
 def test_audience_is_decided_by_forced_rls(budget_world: BudgetWorld) -> None:

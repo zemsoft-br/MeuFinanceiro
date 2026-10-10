@@ -175,6 +175,30 @@ void main() {
     },
   );
 
+  test('a transport failure is unavailable and recovers on refresh', () async {
+    var broken = true;
+    final backend = FakeCashFlowBackend(
+      cashFlow: (_) {
+        if (broken) throw StateError('socket closed');
+        return cashFlowResponse();
+      },
+    );
+    final h = _harness(backend);
+
+    expect(await h.controller.load(), isFalse);
+    expect(
+      h.container.read(financialCashFlowControllerProvider).phase,
+      FinancialLoadPhase.temporarilyUnavailable,
+    );
+    broken = false;
+    expect(await h.controller.refresh(), isTrue);
+    expect(
+      h.container.read(financialCashFlowControllerProvider).phase,
+      FinancialLoadPhase.loaded,
+    );
+    expect(backend.cashFlowCalls, hasLength(2));
+  });
+
   test('an invalid response on first load shows no data', () async {
     final backend = FakeCashFlowBackend(cashFlow: (_) => {'groups': 'x'});
     final h = _harness(backend);

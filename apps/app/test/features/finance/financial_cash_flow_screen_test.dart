@@ -163,6 +163,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Prevista vencida'), findsOneWidget);
+    // Without an opening balance the screen never claims there is no deficit.
+    expect(find.text('Risco de saldo negativo não avaliável'), findsOneWidget);
+    expect(find.text('Saldo sem déficit'), findsNothing);
+    expect(find.textContaining('Estimativa sem saldo inicial'), findsOneWidget);
     expect(find.textContaining('Sem saldo inicial'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -656,6 +656,26 @@ class _Risk extends StatelessWidget {
           '${_formatDate(risk.minimumBalanceDate)}.';
     }
     final danger = negative != null || accountsAtRisk.isNotEmpty;
+    // Without an opening balance the figures start from zero: absence of a
+    // deficit can never be claimed, and a computed deficit is only an estimate.
+    final missingOpening = group.accounts
+        .where((account) => !account.hasOpeningBalance)
+        .length;
+    if (missingOpening > 0) {
+      return Card(
+        key: FinancialCashFlowScreen.riskKey,
+        color: AppTokens.amber50,
+        child: ListTile(
+          leading: const Icon(Icons.help_outline, color: AppTokens.amber700),
+          title: const Text('Risco de saldo negativo não avaliável'),
+          subtitle: Text(
+            'Falta saldo inicial em $missingOpening conta(s): os saldos partem de '
+            'zero, então não é possível afirmar se haverá saldo negativo.'
+            '${danger ? ' Estimativa sem saldo inicial: $text' : ''}',
+          ),
+        ),
+      );
+    }
     return Card(
       key: FinancialCashFlowScreen.riskKey,
       color: danger ? AppTokens.red50 : null,
