@@ -161,6 +161,12 @@ def create_pytest_basetemp(
     raise BasetempError(f"could not reserve a unique basetemp under {root}")
 
 
+def _is_regular_directory(path: Path) -> bool:
+    info = os.lstat(path)
+    redirected = is_link_or_reparse_point(path, lstat=lambda _path: info)
+    return stat.S_ISDIR(info.st_mode) and not redirected
+
+
 def readonly_retry_handler(
     basetemp: Path,
 ) -> Callable[[Callable[..., object], str, BaseException], None]:
@@ -169,6 +175,11 @@ def readonly_retry_handler(
     Git stores loose objects read-only, which makes unlink/rmdir fail on Windows.
     The handler clears that attribute on one regular entry strictly inside
     basetemp and repeats the failed call once; anything else is re-raised.
+
+    basetemp and every directory between it and the entry must be a regular
+    directory, so a link or junction above the entry is refused. These checks
+    are path-based: like shutil.rmtree itself on Windows (no fd-based removal),
+    they cannot exclude a concurrent swap between check and use.
     """
 
     def handler(function: Callable[..., object], path: str, exc: BaseException) -> None:
@@ -179,10 +190,15 @@ def readonly_retry_handler(
         target = Path(path)
         if ".." in target.parts or basetemp not in target.parents:
             raise exc
+        ancestors = [basetemp]
+        ancestors += [p for p in reversed(target.parents) if basetemp in p.parents]
         try:
+            contained = all(_is_regular_directory(directory) for directory in ancestors)
             info = os.lstat(target)
         except OSError:
             raise exc from None
+        if not contained:
+            raise exc
         attributes: int = getattr(info, "st_file_attributes", 0)
         if is_link_or_reparse_point(target, lstat=lambda _path: info):
             raise exc

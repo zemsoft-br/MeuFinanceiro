@@ -797,6 +797,63 @@ def test_readonly_junction_inside_basetemp_fails_closed(tmp_path: Path) -> None:
         clear_readonly(precious)
 
 
+@windows_only
+@pytest.mark.parametrize("layout", ["child", "deep", "basetemp"])
+def test_readonly_handler_refuses_entries_below_ancestor_junction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, layout: str
+) -> None:
+    module = load_module()
+    outside = tmp_path / "outside"
+    victim = make_readonly_file(outside / "sub" / "victim.txt")
+    root = tmp_path / ".quality-tmp"
+    root.mkdir()
+    basetemp = root / f"pytest-{HEX_A}"
+    if layout == "basetemp":
+        link = basetemp
+    else:
+        basetemp.mkdir()
+        link = basetemp / "a" / "link" if layout == "deep" else basetemp / "link"
+        link.parent.mkdir(parents=True, exist_ok=True)
+    make_link(link, outside)
+    lexical = link / "sub" / "victim.txt"
+    assert basetemp in lexical.parents
+    assert stat.S_ISREG(os.lstat(lexical).st_mode)
+    handler = module.readonly_retry_handler(basetemp)
+    denied = PermissionError(5, "Access is denied")
+    chmods: list[object] = []
+    unlinks: list[object] = []
+    real_chmod, real_unlink = os.chmod, os.unlink
+
+    def spy_chmod(
+        path: str | os.PathLike[str], mode: int, *, follow_symlinks: bool = True
+    ) -> None:
+        chmods.append(path)
+        real_chmod(path, mode, follow_symlinks=follow_symlinks)
+
+    def spy_unlink(path: str | os.PathLike[str]) -> None:
+        unlinks.append(path)
+        real_unlink(path)
+
+    monkeypatch.setattr(os, "chmod", spy_chmod)
+    monkeypatch.setattr(os, "unlink", spy_unlink)
+    try:
+        with pytest.raises(PermissionError) as raised:
+            handler(os.unlink, str(lexical), denied)
+    finally:
+        monkeypatch.undo()
+
+    try:
+        assert raised.value is denied
+        assert chmods == []
+        assert unlinks == []
+        assert victim.read_text(encoding="utf-8") == "protected"
+        assert has_readonly_attribute(victim)
+    finally:
+        remove_link(link)
+        if victim.exists():
+            clear_readonly(victim)
+
+
 def test_failed_retry_after_clearing_readonly_stays_blocked(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -816,13 +873,15 @@ def test_failed_retry_after_clearing_readonly_stays_blocked(
         "is_link_or_reparse_point",
         lambda _p, **_k: False,
     )
+    readonly_file = types.SimpleNamespace(
+        st_mode=stat.S_IFREG | stat.S_IREAD,
+        st_file_attributes=FILE_ATTRIBUTE_READONLY,
+    )
+    directory = types.SimpleNamespace(st_mode=stat.S_IFDIR, st_file_attributes=0x10)
     monkeypatch.setattr(
         module.os,
         "lstat",
-        lambda _p: types.SimpleNamespace(
-            st_mode=stat.S_IFREG | stat.S_IREAD,
-            st_file_attributes=FILE_ATTRIBUTE_READONLY,
-        ),
+        lambda p: readonly_file if Path(p) == target else directory,
     )
     monkeypatch.setattr(module.os, "chmod", lambda *_a, **_k: None)
     monkeypatch.setattr(module.os, "unlink", still_denied)
