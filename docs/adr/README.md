@@ -32,6 +32,7 @@ ADRs registram decisões estruturais, contexto, alternativas e consequências.
 ## Decisões propostas
 
 - [ADR-0030 — Projetos como associação analítica auditável a despesas](0030-financial-projects-and-expense-links.md)
+- [ADR-0031 — Fluxo de caixa v1 como projeção somente leitura sobre o ledger e as recorrências](0031-read-only-cash-flow-projection.md)
 
 - [ADR-0009 — Stitch como referência visual e arquitetura de informação canônica](0009-stitch-reference-and-canonical-information-architecture.md)
 - [ADR-0010 — Livro financeiro canônico e invariantes entre módulos](0010-canonical-ledger-and-cross-module-financial-invariants.md)
