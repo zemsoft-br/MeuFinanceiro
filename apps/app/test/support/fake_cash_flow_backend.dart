@@ -56,13 +56,45 @@ Map<String, Object?> cashFlowRisk({
   String minimumDate = '2026-10-10',
   String? firstNegative,
   int negativeDays = 0,
+  int evaluatedDays = 30,
   String currency = 'BRL',
 }) => {
   'minimumBalance': cashFlowMoney(minimum, currency),
   'minimumBalanceDate': minimumDate,
   'firstNegativeDate': firstNegative,
   'negativeDays': negativeDays,
+  'evaluatedDays': evaluatedDays,
 };
+
+/// The risk the server would report over [days] (already filtered to the
+/// evaluated ones), or `null` when there is none. Fixture bookkeeping only: the
+/// app never derives a risk.
+Map<String, Object?>? cashFlowSeriesRisk(
+  List<Map<String, Object?>> days, {
+  String currency = 'BRL',
+}) {
+  if (days.isEmpty) return null;
+  String closing(Map<String, Object?> day) =>
+      (day['closing']! as Map<String, Object?>)['amount']! as String;
+  var minimum = days.first;
+  String? firstNegative;
+  var negativeDays = 0;
+  for (final day in days) {
+    if (num.parse(closing(day)) < num.parse(closing(minimum))) minimum = day;
+    if (day['negative'] == true) {
+      negativeDays++;
+      firstNegative ??= day['date']! as String;
+    }
+  }
+  return cashFlowRisk(
+    minimum: closing(minimum),
+    minimumDate: minimum['date']! as String,
+    firstNegative: firstNegative,
+    negativeDays: negativeDays,
+    evaluatedDays: days.length,
+    currency: currency,
+  );
+}
 
 Map<String, Object?> cashFlowTotals({String currency = 'BRL'}) => {
   'realizedIncome': cashFlowMoney('2000', currency),
@@ -82,13 +114,19 @@ Map<String, Object?> cashFlowTotals({String currency = 'BRL'}) => {
   'expectedCount': 1,
 };
 
+/// Without [risk]/[historicalRisk] the default is the 30 projected days of the
+/// default window (and no past day); an account without an opening balance has
+/// no risk at all (not assessable).
 Map<String, Object?> cashFlowAccountSummary(
   String id, {
   String name = 'Corrente',
   String currency = 'BRL',
   bool opening = true,
+  String openingDate = '2026-09-01',
   String? firstNegative,
   String minimumDate = '2026-10-10',
+  Map<String, Object?>? risk,
+  Map<String, Object?>? historicalRisk,
 }) => {
   'accountId': id,
   'name': name,
@@ -96,19 +134,23 @@ Map<String, Object?> cashFlowAccountSummary(
   'visibilityScope': 'HOUSEHOLD',
   'status': 'ACTIVE',
   'hasOpeningBalance': opening,
-  'openingBalanceDate': opening ? '2026-09-01' : null,
+  'openingBalanceDate': opening ? openingDate : null,
   'startingBalance': cashFlowMoney('1000', currency),
   'balanceAtReference': cashFlowMoney('2200', currency),
   'realizedNet': cashFlowMoney('1200', currency),
   'expectedNet': cashFlowMoney('-2500', currency),
   'closingBalance': cashFlowMoney('-300', currency),
-  'risk': cashFlowRisk(
-    minimum: firstNegative == null ? '1000' : '-300',
-    minimumDate: firstNegative ?? minimumDate,
-    firstNegative: firstNegative,
-    negativeDays: firstNegative == null ? 0 : 20,
-    currency: currency,
-  ),
+  'risk': !opening
+      ? null
+      : risk ??
+            cashFlowRisk(
+              minimum: firstNegative == null ? '1000' : '-300',
+              minimumDate: firstNegative ?? minimumDate,
+              firstNegative: firstNegative,
+              negativeDays: firstNegative == null ? 0 : 20,
+              currency: currency,
+            ),
+  'historicalRisk': opening ? historicalRisk : null,
 };
 
 Map<String, Object?> cashFlowEvent({
@@ -198,6 +240,13 @@ List<Map<String, Object?>> cashFlowVerticalEvents() => [
   ),
 ];
 
+/// One currency group. Days carry the server flags: `projected` from the
+/// reference date on, `anchored` from [anchoredFrom] on (`null`: never, an
+/// account without opening balance). The risks are the ones the server would
+/// report for those flags; the default account shares the group series.
+///
+/// [closing] decides each day's closing balance (defaults to the vertical
+/// scenario: a deficit from [firstNegative] on).
 Map<String, Object?> cashFlowGroup({
   String currency = 'BRL',
   String from = '2026-10-10',
@@ -208,18 +257,24 @@ Map<String, Object?> cashFlowGroup({
   List<Map<String, Object?>> issues = const [],
   String status = 'COMPLETE',
   String? firstNegative = '2026-10-20',
+  String? anchoredFrom = '2026-09-01',
+  String Function(String date)? closing,
 }) {
+  String defaultClosing(String date) {
+    if (firstNegative != null && date.compareTo(firstNegative) >= 0) {
+      return '-300';
+    }
+    return date.compareTo('2026-10-10') >= 0 ? '2200' : '1000';
+  }
+
+  final closingOf = closing ?? defaultClosing;
   final dayList = <Map<String, Object?>>[];
   for (var index = 0; index < days; index++) {
     final date = cashFlowDate(from, index);
-    final negative =
-        firstNegative != null && date.compareTo(firstNegative) >= 0;
-    final closing = negative
-        ? '-300'
-        : (date.compareTo('2026-10-10') >= 0 ? '2200' : '1000');
+    final value = closingOf(date);
     dayList.add({
       'date': date,
-      'opening': cashFlowMoney(index == 0 ? '1000' : closing, currency),
+      'opening': cashFlowMoney(index == 0 ? '1000' : value, currency),
       'realizedIncome': cashFlowMoney(index == 0 ? '2000' : '0', currency),
       'realizedExpense': cashFlowMoney(index == 0 ? '300' : '0', currency),
       'expectedIncome': cashFlowMoney('0', currency),
@@ -228,11 +283,24 @@ Map<String, Object?> cashFlowGroup({
         currency,
       ),
       'neutralNet': cashFlowMoney(index == 0 ? '-500' : '0', currency),
-      'closing': cashFlowMoney(closing, currency),
+      'closing': cashFlowMoney(value, currency),
       'projected': date.compareTo(referenceDate) >= 0,
-      'negative': negative,
+      'anchored': anchoredFrom != null && anchoredFrom.compareTo(date) <= 0,
+      'negative': value.startsWith('-'),
     });
   }
+  List<Map<String, Object?>> evaluated({required bool projected}) => [
+    for (final day in dayList)
+      if (day['anchored'] == true && day['projected'] == projected) day,
+  ];
+  final risk = cashFlowSeriesRisk(
+    evaluated(projected: true),
+    currency: currency,
+  );
+  final historicalRisk = cashFlowSeriesRisk(
+    evaluated(projected: false),
+    currency: currency,
+  );
   return {
     'currency': currency,
     'projectionStatus': status,
@@ -241,24 +309,21 @@ Map<String, Object?> cashFlowGroup({
     'balanceAtReference': cashFlowMoney('2200', currency),
     'closingBalance': cashFlowMoney('-300', currency),
     'totals': cashFlowTotals(currency: currency),
-    'risk': firstNegative == null
-        ? cashFlowRisk(currency: currency, minimumDate: from)
-        : cashFlowRisk(
-            minimum: '-300',
-            minimumDate: firstNegative,
-            firstNegative: firstNegative,
-            negativeDays: 20,
-            currency: currency,
-          ),
+    'risk': risk,
+    'historicalRisk': historicalRisk,
     'accounts':
         accounts ??
         [
-          cashFlowAccountSummary(
-            cashFlowCheckingId,
-            currency: currency,
-            firstNegative: firstNegative,
-            minimumDate: from,
-          ),
+          {
+            ...cashFlowAccountSummary(
+              cashFlowCheckingId,
+              currency: currency,
+              opening: anchoredFrom != null,
+              openingDate: anchoredFrom ?? '2026-09-01',
+            ),
+            'risk': risk,
+            'historicalRisk': historicalRisk,
+          },
         ],
     'days': dayList,
     'events': events ?? cashFlowVerticalEvents(),
@@ -289,6 +354,35 @@ Map<String, Object?> cashFlowResponse({
       groups ??
       [cashFlowGroup(from: from, days: days, referenceDate: referenceDate)],
 };
+
+/// Answers the window [uri] asks for, as the server would: `from` defaults to
+/// the reference date, the length is `days`, the `through` span or 30.
+Map<String, Object?> cashFlowEcho(
+  Uri uri, {
+  String referenceDate = '2026-10-10',
+  String? firstNegative,
+}) {
+  final query = uri.queryParameters;
+  final from = query['from'] ?? referenceDate;
+  final through = query['through'];
+  final days = through != null
+      ? DateTime.parse(through).difference(DateTime.parse(from)).inDays + 1
+      : int.parse(query['days'] ?? '30');
+  return cashFlowResponse(
+    referenceDate: referenceDate,
+    from: from,
+    days: days,
+    groups: [
+      cashFlowGroup(
+        from: from,
+        days: days,
+        referenceDate: referenceDate,
+        events: const [],
+        firstNegative: firstNegative,
+      ),
+    ],
+  );
+}
 
 /// Answers `GET finance/accounts` and `GET finance/cash-flow`; anything else is
 /// a test failure (the cash flow screen must never write).

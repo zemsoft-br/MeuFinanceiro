@@ -28,6 +28,9 @@ class FinancialCashFlowScreen extends ConsumerStatefulWidget {
   static const staleKey = Key('financial-cash-flow-stale');
   static const statusKey = Key('financial-cash-flow-status');
   static const riskKey = Key('financial-cash-flow-risk');
+  static const historicalRiskKey = Key('financial-cash-flow-historical-risk');
+  static const datedPeriodHintKey = Key('financial-cash-flow-dated-hint');
+  static const estimateKey = Key('financial-cash-flow-estimate');
   static const summaryKey = Key('financial-cash-flow-summary');
   static const comparisonKey = Key('financial-cash-flow-comparison');
   static const accountsKey = Key('financial-cash-flow-accounts');
@@ -242,8 +245,9 @@ class _FinancialCashFlowScreenState
           title: 'Leitura recusada pelo servidor',
           description:
               'O período ou a seleção excede o limite de uma leitura (até 92 '
-              'dias, 50 contas e 2000 eventos). Reduza o período ou selecione '
-              'menos contas. Nada foi omitido em silêncio.',
+              'dias, 50 contas e 2000 eventos). Reduza o período (por exemplo, '
+              'Próximos 7 dias) ou selecione menos contas nos filtros acima. '
+              'Nada foi omitido em silêncio.',
         ),
       ];
     }
@@ -418,6 +422,7 @@ class _Filters extends StatelessWidget {
               runSpacing: AppTokens.space8,
               children: [
                 for (final (period, label) in const [
+                  (FinancialCashFlowPeriod.next7, 'Próximos 7 dias'),
                   (FinancialCashFlowPeriod.next30, 'Próximos 30 dias'),
                   (FinancialCashFlowPeriod.next60, 'Próximos 60 dias'),
                   (FinancialCashFlowPeriod.next90, 'Próximos 90 dias'),
@@ -427,7 +432,9 @@ class _Filters extends StatelessWidget {
                     key: FinancialCashFlowScreen.periodKey(period),
                     label: Text(label),
                     selected: state.period == period,
-                    onSelected: ready ? (_) => onPeriod(period) : null,
+                    onSelected: state.canSelect(period)
+                        ? (_) => onPeriod(period)
+                        : null,
                   ),
                 ChoiceChip(
                   key: FinancialCashFlowScreen.customPeriodKey,
@@ -440,10 +447,22 @@ class _Filters extends StatelessWidget {
                         : 'Personalizado…',
                   ),
                   selected: state.period == FinancialCashFlowPeriod.custom,
-                  onSelected: ready ? (_) => onCustom() : null,
+                  onSelected: state.canSelect(FinancialCashFlowPeriod.custom)
+                      ? (_) => onCustom()
+                      : null,
                 ),
               ],
             ),
+            if (ready && state.referenceDate == null) ...[
+              const SizedBox(height: AppTokens.space8),
+              Text(
+                'Mês atual e período personalizado dependem da data de '
+                'referência do servidor e ficam disponíveis após uma leitura '
+                'bem-sucedida.',
+                key: FinancialCashFlowScreen.datedPeriodHintKey,
+                style: theme.textTheme.bodySmall,
+              ),
+            ],
             const SizedBox(height: AppTokens.space16),
             Text('Contas', style: theme.textTheme.titleSmall),
             const SizedBox(height: AppTokens.space8),
@@ -531,8 +550,16 @@ class _GroupView extends StatelessWidget {
           children: [
             _Status(group: group),
             const SizedBox(height: AppTokens.space12),
-            _Risk(group: group, historical: cashFlow.isHistorical),
-            const SizedBox(height: AppTokens.space12),
+            // A future risk and a deficit that already happened are different
+            // facts: each has its own card and wording.
+            if (group.projectedDays > 0) ...[
+              _Risk(group: group, cashFlow: cashFlow),
+              const SizedBox(height: AppTokens.space12),
+            ],
+            if (group.pastDays > 0) ...[
+              _HistoricalRisk(group: group, cashFlow: cashFlow),
+              const SizedBox(height: AppTokens.space12),
+            ],
             if (wide)
               IntrinsicHeight(
                 child: Row(
@@ -624,67 +651,200 @@ class _Status extends StatelessWidget {
   }
 }
 
+/// Accounts whose balance on [date] has no opening balance behind it, named
+/// with the reason (dates only; never money).
+String _unanchoredNames(FinancialCashFlowGroup group, String date) => group
+    .accounts
+    .where((account) => !account.anchoredOn(date))
+    .map(
+      (account) => account.openingBalanceDate == null
+          ? '${account.name}: sem saldo inicial'
+          : '${account.name}: saldo inicial só em '
+                '${_formatDate(account.openingBalanceDate!)}',
+    )
+    .join('; ');
+
+/// Per-account deficits the server evaluated for one side of the reference.
+String _accountDeficits(
+  List<FinancialCashFlowAccount> accounts,
+  FinancialCashFlowRisk? Function(FinancialCashFlowAccount) side,
+) => accounts
+    .where((account) => side(account)?.firstNegativeDate != null)
+    .map(
+      (account) =>
+          '${account.name} em ${_formatDate(side(account)!.firstNegativeDate!)}',
+    )
+    .join('; ');
+
+/// Prospective risk: only the projected days (from the reference date on)
+/// that have an opening balance behind them. `null` is "not assessable".
 class _Risk extends StatelessWidget {
-  const _Risk({required this.group, required this.historical});
+  const _Risk({required this.group, required this.cashFlow});
   final FinancialCashFlowGroup group;
-  final bool historical;
+  final FinancialCashFlow cashFlow;
 
   @override
   Widget build(BuildContext context) {
     final risk = group.risk;
-    final negative = risk.firstNegativeDate;
-    final accountsAtRisk = group.accounts
-        .where((account) => account.risk.firstNegativeDate != null)
-        .toList();
-    final String text;
-    if (negative != null) {
-      text =
-          '${historical ? 'Saldo consolidado ficou negativo' : 'Risco de saldo negativo'}'
-          ' a partir de ${_formatDate(negative)} '
-          '(${risk.negativeDays} dia(s) negativo(s); menor saldo '
-          '${formatFinancialMoney(risk.minimumBalance)} em '
-          '${_formatDate(risk.minimumBalanceDate)}).';
-    } else if (accountsAtRisk.isNotEmpty) {
-      text =
-          'O saldo consolidado não fica negativo, mas '
-          '${accountsAtRisk.length} conta(s) ficam: '
-          '${accountsAtRisk.map((a) => '${a.name} em ${_formatDate(a.risk.firstNegativeDate!)}').join('; ')}.';
-    } else {
-      text =
-          'Nenhum saldo negativo no período. Menor saldo: '
-          '${formatFinancialMoney(risk.minimumBalance)} em '
-          '${_formatDate(risk.minimumBalanceDate)}.';
-    }
-    final danger = negative != null || accountsAtRisk.isNotEmpty;
-    // Without an opening balance the figures start from zero: absence of a
-    // deficit can never be claimed, and a computed deficit is only an estimate.
-    final missingOpening = group.accounts
-        .where((account) => !account.hasOpeningBalance)
-        .length;
-    if (missingOpening > 0) {
-      return Card(
+    final projected = group.projectedDays;
+    final firstProjected = group.days.firstWhere((day) => day.projected).date;
+    final accountDeficits = _accountDeficits(
+      group.accounts,
+      (account) => account.risk,
+    );
+    if (risk == null) {
+      return _RiskCard(
         key: FinancialCashFlowScreen.riskKey,
-        color: AppTokens.amber50,
-        child: ListTile(
-          leading: const Icon(Icons.help_outline, color: AppTokens.amber700),
-          title: const Text('Risco de saldo negativo não avaliável'),
-          subtitle: Text(
-            'Falta saldo inicial em $missingOpening conta(s): os saldos partem de '
-            'zero, então não é possível afirmar se haverá saldo negativo.'
-            '${danger ? ' Estimativa sem saldo inicial: $text' : ''}',
-          ),
-        ),
+        tone: _RiskTone.unknown,
+        title: 'Risco de saldo negativo não avaliável',
+        text:
+            'Nenhum dia a partir de ${_formatDate(firstProjected)} tem saldo '
+            'inicial em todas as contas '
+            '(${_unanchoredNames(group, cashFlow.through)}). Sem essa base os '
+            'saldos são só estimativas: não é possível afirmar se haverá ou '
+            'não saldo negativo.'
+            '${accountDeficits.isEmpty ? '' : ' Contas avaliadas com saldo negativo previsto: $accountDeficits.'}',
       );
     }
-    return Card(
+    final partial = risk.evaluatedDays < projected;
+    final scope = partial
+        ? 'Avaliados ${risk.evaluatedDays} de $projected dias futuros; antes do '
+              'saldo inicial (${_unanchoredNames(group, firstProjected)}) não há '
+              'base. '
+        : '';
+    final negative = risk.firstNegativeDate;
+    if (negative != null || accountDeficits.isNotEmpty) {
+      return _RiskCard(
+        key: FinancialCashFlowScreen.riskKey,
+        tone: _RiskTone.danger,
+        title: 'Risco de saldo negativo',
+        text: negative != null
+            ? '${scope}Saldo consolidado previsto negativo a partir de '
+                  '${_formatDate(negative)} (${risk.negativeDays} dia(s) '
+                  'negativo(s) previstos; menor saldo previsto '
+                  '${formatFinancialMoney(risk.minimumBalance)} em '
+                  '${_formatDate(risk.minimumBalanceDate)}).'
+            : '${scope}O saldo consolidado previsto não fica negativo, mas '
+                  'conta(s) ficam: $accountDeficits.',
+      );
+    }
+    final incomplete =
+        group.projectionStatus == FinancialCashFlowProjectionStatus.incomplete;
+    return _RiskCard(
       key: FinancialCashFlowScreen.riskKey,
-      color: danger ? AppTokens.red50 : null,
+      tone: partial || incomplete ? _RiskTone.unknown : _RiskTone.safe,
+      title: partial
+          ? 'Risco avaliado só em parte do período'
+          : (incomplete
+                ? 'Sem saldo negativo nas fontes consideradas'
+                : 'Sem saldo negativo previsto'),
+      text:
+          '${scope}Nenhum saldo negativo previsto nos dias avaliados até '
+          '${_formatDate(cashFlow.through)}. Menor saldo previsto: '
+          '${formatFinancialMoney(risk.minimumBalance)} em '
+          '${_formatDate(risk.minimumBalanceDate)}.'
+          '${incomplete ? ' A projeção está incompleta: veja os avisos acima.' : ''}',
+    );
+  }
+}
+
+/// Deficits that already happened, before the reference date: facts of the
+/// ledger, never presented as a forecast.
+class _HistoricalRisk extends StatelessWidget {
+  const _HistoricalRisk({required this.group, required this.cashFlow});
+  final FinancialCashFlowGroup group;
+  final FinancialCashFlow cashFlow;
+
+  @override
+  Widget build(BuildContext context) {
+    final risk = group.historicalRisk;
+    final past = group.pastDays;
+    final lastPast = group.days.lastWhere((day) => !day.projected).date;
+    final until = cashFlow.isHistorical
+        ? 'até ${_formatDate(cashFlow.through)}'
+        : 'antes de ${_formatDate(cashFlow.referenceDate)}';
+    final accountDeficits = _accountDeficits(
+      group.accounts,
+      (account) => account.historicalRisk,
+    );
+    if (risk == null) {
+      return _RiskCard(
+        key: FinancialCashFlowScreen.historicalRiskKey,
+        tone: _RiskTone.unknown,
+        title: 'Histórico sem saldo inicial',
+        text:
+            'Os $past dia(s) $until não têm saldo inicial em todas as contas '
+            '(${_unanchoredNames(group, lastPast)}): os saldos desses dias são '
+            'estimativas e não mostram se houve saldo negativo.'
+            '${accountDeficits.isEmpty ? '' : ' Contas avaliadas que ficaram negativas: $accountDeficits.'}',
+      );
+    }
+    final scope = risk.evaluatedDays < past
+        ? 'Avaliados ${risk.evaluatedDays} de $past dias $until; antes do saldo '
+              'inicial não há base. '
+        : '';
+    final negative = risk.firstNegativeDate;
+    if (negative != null || accountDeficits.isNotEmpty) {
+      return _RiskCard(
+        key: FinancialCashFlowScreen.historicalRiskKey,
+        tone: _RiskTone.history,
+        title: 'Saldo negativo já ocorrido (histórico)',
+        text: negative != null
+            ? '${scope}Fato realizado, não previsão: o saldo consolidado ficou '
+                  'negativo em ${_formatDate(negative)} (${risk.negativeDays} '
+                  'dia(s) negativo(s) $until; menor saldo '
+                  '${formatFinancialMoney(risk.minimumBalance)} em '
+                  '${_formatDate(risk.minimumBalanceDate)}).'
+            : '${scope}Fato realizado, não previsão: o saldo consolidado não '
+                  'ficou negativo, mas conta(s) ficaram: $accountDeficits.',
+      );
+    }
+    return _RiskCard(
+      key: FinancialCashFlowScreen.historicalRiskKey,
+      tone: _RiskTone.history,
+      title: 'Histórico sem saldo negativo',
+      text:
+          '${scope}Nenhum saldo negativo realizado nos dias avaliados $until. '
+          'Menor saldo: ${formatFinancialMoney(risk.minimumBalance)} em '
+          '${_formatDate(risk.minimumBalanceDate)}.',
+    );
+  }
+}
+
+enum _RiskTone { danger, safe, unknown, history }
+
+class _RiskCard extends StatelessWidget {
+  const _RiskCard({
+    super.key,
+    required this.tone,
+    required this.title,
+    required this.text,
+  });
+  final _RiskTone tone;
+  final String title;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color, background) = switch (tone) {
+      _RiskTone.danger => (
+        Icons.trending_down_rounded,
+        AppTokens.red700,
+        AppTokens.red50,
+      ),
+      _RiskTone.safe => (Icons.check_circle_outline, AppTokens.forest700, null),
+      _RiskTone.unknown => (
+        Icons.help_outline,
+        AppTokens.amber700,
+        AppTokens.amber50,
+      ),
+      _RiskTone.history => (Icons.history_rounded, AppTokens.blue700, null),
+    };
+    return Card(
+      color: background,
       child: ListTile(
-        leading: Icon(
-          danger ? Icons.trending_down_rounded : Icons.check_circle_outline,
-          color: danger ? AppTokens.red700 : AppTokens.forest700,
-        ),
-        title: Text(danger ? 'Atenção ao saldo' : 'Saldo sem déficit'),
+        leading: Icon(icon, color: color),
+        title: Text(title),
         subtitle: Text(text),
       ),
     );
@@ -698,6 +858,14 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // A balance with no effective opening balance behind it is an estimate:
+    // it is labelled as such, never shown as a fact.
+    final atReference = group.accounts.every(
+      (account) => account.anchoredOn(cashFlow.referenceDate),
+    );
+    final atStart = group.days.first.anchored;
+    final atEnd = group.days.last.anchored;
+    String estimate(bool anchored) => anchored ? '' : ' · estimativa';
     return Card(
       key: FinancialCashFlowScreen.summaryKey,
       child: Padding(
@@ -715,21 +883,32 @@ class _Summary extends StatelessWidget {
               runSpacing: AppTokens.space12,
               children: [
                 _Figure(
-                  'Saldo real em ${_formatDate(cashFlow.referenceDate)}',
+                  'Saldo real em ${_formatDate(cashFlow.referenceDate)}'
+                  '${estimate(atReference)}',
                   formatFinancialMoney(group.balanceAtReference),
                 ),
                 _Figure(
-                  'Saldo no início (${_formatDate(cashFlow.from)})',
+                  'Saldo no início (${_formatDate(cashFlow.from)})'
+                  '${estimate(atStart)}',
                   formatFinancialMoney(group.startingBalance),
                 ),
                 _Figure(
-                  cashFlow.isHistorical
-                      ? 'Saldo em ${_formatDate(cashFlow.through)}'
-                      : 'Saldo projetado em ${_formatDate(cashFlow.through)}',
+                  '${cashFlow.isHistorical ? 'Saldo em ' : 'Saldo projetado em '}'
+                  '${_formatDate(cashFlow.through)}${estimate(atEnd)}',
                   formatFinancialMoney(group.closingBalance),
                 ),
               ],
             ),
+            if (!atReference || !atStart || !atEnd) ...[
+              const SizedBox(height: AppTokens.space8),
+              Text(
+                'Estimativa: nessa data ao menos uma conta não tem saldo '
+                'inicial em vigor (ausente ou com data posterior), então o '
+                'valor não é um saldo confiável.',
+                key: FinancialCashFlowScreen.estimateKey,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ],
         ),
       ),
@@ -870,13 +1049,25 @@ class _Accounts extends StatelessWidget {
                 subtitle: Text(
                   [
                     'Real em ${_formatDate(cashFlow.referenceDate)}: '
-                        '${formatFinancialMoney(account.balanceAtReference)}',
-                    'Projetado em ${_formatDate(cashFlow.through)}: '
-                        '${formatFinancialMoney(account.closingBalance)}',
+                        '${formatFinancialMoney(account.balanceAtReference)}'
+                        '${account.anchoredOn(cashFlow.referenceDate) ? '' : ' (estimativa)'}',
+                    '${cashFlow.isHistorical ? 'Saldo' : 'Projetado'} em '
+                        '${_formatDate(cashFlow.through)}: '
+                        '${formatFinancialMoney(account.closingBalance)}'
+                        '${account.anchoredOn(cashFlow.through) ? '' : ' (estimativa)'}',
                     if (!account.hasOpeningBalance) 'Sem saldo inicial',
-                    if (account.risk.firstNegativeDate != null)
-                      'Negativo a partir de '
-                          '${_formatDate(account.risk.firstNegativeDate!)}',
+                    if (account.openingBalanceDate != null &&
+                        !account.anchoredOn(cashFlow.from))
+                      'Saldo inicial só a partir de '
+                          '${_formatDate(account.openingBalanceDate!)}',
+                    if (account.historicalRisk?.firstNegativeDate != null)
+                      'Ficou negativa em '
+                          '${_formatDate(account.historicalRisk!.firstNegativeDate!)}',
+                    if (account.risk?.firstNegativeDate != null)
+                      'Negativo previsto a partir de '
+                          '${_formatDate(account.risk!.firstNegativeDate!)}',
+                    if (group.projectedDays > 0 && account.risk == null)
+                      'Risco futuro não avaliável',
                   ].join(' · '),
                 ),
               ),
@@ -949,7 +1140,8 @@ class _Days extends StatelessWidget {
                 rows: [
                   for (final day in days)
                     DataRow(
-                      color: day.negative
+                      // Only an anchored balance is evidence of a deficit.
+                      color: day.negative && day.anchored
                           ? const WidgetStatePropertyAll(AppTokens.red50)
                           : null,
                       cells: [
@@ -957,7 +1149,8 @@ class _Days extends StatelessWidget {
                         DataCell(
                           Text(
                             '${day.projected ? 'Projetado' : 'Realizado'}'
-                            '${day.negative ? ' · negativo' : ''}',
+                            '${day.anchored ? '' : ' · saldo estimado (sem saldo inicial em vigor)'}'
+                            '${day.negative && day.anchored ? ' · negativo' : ''}',
                           ),
                         ),
                         DataCell(Text(_inflowText(day))),
@@ -965,13 +1158,19 @@ class _Days extends StatelessWidget {
                         DataCell(Text(formatFinancialMoney(day.neutralNet))),
                         DataCell(
                           Text(
-                            formatFinancialMoney(day.closing),
-                            style: day.negative
+                            '${formatFinancialMoney(day.closing)}'
+                            '${day.anchored ? '' : ' (estimativa)'}',
+                            style: day.negative && day.anchored
                                 ? const TextStyle(
                                     color: AppTokens.red700,
                                     fontWeight: FontWeight.w700,
                                   )
-                                : null,
+                                : (day.anchored
+                                      ? null
+                                      : const TextStyle(
+                                          color: AppTokens.neutral700,
+                                          fontStyle: FontStyle.italic,
+                                        )),
                           ),
                         ),
                       ],
@@ -1093,7 +1292,13 @@ class _EventTile extends StatelessWidget {
       contentPadding: EdgeInsets.zero,
       onTap: () => showDialog<void>(
         context: context,
-        builder: (_) => _EventDetail(event: event, account: account),
+        builder: (_) => _EventDetail(
+          event: event,
+          account: account,
+          groupAnchored: group.anchoredOn(event.date),
+          accountAnchored:
+              group.account(event.accountId)?.anchoredOn(event.date) ?? false,
+        ),
       ),
       title: Text(_eventTitle(event)),
       subtitle: Padding(
@@ -1122,7 +1327,8 @@ class _EventTile extends StatelessWidget {
             ),
           ),
           Text(
-            'Saldo: ${formatFinancialMoney(event.balanceAfter)}',
+            '${group.anchoredOn(event.date) ? 'Saldo' : 'Saldo estimado'}: '
+            '${formatFinancialMoney(event.balanceAfter)}',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
@@ -1132,9 +1338,16 @@ class _EventTile extends StatelessWidget {
 }
 
 class _EventDetail extends StatelessWidget {
-  const _EventDetail({required this.event, required this.account});
+  const _EventDetail({
+    required this.event,
+    required this.account,
+    required this.groupAnchored,
+    required this.accountAnchored,
+  });
   final FinancialCashFlowEvent event;
   final String account;
+  final bool groupAnchored;
+  final bool accountAnchored;
 
   @override
   Widget build(BuildContext context) {
@@ -1150,8 +1363,16 @@ class _EventDetail extends StatelessWidget {
       ('Valor', formatFinancialMoney(event.amount)),
       if (event.expectedAmount != null)
         ('Valor previsto', formatFinancialMoney(event.expectedAmount!)),
-      ('Saldo consolidado após', formatFinancialMoney(event.balanceAfter)),
-      ('Saldo da conta após', formatFinancialMoney(event.accountBalanceAfter)),
+      (
+        'Saldo consolidado após',
+        '${formatFinancialMoney(event.balanceAfter)}'
+            '${groupAnchored ? '' : ' (estimativa: sem saldo inicial em vigor)'}',
+      ),
+      (
+        'Saldo da conta após',
+        '${formatFinancialMoney(event.accountBalanceAfter)}'
+            '${accountAnchored ? '' : ' (estimativa: sem saldo inicial em vigor)'}',
+      ),
       if (event.ruleVersion != null)
         ('Versão da regra', '${event.ruleVersion}'),
       if (event.movementId != null) ('Lançamento', event.movementId!),
@@ -1282,10 +1503,10 @@ String _issueText(FinancialCashFlowIssue issue, FinancialCashFlowGroup group) {
   return switch (issue.code) {
     FinancialCashFlowIssueCode.openingBalanceMissing =>
       '$n conta(s) sem saldo inicial$where: os saldos partem de zero e o risco '
-          'de saldo negativo não é confiável.',
+          'de saldo negativo não é avaliado.',
     FinancialCashFlowIssueCode.openingBalanceAfterWindowStart =>
-      '$n conta(s) com saldo inicial dentro do período$where: saldos anteriores '
-          'a essa data não são significativos.',
+      '$n conta(s) com saldo inicial dentro do período$where: antes dessa data '
+          'os saldos são só estimativas e não entram na avaliação de risco.',
     FinancialCashFlowIssueCode.ruleAccountInactive =>
       '$n recorrência(s) ativa(s) em conta arquivada$where não foram projetadas.',
     FinancialCashFlowIssueCode.overdueOccurrences =>

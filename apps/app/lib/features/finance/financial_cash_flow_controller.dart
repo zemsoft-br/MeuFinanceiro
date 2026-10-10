@@ -8,7 +8,27 @@ import 'package:meufinanceiro_app/features/finance/financial_core_controller.dar
 // canonical read of the accounts and the projection; a failed refresh keeps the
 // last canonical result on screen and says it may be stale.
 
-enum FinancialCashFlowPeriod { next30, next60, next90, currentMonth, custom }
+enum FinancialCashFlowPeriod {
+  next7,
+  next30,
+  next60,
+  next90,
+  currentMonth,
+  custom;
+
+  /// Relative presets: the server counts them from its own reference date, so
+  /// they work before any successful read (`null`: a dated window).
+  int? get relativeDays => switch (this) {
+    next7 => 7,
+    next30 => 30,
+    next60 => 60,
+    next90 => 90,
+    currentMonth || custom => null,
+  };
+
+  /// Calendar windows need the server reference date of a successful read.
+  bool get needsReferenceDate => relativeDays == null;
+}
 
 enum FinancialCashFlowFailure {
   none,
@@ -38,7 +58,8 @@ class FinancialCashFlowState {
   final FinancialCashFlow? cashFlow;
 
   /// Server reference date of the last successful read. Kept across failures so
-  /// the period presets still work after a refusal.
+  /// the calendar windows still work after a refusal; never invented: before a
+  /// successful read only the relative presets are offered.
   final String? referenceDate;
 
   /// Every account the operator can see (filter options).
@@ -58,11 +79,16 @@ class FinancialCashFlowState {
       phase == FinancialLoadPhase.loading ||
       phase == FinancialLoadPhase.refreshing;
 
-  /// Filters can change once the server answered (data or an explicit refusal).
+  /// Filters can change once the server answered (data or an explicit refusal),
+  /// including a refusal of the very first read: the operator must be able to
+  /// narrow the selection to recover.
   bool get canFilter =>
       !isBusy &&
-      referenceDate != null &&
       (cashFlow != null || failure == FinancialCashFlowFailure.rejected);
+
+  /// Whether [period] can be chosen now (calendar windows need the server date).
+  bool canSelect(FinancialCashFlowPeriod period) =>
+      canFilter && (!period.needsReferenceDate || referenceDate != null);
 
   FinancialCashFlowGroup? get group {
     final groups = cashFlow?.groups ?? const <FinancialCashFlowGroup>[];
@@ -134,7 +160,10 @@ class FinancialCashFlowController extends Notifier<FinancialCashFlowState> {
   Future<bool> refresh() => _read(refresh: true);
 
   Future<bool> selectPeriod(FinancialCashFlowPeriod period) {
-    if (period == FinancialCashFlowPeriod.custom) return Future.value(false);
+    if (period == FinancialCashFlowPeriod.custom ||
+        (period.needsReferenceDate && state.referenceDate == null)) {
+      return Future.value(false);
+    }
     state = state.copyWith(
       period: period,
       customFrom: null,
@@ -195,18 +224,21 @@ class FinancialCashFlowController extends Notifier<FinancialCashFlowState> {
     final reference = state.referenceDate;
     switch (state.period) {
       case FinancialCashFlowPeriod.next30:
+        // The server default: no window parameter at all.
         return FinancialCashFlowQuery(accountIds: ids);
+      case FinancialCashFlowPeriod.next7:
       case FinancialCashFlowPeriod.next60:
       case FinancialCashFlowPeriod.next90:
-        if (reference == null) return FinancialCashFlowQuery(accountIds: ids);
-        final days = state.period == FinancialCashFlowPeriod.next60 ? 60 : 90;
+        // Counted by the server from its reference date: never a guessed date.
         return FinancialCashFlowQuery(
-          from: reference,
-          through: financialCashFlowAddDays(reference, days - 1),
+          days: state.period.relativeDays,
           accountIds: ids,
         );
       case FinancialCashFlowPeriod.currentMonth:
-        if (reference == null) return FinancialCashFlowQuery(accountIds: ids);
+        if (reference == null) {
+          // selectPeriod refuses it first; never fall back to another window.
+          throw StateError('current month needs the server reference date');
+        }
         return FinancialCashFlowQuery(
           from: '${reference.substring(0, 7)}-01',
           through: financialCashFlowMonthEnd(reference),
@@ -288,12 +320,6 @@ class FinancialCashFlowController extends Notifier<FinancialCashFlowState> {
   }
 
   bool _isCurrent(int generation) => !_disposed && generation == _generation;
-}
-
-/// `YYYY-MM-DD` plus [days] calendar days (UTC dates; never money).
-String financialCashFlowAddDays(String date, int days) {
-  final value = DateTime.parse('${date}T00:00:00Z').add(Duration(days: days));
-  return _isoDate(value);
 }
 
 /// Last calendar day of the month of `YYYY-MM-DD`.

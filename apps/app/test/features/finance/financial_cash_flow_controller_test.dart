@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:meufinanceiro_app/core/auth/auth_http.dart';
 import 'package:meufinanceiro_app/features/finance/financial_cash_flow_controller.dart';
+import 'package:meufinanceiro_app/features/finance/financial_core_api.dart';
 import 'package:meufinanceiro_app/features/finance/financial_core_controller.dart';
 
 import '../../support/fake_cash_flow_backend.dart';
@@ -36,64 +37,55 @@ void main() {
     expect(backend.methods.toSet(), {AuthHttpMethod.get});
   });
 
-  test('presets derive the window from the server reference date', () async {
-    final backend = FakeCashFlowBackend(
-      cashFlow: (uri) {
-        final from = uri.queryParameters['from'] ?? '2026-10-10';
-        final through = uri.queryParameters['through'];
-        final days = through == null
-            ? 30
-            : DateTime.parse(through).difference(DateTime.parse(from)).inDays +
-                  1;
-        return cashFlowResponse(
-          from: from,
-          days: days,
-          groups: [
-            cashFlowGroup(
-              from: from,
-              days: days,
-              events: const [],
-              firstNegative: null,
-            ),
-          ],
-        );
-      },
-    );
-    final h = _harness(backend);
-    await h.controller.load();
+  test(
+    'relative presets are counted by the server, calendar ones dated',
+    () async {
+      final backend = FakeCashFlowBackend(cashFlow: cashFlowEcho);
+      final h = _harness(backend);
+      await h.controller.load();
 
-    await h.controller.selectPeriod(FinancialCashFlowPeriod.next90);
-    expect(backend.cashFlowCalls.last.queryParameters, {
-      'from': '2026-10-10',
-      'through': '2027-01-07',
-    });
-    await h.controller.selectPeriod(FinancialCashFlowPeriod.currentMonth);
-    expect(backend.cashFlowCalls.last.queryParameters, {
-      'from': '2026-10-01',
-      'through': '2026-10-31',
-    });
-    await h.controller.selectPeriod(FinancialCashFlowPeriod.next60);
-    expect(backend.cashFlowCalls.last.queryParameters['through'], '2026-12-08');
-    expect(
-      await h.controller.selectCustomWindow('2026-09-15', '2026-10-20'),
-      isTrue,
-    );
-    expect(backend.cashFlowCalls.last.queryParameters, {
-      'from': '2026-09-15',
-      'through': '2026-10-20',
-    });
-    // From after the reference date or longer than 92 days: nothing is sent.
-    final sent = backend.cashFlowCalls.length;
-    expect(
-      await h.controller.selectCustomWindow('2026-10-11', '2026-10-20'),
-      isFalse,
-    );
-    expect(
-      await h.controller.selectCustomWindow('2026-07-01', '2026-10-10'),
-      isFalse,
-    );
-    expect(backend.cashFlowCalls, hasLength(sent));
-  });
+      expect(
+        await h.controller.selectPeriod(FinancialCashFlowPeriod.next90),
+        isTrue,
+      );
+      // No client-side date: the server counts 90 days from its own reference.
+      expect(backend.cashFlowCalls.last.queryParameters, {'days': '90'});
+      expect(
+        h.container.read(financialCashFlowControllerProvider).cashFlow!.through,
+        '2027-01-07',
+      );
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.next7);
+      expect(backend.cashFlowCalls.last.queryParameters, {'days': '7'});
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.next30);
+      expect(backend.cashFlowCalls.last.query, isEmpty);
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.currentMonth);
+      expect(backend.cashFlowCalls.last.queryParameters, {
+        'from': '2026-10-01',
+        'through': '2026-10-31',
+      });
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.next60);
+      expect(backend.cashFlowCalls.last.queryParameters, {'days': '60'});
+      expect(
+        await h.controller.selectCustomWindow('2026-09-15', '2026-10-20'),
+        isTrue,
+      );
+      expect(backend.cashFlowCalls.last.queryParameters, {
+        'from': '2026-09-15',
+        'through': '2026-10-20',
+      });
+      // From after the reference date or longer than 92 days: nothing is sent.
+      final sent = backend.cashFlowCalls.length;
+      expect(
+        await h.controller.selectCustomWindow('2026-10-11', '2026-10-20'),
+        isFalse,
+      );
+      expect(
+        await h.controller.selectCustomWindow('2026-07-01', '2026-10-10'),
+        isFalse,
+      );
+      expect(backend.cashFlowCalls, hasLength(sent));
+    },
+  );
 
   test('account filter sends explicit ids and can be cleared', () async {
     final backend = FakeCashFlowBackend(
@@ -117,6 +109,208 @@ void main() {
     expect(await h.controller.toggleAccount(cashFlowSavingsId), isFalse);
     await h.controller.clearAccounts();
     expect(backend.cashFlowCalls.last.queryParametersAll['accountId'], isNull);
+  });
+
+  test(
+    'a refused first read still lets the operator narrow and recover',
+    () async {
+      final backend = FakeCashFlowBackend(
+        accounts: [
+          cashFlowAccountListItem(cashFlowCheckingId),
+          cashFlowAccountListItem(cashFlowSavingsId, name: 'Poupança'),
+        ],
+        cashFlow: (uri) => uri.queryParametersAll['accountId'] == null
+            ? const AuthHttpResponse(statusCode: 422, body: '{}')
+            : cashFlowResponse(),
+      );
+      final h = _harness(backend);
+
+      expect(await h.controller.load(), isFalse);
+      var state = h.container.read(financialCashFlowControllerProvider);
+      expect(state.failure, FinancialCashFlowFailure.rejected);
+      expect(state.cashFlow, isNull);
+      expect(state.referenceDate, isNull);
+      expect(state.accounts, hasLength(2));
+      expect(state.canFilter, isTrue);
+
+      expect(await h.controller.toggleAccount(cashFlowCheckingId), isTrue);
+      state = h.container.read(financialCashFlowControllerProvider);
+      expect(state.failure, FinancialCashFlowFailure.none);
+      expect(state.cashFlow, isNotNull);
+      expect(state.referenceDate, '2026-10-10');
+    },
+  );
+
+  test('a refused first read recovers by a shorter relative window, never by a '
+      'guessed date', () async {
+    final backend = FakeCashFlowBackend(
+      cashFlow: (uri) => uri.queryParameters['days'] == '7'
+          ? cashFlowEcho(uri)
+          : const AuthHttpResponse(statusCode: 422, body: '{}'),
+    );
+    final h = _harness(backend);
+
+    expect(await h.controller.load(), isFalse);
+    var state = h.container.read(financialCashFlowControllerProvider);
+    expect(state.failure, FinancialCashFlowFailure.rejected);
+    expect(state.cashFlow, isNull);
+    expect(state.canFilter, isTrue);
+    // Without a server date the calendar windows are unavailable and send
+    // nothing; the relative presets are.
+    expect(state.canSelect(FinancialCashFlowPeriod.currentMonth), isFalse);
+    expect(state.canSelect(FinancialCashFlowPeriod.custom), isFalse);
+    expect(state.canSelect(FinancialCashFlowPeriod.next7), isTrue);
+    expect(
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.currentMonth),
+      isFalse,
+    );
+    expect(
+      await h.controller.selectCustomWindow('2026-10-01', '2026-10-05'),
+      isFalse,
+    );
+    expect(backend.cashFlowCalls, hasLength(1));
+    state = h.container.read(financialCashFlowControllerProvider);
+    expect(state.period, FinancialCashFlowPeriod.next30);
+    expect(state.failure, FinancialCashFlowFailure.rejected);
+
+    expect(
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.next7),
+      isTrue,
+    );
+    state = h.container.read(financialCashFlowControllerProvider);
+    expect(backend.cashFlowCalls.last.queryParameters, {'days': '7'});
+    expect(state.failure, FinancialCashFlowFailure.none);
+    expect(state.cashFlow!.days, 7);
+    expect(state.referenceDate, '2026-10-10');
+    // Now the server date is known: calendar windows become available.
+    expect(state.canSelect(FinancialCashFlowPeriod.currentMonth), isTrue);
+  });
+
+  test(
+    'a refused first read followed by a transport failure is not stuck',
+    () async {
+      var answer = 422;
+      final backend = FakeCashFlowBackend(
+        cashFlow: (uri) {
+          if (answer == 0) throw StateError('socket closed');
+          if (answer == 422) {
+            return const AuthHttpResponse(statusCode: 422, body: '{}');
+          }
+          return cashFlowEcho(uri);
+        },
+      );
+      final h = _harness(backend);
+      expect(await h.controller.load(), isFalse);
+      answer = 0;
+      expect(
+        await h.controller.selectPeriod(FinancialCashFlowPeriod.next7),
+        isFalse,
+      );
+      var state = h.container.read(financialCashFlowControllerProvider);
+      expect(state.phase, FinancialLoadPhase.temporarilyUnavailable);
+      expect(state.cashFlow, isNull);
+      answer = 200;
+      expect(await h.controller.refresh(), isTrue);
+      state = h.container.read(financialCashFlowControllerProvider);
+      expect(backend.cashFlowCalls.last.queryParameters, {'days': '7'});
+      expect(state.phase, FinancialLoadPhase.loaded);
+    },
+  );
+
+  test('a mixed window keeps a past deficit out of the future risk', () async {
+    // October: negative on the 3rd-5th (realized), positive from then on.
+    String closing(String date) =>
+        date.compareTo('2026-10-03') >= 0 && date.compareTo('2026-10-05') <= 0
+        ? '-50'
+        : '400';
+    final backend = FakeCashFlowBackend(
+      cashFlow: (uri) => uri.queryParameters['from'] == '2026-10-01'
+          ? cashFlowResponse(
+              from: '2026-10-01',
+              days: 31,
+              groups: [
+                cashFlowGroup(
+                  from: '2026-10-01',
+                  days: 31,
+                  events: const [],
+                  firstNegative: null,
+                  closing: closing,
+                ),
+              ],
+            )
+          : cashFlowEcho(uri),
+    );
+    final h = _harness(backend);
+    await h.controller.load();
+    expect(
+      await h.controller.selectPeriod(FinancialCashFlowPeriod.currentMonth),
+      isTrue,
+    );
+
+    final group = h.container.read(financialCashFlowControllerProvider).group!;
+    expect(group.risk!.firstNegativeDate, isNull);
+    expect(group.risk!.evaluatedDays, 22);
+    expect(group.historicalRisk!.firstNegativeDate, '2026-10-03');
+    expect(group.historicalRisk!.negativeDays, 3);
+    expect(group.historicalRisk!.evaluatedDays, 9);
+    final account = group.accounts.single;
+    expect(account.risk!.firstNegativeDate, isNull);
+    expect(account.historicalRisk!.firstNegativeDate, '2026-10-03');
+  });
+
+  test('days before a late opening balance are never evaluated', () async {
+    final backend = FakeCashFlowBackend(
+      cashFlow: (uri) => uri.queryParameters['from'] == '2026-10-01'
+          ? cashFlowResponse(
+              from: '2026-10-01',
+              days: 31,
+              groups: [
+                cashFlowGroup(
+                  from: '2026-10-01',
+                  days: 31,
+                  events: const [],
+                  firstNegative: null,
+                  anchoredFrom: '2026-10-05',
+                  status: 'INCOMPLETE',
+                  issues: [
+                    {
+                      'code': 'OPENING_BALANCE_AFTER_WINDOW_START',
+                      'severity': 'INCOMPLETE',
+                      'count': 1,
+                      'accountIds': [cashFlowCheckingId],
+                    },
+                  ],
+                  // Before the anchor the balance starts from an assumed zero.
+                  closing: (date) =>
+                      date.compareTo('2026-10-05') < 0 ? '-100' : '500',
+                ),
+              ],
+            )
+          : cashFlowEcho(uri),
+    );
+    final h = _harness(backend);
+    await h.controller.load();
+    await h.controller.selectPeriod(FinancialCashFlowPeriod.currentMonth);
+
+    var group = h.container.read(financialCashFlowControllerProvider).group!;
+    expect(
+      group.projectionStatus,
+      FinancialCashFlowProjectionStatus.incomplete,
+    );
+    expect(group.days.first.anchored, isFalse);
+    expect(group.days.first.negative, isTrue);
+    expect(group.days[4].anchored, isTrue);
+    // The pre-anchor "deficit" is not evidence: 5 anchored past days, none
+    // negative.
+    expect(group.historicalRisk!.evaluatedDays, 5);
+    expect(group.historicalRisk!.firstNegativeDate, isNull);
+    expect(group.risk!.evaluatedDays, 22);
+
+    // Recovery: a window after the anchor is complete again.
+    await h.controller.selectPeriod(FinancialCashFlowPeriod.next30);
+    group = h.container.read(financialCashFlowControllerProvider).group!;
+    expect(group.projectionStatus, FinancialCashFlowProjectionStatus.complete);
+    expect(group.days.every((day) => day.anchored), isTrue);
   });
 
   test('a 422 refusal is explicit and shows no stale figures', () async {
@@ -310,8 +504,6 @@ void main() {
   });
 
   test('calendar helpers handle month ends and leap years', () {
-    expect(financialCashFlowAddDays('2028-02-28', 1), '2028-02-29');
-    expect(financialCashFlowAddDays('2027-02-28', 1), '2027-03-01');
     expect(financialCashFlowMonthEnd('2028-02-10'), '2028-02-29');
     expect(financialCashFlowMonthEnd('2026-12-31'), '2026-12-31');
   });

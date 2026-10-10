@@ -11,6 +11,9 @@ const financialCashFlowWindowMaxDays = 92;
 const financialCashFlowAccountsMax = 50;
 const financialCashFlowEventsMax = 2000;
 
+/// Server default length when neither `through` nor `days` is sent.
+const _cashFlowDefaultDays = 30;
+
 const _cashFlowKeys = <String>{
   'referenceDate',
   'from',
@@ -29,6 +32,7 @@ const _cashFlowGroupKeys = <String>{
   'closingBalance',
   'totals',
   'risk',
+  'historicalRisk',
   'accounts',
   'days',
   'events',
@@ -39,6 +43,7 @@ const _cashFlowRiskKeys = <String>{
   'minimumBalanceDate',
   'firstNegativeDate',
   'negativeDays',
+  'evaluatedDays',
 };
 const _cashFlowTotalsKeys = <String>{
   'realizedIncome',
@@ -71,6 +76,7 @@ const _cashFlowAccountKeys = <String>{
   'expectedNet',
   'closingBalance',
   'risk',
+  'historicalRisk',
 };
 const _cashFlowDayKeys = <String>{
   'date',
@@ -82,6 +88,7 @@ const _cashFlowDayKeys = <String>{
   'neutralNet',
   'closing',
   'projected',
+  'anchored',
   'negative',
 };
 const _cashFlowEventKeys = <String>{
@@ -165,20 +172,30 @@ enum FinancialCashFlowIssueCode {
       _enumByWire(values, value, 'code', (item) => item.wireValue);
 }
 
+/// Lowest closing balance and first deficit over the days the server evaluated.
+///
+/// Only anchored days (an opening balance effective on or before the day) are
+/// evaluated. The prospective risk covers the projected days (from the
+/// reference date on); the historical one the realized days before it. A risk
+/// that is absent (`null` in its holder) means "not assessable", never "safe".
 class FinancialCashFlowRisk {
   const FinancialCashFlowRisk({
     required this.minimumBalance,
     required this.minimumBalanceDate,
     required this.firstNegativeDate,
     required this.negativeDays,
+    required this.evaluatedDays,
   });
 
   final FinancialMoneyWire minimumBalance;
   final String minimumBalanceDate;
 
-  /// First day whose closing balance is below zero (`null`: none in the window).
+  /// First evaluated day whose closing balance is below zero (`null`: none).
   final String? firstNegativeDate;
   final int negativeDays;
+
+  /// Anchored days the server evaluated (never the pre-anchor ones).
+  final int evaluatedDays;
 }
 
 class FinancialCashFlowIssue {
@@ -246,6 +263,7 @@ class FinancialCashFlowAccount {
     required this.expectedNet,
     required this.closingBalance,
     required this.risk,
+    required this.historicalRisk,
   });
 
   final String accountId;
@@ -260,7 +278,20 @@ class FinancialCashFlowAccount {
   final FinancialMoneyWire realizedNet;
   final FinancialMoneyWire expectedNet;
   final FinancialMoneyWire closingBalance;
-  final FinancialCashFlowRisk risk;
+
+  /// Prospective risk (from the reference date on); `null` when no projected
+  /// day of this account is anchored.
+  final FinancialCashFlowRisk? risk;
+
+  /// Realized days before the reference date; `null` when none is anchored.
+  final FinancialCashFlowRisk? historicalRisk;
+
+  /// The account balance on [date] rests on its opening balance. Calendar
+  /// comparison only.
+  bool anchoredOn(String date) {
+    final opening = openingBalanceDate;
+    return opening != null && opening.compareTo(date) <= 0;
+  }
 }
 
 class FinancialCashFlowDay {
@@ -274,6 +305,7 @@ class FinancialCashFlowDay {
     required this.neutralNet,
     required this.closing,
     required this.projected,
+    required this.anchored,
     required this.negative,
   });
 
@@ -288,6 +320,12 @@ class FinancialCashFlowDay {
 
   /// On or after the reference date of a non-historical window.
   final bool projected;
+
+  /// Every account of the group has an opening balance effective on or before
+  /// this day. Otherwise the balance is an estimate (an account without one
+  /// starts from zero; before its effective date the opening amount is applied
+  /// ahead of time): never a fact, and never used to assess risk.
+  final bool anchored;
   final bool negative;
 
   /// The server reported any figure other than zero for the day.
@@ -360,6 +398,7 @@ class FinancialCashFlowGroup {
     required this.closingBalance,
     required this.totals,
     required this.risk,
+    required this.historicalRisk,
     required this.accounts,
     required this.days,
     required this.events,
@@ -376,7 +415,14 @@ class FinancialCashFlowGroup {
   /// Projected balance at the end of the window.
   final FinancialMoneyWire closingBalance;
   final FinancialCashFlowTotals totals;
-  final FinancialCashFlowRisk risk;
+
+  /// Prospective risk over the anchored projected days (`null`: not
+  /// assessable, or no projected day at all).
+  final FinancialCashFlowRisk? risk;
+
+  /// Deficits that already happened, over the anchored days before the
+  /// reference date (`null`: none of them anchored, or no past day).
+  final FinancialCashFlowRisk? historicalRisk;
   final List<FinancialCashFlowAccount> accounts;
   final List<FinancialCashFlowDay> days;
   final List<FinancialCashFlowEvent> events;
@@ -387,6 +433,18 @@ class FinancialCashFlowGroup {
     }
     return null;
   }
+
+  /// The server flag of [date] (`false` outside the window).
+  bool anchoredOn(String date) {
+    for (final day in days) {
+      if (day.date == date) return day.anchored;
+    }
+    return false;
+  }
+
+  int get projectedDays => days.where((day) => day.projected).length;
+
+  int get pastDays => days.where((day) => !day.projected).length;
 }
 
 class FinancialCashFlow {
@@ -419,10 +477,12 @@ class FinancialCashFlowQuery {
   FinancialCashFlowQuery({
     String? from,
     String? through,
+    int? days,
     List<String> accountIds = const [],
     String? currency,
   }) : from = from == null ? null : _date(from, 'from'),
        through = through == null ? null : _date(through, 'through'),
+       days = _cashFlowRelativeDays(days, through),
        accountIds = _cashFlowAccountIds(accountIds),
        currency = currency == null ? null : _currency(currency, 'currency') {
     final start = this.from;
@@ -439,6 +499,11 @@ class FinancialCashFlowQuery {
 
   final String? from;
   final String? through;
+
+  /// Window length counted by the server from `from` (or its reference date):
+  /// a relative window that needs no client-side reference date. Exclusive
+  /// with [through].
+  final int? days;
   final List<String> accountIds;
   final String? currency;
 
@@ -446,6 +511,7 @@ class FinancialCashFlowQuery {
     final parameters = <String>[
       if (from != null) 'from=$from',
       if (through != null) 'through=$through',
+      if (days != null) 'days=$days',
       for (final id in accountIds) 'accountId=$id',
       if (currency != null) 'currency=$currency',
     ];
@@ -453,6 +519,17 @@ class FinancialCashFlowQuery {
         ? 'finance/cash-flow'
         : 'finance/cash-flow?${parameters.join('&')}';
   }
+}
+
+int? _cashFlowRelativeDays(int? days, String? through) {
+  if (days == null) return null;
+  if (through != null) {
+    throw const FormatException('use through or days, not both.');
+  }
+  if (days < 1 || days > financialCashFlowWindowMaxDays) {
+    throw const FormatException('days is invalid.');
+  }
+  return days;
 }
 
 List<String> _cashFlowAccountIds(List<String> ids) {
@@ -497,8 +574,14 @@ extension FinancialCashFlowApiCalls on FinancialCoreApi {
         label: 'cash flow response',
       ),
     );
+    // Omitted bounds are server defaults: `from` is the reference date and the
+    // length is `days` (30 when neither `days` nor `through` is sent).
+    final expectedDays =
+        query.days ?? (query.through == null ? _cashFlowDefaultDays : null);
     if ((query.from != null && cashFlow.from != query.from) ||
-        (query.through != null && cashFlow.through != query.through)) {
+        (query.from == null && cashFlow.from != cashFlow.referenceDate) ||
+        (query.through != null && cashFlow.through != query.through) ||
+        (expectedDays != null && cashFlow.days != expectedDays)) {
       throw const FormatException('cash flow window mismatch.');
     }
     for (final group in cashFlow.groups) {
@@ -543,7 +626,9 @@ FinancialCashFlow _parseCashFlow(Map<String, Object?> values) {
     throw const FormatException('groups is invalid.');
   }
   final groups = List<FinancialCashFlowGroup>.unmodifiable(
-    rawGroups.map((raw) => _parseCashFlowGroup(raw, from, through, days)),
+    rawGroups.map(
+      (raw) => _parseCashFlowGroup(raw, reference, from, through, days),
+    ),
   );
   final currencies = groups.map((group) => group.currency).toList();
   if (currencies.toSet().length != currencies.length) {
@@ -574,6 +659,7 @@ FinancialCashFlow _parseCashFlow(Map<String, Object?> values) {
 
 FinancialCashFlowGroup _parseCashFlowGroup(
   Object? raw,
+  String reference,
   String from,
   String through,
   int dayCount,
@@ -585,22 +671,6 @@ FinancialCashFlowGroup _parseCashFlowGroup(
   );
   final currency = _currency(values['currency'], 'currency');
   FinancialMoneyWire money(Object? value) => _cashFlowMoney(value, currency);
-
-  final rawAccounts = values['accounts'];
-  if (rawAccounts is! List ||
-      rawAccounts.isEmpty ||
-      rawAccounts.length > financialCashFlowAccountsMax) {
-    throw const FormatException('cash flow accounts are invalid.');
-  }
-  final accounts = List<FinancialCashFlowAccount>.unmodifiable(
-    rawAccounts.map(
-      (item) => _parseCashFlowAccount(item, currency, from, through),
-    ),
-  );
-  final accountIds = accounts.map((account) => account.accountId).toSet();
-  if (accountIds.length != accounts.length) {
-    throw const FormatException('duplicate cash flow account.');
-  }
 
   final rawDays = values['days'];
   if (rawDays is! List || rawDays.length != dayCount) {
@@ -614,7 +684,32 @@ FinancialCashFlowGroup _parseCashFlowGroup(
     if (day.date != expected) {
       throw const FormatException('cash flow days are not contiguous.');
     }
+    // Projected means "on or after the reference date"; a past day is a fact.
+    if (day.projected != (day.date.compareTo(reference) >= 0)) {
+      throw const FormatException('projected flag contradicts the date.');
+    }
     expected = _cashFlowNextDay(expected);
+  }
+
+  final rawAccounts = values['accounts'];
+  if (rawAccounts is! List ||
+      rawAccounts.isEmpty ||
+      rawAccounts.length > financialCashFlowAccountsMax) {
+    throw const FormatException('cash flow accounts are invalid.');
+  }
+  final accounts = List<FinancialCashFlowAccount>.unmodifiable(
+    rawAccounts.map((item) => _parseCashFlowAccount(item, currency, days)),
+  );
+  final accountIds = accounts.map((account) => account.accountId).toSet();
+  if (accountIds.length != accounts.length) {
+    throw const FormatException('duplicate cash flow account.');
+  }
+  for (final day in days) {
+    // A day is anchored only when every account of the group is.
+    if (day.anchored !=
+        accounts.every((account) => account.anchoredOn(day.date))) {
+      throw const FormatException('anchored flag contradicts the accounts.');
+    }
   }
 
   final rawEvents = values['events'];
@@ -660,7 +755,14 @@ FinancialCashFlowGroup _parseCashFlowGroup(
     balanceAtReference: money(values['balanceAtReference']),
     closingBalance: money(values['closingBalance']),
     totals: _parseCashFlowTotals(values['totals'], currency),
-    risk: _parseCashFlowRisk(values['risk'], currency, from, through),
+    risk: _cashFlowGroupRisk(values['risk'], currency, [
+      for (final day in days)
+        if (day.anchored && day.projected) day,
+    ]),
+    historicalRisk: _cashFlowGroupRisk(values['historicalRisk'], currency, [
+      for (final day in days)
+        if (day.anchored && !day.projected) day,
+    ]),
     accounts: accounts,
     days: days,
     events: events,
@@ -693,12 +795,22 @@ String? _cashFlowOptionalDate(Object? value, String fieldName) =>
 String? _cashFlowOptionalId(Object? value, String fieldName) =>
     value == null ? null : _financialResourceId(value, fieldName);
 
-FinancialCashFlowRisk _parseCashFlowRisk(
+/// A risk must cover exactly the [dates] it claims to evaluate: absent when
+/// there are none, present otherwise, with every reported date among them.
+/// This rejects a deficit that already happened presented as a future risk,
+/// and a pre-anchor day used as evidence.
+FinancialCashFlowRisk? _parseCashFlowRisk(
   Object? raw,
   String currency,
-  String from,
-  String through,
+  List<String> dates,
 ) {
+  if (dates.isEmpty) {
+    if (raw != null) {
+      throw const FormatException('risk without evaluable days.');
+    }
+    return null;
+  }
+  if (raw == null) throw const FormatException('risk is missing.');
   final values = _strictMap(raw, allowedKeys: _cashFlowRiskKeys, label: 'risk');
   final minimumDate = _date(values['minimumBalanceDate'], 'minimumBalanceDate');
   final firstNegative = _cashFlowOptionalDate(
@@ -706,10 +818,16 @@ FinancialCashFlowRisk _parseCashFlowRisk(
     'firstNegativeDate',
   );
   final negativeDays = _cashFlowCount(values['negativeDays'], 'negativeDays');
-  for (final value in [minimumDate, ?firstNegative]) {
-    if (value.compareTo(from) < 0 || value.compareTo(through) > 0) {
-      throw const FormatException('risk date is outside the window.');
-    }
+  final evaluatedDays = _cashFlowCount(
+    values['evaluatedDays'],
+    'evaluatedDays',
+  );
+  final evaluated = dates.toSet();
+  if (evaluatedDays != dates.length ||
+      negativeDays > evaluatedDays ||
+      !evaluated.contains(minimumDate) ||
+      (firstNegative != null && !evaluated.contains(firstNegative))) {
+    throw const FormatException('risk does not match the evaluated days.');
   }
   if ((firstNegative == null) != (negativeDays == 0)) {
     throw const FormatException('risk is inconsistent.');
@@ -719,7 +837,30 @@ FinancialCashFlowRisk _parseCashFlowRisk(
     minimumBalanceDate: minimumDate,
     firstNegativeDate: firstNegative,
     negativeDays: negativeDays,
+    evaluatedDays: evaluatedDays,
   );
+}
+
+/// The group risk is also checked against the server's own day flags: its
+/// first deficit is the first negative evaluated day and its count matches.
+FinancialCashFlowRisk? _cashFlowGroupRisk(
+  Object? raw,
+  String currency,
+  List<FinancialCashFlowDay> days,
+) {
+  final risk = _parseCashFlowRisk(raw, currency, [
+    for (final day in days) day.date,
+  ]);
+  if (risk == null) return null;
+  final negative = [
+    for (final day in days)
+      if (day.negative) day.date,
+  ];
+  if (risk.negativeDays != negative.length ||
+      risk.firstNegativeDate != (negative.isEmpty ? null : negative.first)) {
+    throw const FormatException('risk contradicts the days.');
+  }
+  return risk;
 }
 
 FinancialCashFlowIssue _parseCashFlowIssue(
@@ -784,8 +925,7 @@ FinancialCashFlowTotals _parseCashFlowTotals(Object? raw, String currency) {
 FinancialCashFlowAccount _parseCashFlowAccount(
   Object? raw,
   String currency,
-  String from,
-  String through,
+  List<FinancialCashFlowDay> days,
 ) {
   final values = _strictMap(
     raw,
@@ -804,6 +944,14 @@ FinancialCashFlowAccount _parseCashFlowAccount(
     throw const FormatException('opening balance flag is inconsistent.');
   }
   FinancialMoneyWire money(String key) => _cashFlowMoney(values[key], currency);
+  // The account is evaluated only from its own opening balance date on.
+  List<String> anchored({required bool projected}) => [
+    for (final day in days)
+      if (day.projected == projected &&
+          openingDate != null &&
+          openingDate.compareTo(day.date) <= 0)
+        day.date,
+  ];
   return FinancialCashFlowAccount(
     accountId: _financialResourceId(values['accountId'], 'accountId'),
     name: _boundedText(values['name'], 'name', maxLength: 96),
@@ -817,7 +965,16 @@ FinancialCashFlowAccount _parseCashFlowAccount(
     realizedNet: money('realizedNet'),
     expectedNet: money('expectedNet'),
     closingBalance: money('closingBalance'),
-    risk: _parseCashFlowRisk(values['risk'], currency, from, through),
+    risk: _parseCashFlowRisk(
+      values['risk'],
+      currency,
+      anchored(projected: true),
+    ),
+    historicalRisk: _parseCashFlowRisk(
+      values['historicalRisk'],
+      currency,
+      anchored(projected: false),
+    ),
   );
 }
 
@@ -843,6 +1000,7 @@ FinancialCashFlowDay _parseCashFlowDay(Object? raw, String currency) {
     neutralNet: money('neutralNet'),
     closing: closing,
     projected: _cashFlowFlag(values['projected'], 'projected'),
+    anchored: _cashFlowFlag(values['anchored'], 'anchored'),
     negative: negative,
   );
 }
